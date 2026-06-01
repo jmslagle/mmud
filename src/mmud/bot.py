@@ -1,5 +1,4 @@
 from __future__ import annotations
-import asyncio
 import pathlib
 from mmud.data.messages import MessagePattern, load_messages
 from mmud.net.connection import MudConnection
