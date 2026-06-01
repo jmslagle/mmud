@@ -43,3 +43,9 @@ def test_all_event_types_constructible():
     PathStarted(name="RHU2LOOP")
     PathStepped(command="e", lap=58)
     SessionStatUpdated(key="kills", value="694")
+
+from mmud.events import MonstersSeen
+
+def test_monsters_seen_constructible():
+    e = MonstersSeen(monsters=["orc warrior", "goblin scout"])
+    assert e.monsters == ["orc warrior", "goblin scout"]

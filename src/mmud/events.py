@@ -62,6 +62,10 @@ class SessionStatUpdated:
     key: str
     value: str
 
+@dataclass
+class MonstersSeen:
+    monsters: list[str]   # monster names parsed from room content
+
 
 class GameEventBus:
     def __init__(self) -> None:
