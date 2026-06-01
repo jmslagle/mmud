@@ -103,3 +103,34 @@ async def test_stats_bar_shows_session_stat():
         bar.post_message(StatsBar.SessionUpdate(key="kills", value="694"))
         await pilot.pause(0.1)
         assert bar.session["kills"] == "694"
+
+
+from textual.widgets import TabPane
+from mmud.tui.widgets.right_panel import RightPanel
+
+
+class _PanelApp(App):
+    def compose(self) -> ComposeResult:
+        yield RightPanel(default_tab="conversations")
+
+
+@pytest.mark.asyncio
+async def test_right_panel_has_three_tabs():
+    app = _PanelApp()
+    async with app.run_test() as pilot:
+        panel = app.query_one(RightPanel)
+        # Query TabPane (not Tab) since Textual 8.x prefixes Tab widget IDs
+        pane_ids = {pane.id for pane in panel.query(TabPane)}
+        assert "tab-conversations" in pane_ids
+        assert "tab-players" in pane_ids
+        assert "tab-stats" in pane_ids
+
+
+@pytest.mark.asyncio
+async def test_right_panel_switch_to():
+    app = _PanelApp()
+    async with app.run_test() as pilot:
+        panel = app.query_one(RightPanel)
+        panel.switch_to("players")
+        await pilot.pause(0.1)
+        assert panel.active == "tab-players"
