@@ -52,7 +52,7 @@ async def test_bot_processes_line_and_issues_command(unused_tcp_port):
             await asyncio.wait_for(bot.run(), timeout=3.0)
         except asyncio.TimeoutError:
             pass
-    assert any("attack" in r for r in received)
+    assert any("kill" in r for r in received)
 
 
 @pytest.mark.asyncio

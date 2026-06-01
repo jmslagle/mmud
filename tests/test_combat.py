@@ -1,21 +1,24 @@
 from mmud.state.game_state import GameState
 from mmud.combat.combat import CombatEngine
+from mmud.config.schema import CombatConfig
 
 
 def test_attacks_when_in_combat():
     gs = GameState()
     gs.set_combat(True)
     gs.set_hp(80, 100)
+    gs.set_mana(50, 100)
     ce = CombatEngine()
     cmd = ce.decide(gs)
-    assert cmd == "attack"
+    assert cmd == "kill"
 
 
 def test_flees_when_critically_low_hp():
     gs = GameState()
     gs.set_combat(True)
     gs.set_hp(10, 100)   # 10% HP
-    ce = CombatEngine(flee_threshold=0.15)
+    gs.set_mana(50, 100)
+    ce = CombatEngine(CombatConfig(flee_threshold=0.15))
     cmd = ce.decide(gs)
     assert cmd == "flee"
 
@@ -33,6 +36,51 @@ def test_rests_when_not_in_combat_and_low_hp():
     gs = GameState()
     gs.set_combat(False)
     gs.set_hp(30, 100)
-    ce = CombatEngine(rest_threshold=0.5)
+    ce = CombatEngine(CombatConfig(rest_threshold=0.5))
     cmd = ce.decide(gs)
     assert cmd == "rest"
+
+
+def test_uses_config_attack_cmd():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(50, 100)
+    gs.monsters_present = ["orc warrior"]
+    ce = CombatEngine(CombatConfig(attack_cmd="kill"))
+    assert ce.decide(gs) == "kill orc warrior"
+
+def test_attack_without_monster_name():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(50, 100)
+    gs.monsters_present = []
+    ce = CombatEngine(CombatConfig(attack_cmd="kill"))
+    assert ce.decide(gs) == "kill"
+
+def test_respects_mana_attack_pct():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(10, 100)
+    gs.monsters_present = ["orc"]
+    ce = CombatEngine(CombatConfig(mana_attack_pct=0.20))
+    assert ce.decide(gs) is None  # 10% mana < 20% threshold
+
+def test_config_flee_threshold():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(5, 100)
+    gs.set_mana(50, 100)
+    ce = CombatEngine(CombatConfig(flee_threshold=0.10))
+    assert ce.decide(gs) == "flee"
+
+def test_no_config_uses_defaults():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(50, 100)
+    ce = CombatEngine()
+    cmd = ce.decide(gs)
+    assert cmd == "kill"  # default attack_cmd
