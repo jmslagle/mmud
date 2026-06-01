@@ -1,0 +1,106 @@
+# MegaMud TUI character config — copy this file and edit for your character.
+# All sections are optional. Missing keys fall back to safe defaults.
+# CLI args --host and --port override [server] values.
+
+# ── Server ───────────────────────────────────────────────────────────────────
+[server]
+host = "mud.example.com"
+port = 4000
+
+# ── Login ────────────────────────────────────────────────────────────────────
+[login]
+username  = "your_bbs_login"
+password  = "your_password"
+character = "Your Character Name"
+
+# ── Combat ───────────────────────────────────────────────────────────────────
+[combat]
+attack_cmd      = "kill"
+flee_threshold  = 0.15
+rest_threshold  = 0.40
+backstab        = false
+polite_attacks  = false
+attack_order    = "first"
+mana_attack_pct = 0.20
+
+# ── Spells ───────────────────────────────────────────────────────────────────
+[spells]
+attack        = ""
+pre_attack    = ""
+multi_attack  = ""
+heal          = ""
+heal_hp_pct   = 0.50
+mana_heal     = ""
+mana_heal_pct = 0.30
+
+# [[spells.bless]]
+# cmd      = "bless"
+# mana_pct = 0.80
+
+# ── Stealth ──────────────────────────────────────────────────────────────────
+[stealth]
+auto_sneak  = false
+sneak_cmd   = "sneak"
+must_sneak  = false
+auto_hide   = false
+hide_cmd    = "hide"
+
+# ── Navigation ───────────────────────────────────────────────────────────────
+[navigation]
+loop_path        = ""
+start_room       = ""
+auto_start       = false
+flee_rooms       = 3
+can_pick_locks   = false
+can_disarm_traps = false
+
+# ── Items & Cash ─────────────────────────────────────────────────────────────
+[items]
+auto_get         = false
+auto_cash        = true
+collect_copper   = true
+collect_silver   = true
+collect_gold     = true
+collect_platinum = true
+collect_runic    = false
+runic_name       = "runic"
+dont_go_heavy    = true
+dont_go_medium   = false
+
+# ── Party ────────────────────────────────────────────────────────────────────
+[party]
+heal_spell         = ""
+heal_hp_pct        = 0.50
+wait_hp_pct        = 0.30
+wait_max_seconds   = 30
+wait_cmd           = "wait"
+resume_cmd         = "go"
+attack_with_leader = true
+share_cash         = false
+
+# [[party.bless]]
+# cmd          = "party bless"
+# wait_seconds = 60
+
+# ── AFK ──────────────────────────────────────────────────────────────────────
+[afk]
+enabled          = false
+timeout_minutes  = 5
+reply            = "I am AFK"
+hangup_on_low_hp = false
+alert            = false
+popup_missed     = true
+
+# ── Per-player rules ─────────────────────────────────────────────────────────
+# [[players]]
+# name        = "FriendName"
+# friend      = true
+# remote_cmds = ["@do", "@loop"]
+# dont_heal   = false
+# dont_bless  = false
+
+# ── UI defaults ──────────────────────────────────────────────────────────────
+[ui]
+show_right_panel = true
+show_stats_bar   = true
+default_tab      = "conversations"
