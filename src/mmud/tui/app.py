@@ -138,7 +138,13 @@ class MegaMudApp(App):
             self.sub_title = f"{self._host}:{self._port}"
 
     def action_toggle_loop(self) -> None:
-        pass  # Future: start/stop navigation loop
+        if self._bot is not None:
+            self._bot.toggle_loop()
+            running = self._bot._loop_runner is not None and self._bot._loop_runner.running
+            self.sub_title = (
+                f"{self._host}:{self._port} [looping]" if running
+                else f"{self._host}:{self._port} [connected]"
+            )
 
     def action_clear_input(self) -> None:
         self.query_one("#command-input", Input).clear()

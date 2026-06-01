@@ -176,3 +176,32 @@ async def test_bot_detects_combat_exit(unused_tcp_port):
         except asyncio.TimeoutError:
             pass
     assert any(not e.in_combat for e in received)
+
+
+@pytest.mark.asyncio
+async def test_bot_toggle_loop(unused_tcp_port):
+    """toggle_loop() creates and starts a LoopRunner, then stops it on second call."""
+    from mmud.data.paths import GamePath, PathStep
+    from mmud.config.schema import MudConfig
+
+    async def server_handler(reader, writer):
+        writer.close()
+
+    server = await asyncio.start_server(server_handler, "127.0.0.1", unused_tcp_port)
+    path = GamePath(
+        from_code="HOME", from_region="", from_name="",
+        to_code="HOME", to_region="", to_name="",
+        npc="", steps=[PathStep(hex_id="0", command="n")],
+    )
+    config = MudConfig()
+    config.navigation.loop_path = "HOME"
+
+    async with server:
+        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[], config=config)
+        bot._navigator._paths[("HOME", "HOME")] = path
+        bot._state.set_room("HOME")
+        bot.toggle_loop()
+        assert bot._loop_runner is not None
+        assert bot._loop_runner.running is True
+        bot.toggle_loop()
+        assert bot._loop_runner.running is False
