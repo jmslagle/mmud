@@ -124,3 +124,55 @@ async def test_bot_emits_effect_applied(unused_tcp_port):
         except asyncio.TimeoutError:
             pass
     assert any(e.name == "chain" for e in received)
+
+
+@pytest.mark.asyncio
+async def test_bot_detects_room_change(unused_tcp_port):
+    from mmud.events import RoomChanged
+    from mmud.data.rooms import Room
+    rooms = {
+        "HOME": Room(code="HOME", hex_id="", hex_id2="", flags=(0,0,0),
+                     region="Silvermere", name="The Homely Hearth")
+    }
+    received = []
+
+    async def server_handler(reader, writer):
+        writer.write(b"The Homely Hearth\r\n")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(server_handler, "127.0.0.1", unused_tcp_port)
+    bus = GameEventBus()
+    bus.subscribe(RoomChanged, received.append)
+
+    async with server:
+        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[], event_bus=bus, rooms=rooms)
+        try:
+            await asyncio.wait_for(bot.run(), timeout=2.0)
+        except asyncio.TimeoutError:
+            pass
+    assert any(e.code == "HOME" for e in received)
+
+
+@pytest.mark.asyncio
+async def test_bot_detects_combat_exit(unused_tcp_port):
+    from mmud.events import CombatChanged
+    received = []
+
+    async def server_handler(reader, writer):
+        writer.write(b"The orc breaks off combat.\r\n")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(server_handler, "127.0.0.1", unused_tcp_port)
+    bus = GameEventBus()
+    bus.subscribe(CombatChanged, received.append)
+
+    async with server:
+        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[], event_bus=bus)
+        bot._state.set_combat(True)
+        try:
+            await asyncio.wait_for(bot.run(), timeout=2.0)
+        except asyncio.TimeoutError:
+            pass
+    assert any(not e.in_combat for e in received)
