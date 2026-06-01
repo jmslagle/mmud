@@ -74,3 +74,32 @@ async def test_players_upserts_existing_row():
         widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", level="L10", rep="Criminal", gang="Dragons"))
         await pilot.pause(0.1)
         assert widget.row_count == 1   # still 1 row, not 2
+
+
+from mmud.tui.widgets.stats_bar import StatsBar
+
+
+class _StatsApp(App):
+    def compose(self) -> ComposeResult:
+        yield StatsBar()
+
+
+@pytest.mark.asyncio
+async def test_stats_bar_shows_hp():
+    app = _StatsApp()
+    async with app.run_test() as pilot:
+        bar = app.query_one(StatsBar)
+        bar.post_message(StatsBar.HpUpdate(hp=141, max_hp=216))
+        await pilot.pause(0.1)
+        assert bar.hp == 141
+        assert bar.max_hp == 216
+
+
+@pytest.mark.asyncio
+async def test_stats_bar_shows_session_stat():
+    app = _StatsApp()
+    async with app.run_test() as pilot:
+        bar = app.query_one(StatsBar)
+        bar.post_message(StatsBar.SessionUpdate(key="kills", value="694"))
+        await pilot.pause(0.1)
+        assert bar.session["kills"] == "694"
