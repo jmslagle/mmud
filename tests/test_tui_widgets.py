@@ -40,3 +40,37 @@ async def test_conversations_displays_tell():
         text = widget.renderable_lines_text()
         assert "BumbleBee" in text
         assert "hey!" in text
+
+
+from mmud.tui.widgets.players import PlayersPane
+
+
+class _PlayersApp(App):
+    def compose(self) -> ComposeResult:
+        yield PlayersPane()
+
+
+@pytest.mark.asyncio
+async def test_players_shows_player_row():
+    app = _PlayersApp()
+    async with app.run_test() as pilot:
+        widget = app.query_one(PlayersPane)
+        widget.post_message(
+            PlayersPane.PlayerUpdate(
+                name="BumbleBee", level="L5-9", rep="Neutral", gang=""
+            )
+        )
+        await pilot.pause(0.1)
+        assert widget.row_count == 1
+
+
+@pytest.mark.asyncio
+async def test_players_upserts_existing_row():
+    app = _PlayersApp()
+    async with app.run_test() as pilot:
+        widget = app.query_one(PlayersPane)
+        widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", level="L5-9", rep="Neutral", gang=""))
+        await pilot.pause(0.1)
+        widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", level="L10", rep="Criminal", gang="Dragons"))
+        await pilot.pause(0.1)
+        assert widget.row_count == 1   # still 1 row, not 2
