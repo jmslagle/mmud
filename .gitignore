@@ -13,3 +13,4 @@ venv/
 *.pyc
 *.pyo
 .DS_Store
+.superpowers/
