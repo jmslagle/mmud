@@ -1,6 +1,8 @@
 import asyncio
 import pytest
 from mmud.net.connection import MudConnection
+from mmud.bot import MudBot
+from mmud.data.messages import MessagePattern
 
 
 @pytest.mark.asyncio
@@ -20,3 +22,31 @@ async def test_connection_sends_and_receives(unused_tcp_port):
         line = await conn.readline()
         assert line.strip() == "hello"
         await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_bot_processes_line_and_issues_command(unused_tcp_port):
+    """Bot receives a combat message and sends 'attack' in response."""
+    received = []
+
+    async def server_handler(reader, writer):
+        # Send a combat message
+        writer.write(b"An orc hits you!\r\n")
+        await writer.drain()
+        # Wait for bot's response
+        cmd = await asyncio.wait_for(reader.readline(), timeout=2.0)
+        received.append(cmd.decode().strip())
+        writer.close()
+
+    server = await asyncio.start_server(server_handler, "127.0.0.1", unused_tcp_port)
+    patterns = [
+        MessagePattern(name="being hit", flags=0, third_field=0,
+                       apply_message="An orc hits you!", remove_message="")
+    ]
+    async with server:
+        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=patterns)
+        try:
+            await asyncio.wait_for(bot.run(), timeout=3.0)
+        except asyncio.TimeoutError:
+            pass
+    assert any("attack" in r for r in received)
