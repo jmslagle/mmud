@@ -164,3 +164,19 @@ async def test_app_toggle_right_panel():
         assert "hidden" in panel.classes
         app.action_toggle_right_panel()
         assert "hidden" not in panel.classes
+
+
+import subprocess
+import sys
+
+
+def test_tui_entry_point_help():
+    result = subprocess.run(
+        [sys.executable, "-m", "mmud.tui", "--help"],
+        capture_output=True, text=True,
+        cwd="/Users/jslagle/proj/mmud",
+    )
+    assert result.returncode == 0
+    assert "--host" in result.stdout
+    assert "--port" in result.stdout
+    assert "--char" in result.stdout
