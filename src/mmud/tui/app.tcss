@@ -1,0 +1,33 @@
+/* app.tcss */
+Screen {
+    layout: vertical;
+}
+
+#main-area {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#game-output {
+    width: 65%;
+    border-right: solid $panel;
+}
+
+#right-panel {
+    width: 35%;
+}
+
+#stats-bar {
+    height: 4;
+    border-top: solid $panel;
+}
+
+#command-input {
+    height: 3;
+    border-top: solid $panel;
+    padding: 0 1;
+}
+
+.hidden {
+    display: none;
+}

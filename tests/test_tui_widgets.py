@@ -134,3 +134,33 @@ async def test_right_panel_switch_to():
         panel.switch_to("players")
         await pilot.pause(0.1)
         assert panel.active == "tab-players"
+
+
+from textual.widgets import Input
+from mmud.config.schema import MudConfig
+from mmud.tui.app import MegaMudApp
+
+
+@pytest.mark.asyncio
+async def test_app_composes():
+    """App mounts with all expected widgets."""
+    config = MudConfig()
+    app = MegaMudApp(config=config, host="localhost", port=4000)
+    async with app.run_test() as pilot:
+        assert app.query_one(GameOutput) is not None
+        assert app.query_one(RightPanel) is not None
+        assert app.query_one(StatsBar) is not None
+        assert app.query_one(Input) is not None
+
+
+@pytest.mark.asyncio
+async def test_app_toggle_right_panel():
+    config = MudConfig()
+    app = MegaMudApp(config=config, host="localhost", port=4000)
+    async with app.run_test() as pilot:
+        panel = app.query_one("#right-panel")
+        assert "hidden" not in panel.classes
+        app.action_toggle_right_panel()
+        assert "hidden" in panel.classes
+        app.action_toggle_right_panel()
+        assert "hidden" not in panel.classes
