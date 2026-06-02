@@ -36,6 +36,10 @@ _NAV_FAIL_RE = re.compile(
     r"you cannot go that direction|no exit|blocked|closed)",
     re.IGNORECASE,
 )
+_PLAYER_HIT_RE = re.compile(r"You (?:hit|strike|slash|pierce|bash|backstab)\w* \w.+? for (\d+) damage", re.IGNORECASE)
+_PLAYER_MISS_RE = re.compile(r"You miss\b", re.IGNORECASE)
+_MONSTER_HIT_RE = re.compile(r"(?:hits?|strikes?|slashes?|bashes?|pierces?) you for (\d+) damage", re.IGNORECASE)
+_BACKSTAB_RE = re.compile(r"You backstab", re.IGNORECASE)
 
 
 class MudBot:
@@ -118,6 +122,7 @@ class MudBot:
         self._parse_vitals(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
+        self._parse_combat_stats(clean)
         self._parse_nav_failure(clean)
         self._parse_conversation(clean)
         self._handle_login(clean)
@@ -202,6 +207,19 @@ class MudBot:
         if _NAV_FAIL_RE.search(line):
             if self._loop_runner and self._loop_runner.running:
                 self._loop_runner.on_nav_failure()
+
+    def _parse_combat_stats(self, line: str) -> None:
+        if m := _PLAYER_HIT_RE.search(line):
+            dmg = int(m.group(1))
+            is_bs = bool(_BACKSTAB_RE.search(line))
+            self._state.record_hit(dmg)
+            if is_bs:
+                self._state.record_backstab(success=True)
+            self._emit(SessionStatUpdated(key="hit_pct", value=f"{self._state.hit_pct:.0f}%"))
+        elif _PLAYER_MISS_RE.search(line):
+            self._state.record_miss()
+        elif m := _MONSTER_HIT_RE.search(line):
+            self._state.record_monster_hit()
 
     def _parse_combat_exit(self, line: str) -> None:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):

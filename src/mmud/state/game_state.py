@@ -25,6 +25,16 @@ class GameState:
         self.exp: int = 0
         self.level: int = 0
 
+        # Combat accuracy stats (from Ghidra gs+0x9500 block)
+        self.combat_hits: int = 0
+        self.combat_misses: int = 0
+        self.combat_dmg_sum: int = 0
+        self.combat_special: int = 0  # backstab/crit count
+        self.monster_hits: int = 0
+        self.monster_misses: int = 0
+        self.backstab_attempts: int = 0
+        self.backstab_successes: int = 0
+
     def apply_match(self, result: MatchResult) -> None:
         name = result.pattern.name
         if result.is_apply:
@@ -54,6 +64,40 @@ class GameState:
 
     def set_level(self, level: int) -> None:
         self.level = level
+
+    def record_hit(self, damage: int = 0) -> None:
+        self.combat_hits += 1
+        self.combat_dmg_sum += damage
+
+    def record_miss(self) -> None:
+        self.combat_misses += 1
+
+    def record_monster_hit(self) -> None:
+        self.monster_hits += 1
+
+    def record_backstab(self, success: bool) -> None:
+        self.backstab_attempts += 1
+        if success:
+            self.backstab_successes += 1
+
+    @property
+    def hit_pct(self) -> float:
+        total = self.combat_hits + self.combat_misses + self.combat_special
+        return (self.combat_hits / total * 100) if total > 0 else 0.0
+
+    @property
+    def avg_damage(self) -> float:
+        return (self.combat_dmg_sum / self.combat_hits) if self.combat_hits > 0 else 0.0
+
+    def reset_combat_stats(self) -> None:
+        self.combat_hits = 0
+        self.combat_misses = 0
+        self.combat_dmg_sum = 0
+        self.combat_special = 0
+        self.monster_hits = 0
+        self.monster_misses = 0
+        self.backstab_attempts = 0
+        self.backstab_successes = 0
 
     def enqueue(self, command: str) -> None:
         self._command_queue.append(command)

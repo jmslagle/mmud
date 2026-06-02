@@ -51,3 +51,27 @@ def test_command_queue():
     assert gs.dequeue() == "n"
     assert gs.dequeue() == "e"
     assert gs.dequeue() is None
+
+
+def test_combat_stats_hit():
+    gs = GameState()
+    gs.record_hit(damage=25)
+    assert gs.combat_hits == 1
+    assert gs.avg_damage == 25.0
+
+
+def test_combat_stats_hit_pct():
+    gs = GameState()
+    gs.record_hit(10)
+    gs.record_hit(20)
+    gs.record_miss()
+    assert abs(gs.hit_pct - 66.67) < 0.1
+
+
+def test_combat_stats_reset():
+    gs = GameState()
+    gs.record_hit(50)
+    gs.record_miss()
+    gs.reset_combat_stats()
+    assert gs.combat_hits == 0
+    assert gs.combat_misses == 0
