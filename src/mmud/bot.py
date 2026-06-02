@@ -7,7 +7,9 @@ from mmud.data.rooms import Room, load_rooms
 from mmud.events import (
     GameEventBus, LineReceived, HpChanged, MpChanged,
     EffectApplied, EffectRemoved, CombatChanged, RoomChanged, MonstersSeen,
+    ConversationReceived,
 )
+from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
 from mmud.parser.matcher import PatternMatcher
 from mmud.parser.room_parser import RoomParser
@@ -47,6 +49,7 @@ class MudBot:
         if rooms is None and data_dir is not None:
             rooms = load_rooms(data_dir / "ROOMS.MD")
         self._room_parser = RoomParser(rooms or {})
+        self._convo_parser = ConversationParser()
 
         self._state = GameState()
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
@@ -78,6 +81,7 @@ class MudBot:
         self._parse_vitals(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
+        self._parse_conversation(clean)
         result = self._matcher.match(clean)
         if result:
             self._state.apply_match(result)
@@ -112,6 +116,15 @@ class MudBot:
             if monsters:
                 self._state.monsters_present.extend(monsters)
                 self._emit(MonstersSeen(monsters=monsters))
+
+    def _parse_conversation(self, line: str) -> None:
+        msg = self._convo_parser.parse(line)
+        if msg:
+            self._emit(ConversationReceived(
+                channel=msg.channel,
+                sender=msg.sender,
+                text=msg.text,
+            ))
 
     def _parse_combat_exit(self, line: str) -> None:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):
