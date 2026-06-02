@@ -84,3 +84,15 @@ def test_no_config_uses_defaults():
     ce = CombatEngine()
     cmd = ce.decide(gs)
     assert cmd == "kill"  # default attack_cmd
+
+
+def test_sneak_before_first_attack():
+    from mmud.config.schema import CombatConfig
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)
+    gs.monsters_present = ["orc"]
+    ce = CombatEngine(CombatConfig(), sneak_cmd="sneak")
+    assert ce.decide(gs) == "sneak"         # first: sneak
+    assert ce.decide(gs) == "kill orc"      # second: attack

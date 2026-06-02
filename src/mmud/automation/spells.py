@@ -23,6 +23,12 @@ class SpellEngine:
         hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
         mp_pct = state.mana / state.max_mana if state.max_mana > 0 else 1.0
 
+        # Mana heal (only out of combat)
+        if (self._cfg.mana_heal and not state.in_combat
+                and state.max_mana > 0
+                and mp_pct < self._cfg.mana_heal_pct):
+            return self._cfg.mana_heal
+
         # Heal spell (out of combat or in combat if config says so)
         if (self._cfg.heal and state.max_hp > 0
                 and hp_pct < self._cfg.heal_hp_pct
@@ -32,6 +38,11 @@ class SpellEngine:
         # Attack spell (in combat, takes priority over bless)
         if state.in_combat and self._cfg.attack and state.monsters_present:
             return self._cfg.attack
+
+        # Pre-attack spell — cast just before engaging
+        if (self._cfg.pre_attack and not state.in_combat
+                and state.monsters_present):
+            return self._cfg.pre_attack
 
         # Bless spells (check each slot)
         for i, bless in enumerate(self._cfg.bless):

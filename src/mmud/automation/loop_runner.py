@@ -63,6 +63,15 @@ class LoopRunner:
                 self._state.enqueue(self._stealth.sneak_cmd)
             self._state.enqueue(step.command)
 
+    def on_nav_failure(self) -> None:
+        """Called when a movement command fails. Clears queue and retries from current step."""
+        # Clear any pending queued commands
+        while self._state.dequeue() is not None:
+            pass
+        # Re-enqueue the full path from the start (simple recovery: restart the loop)
+        if self._path and self._running:
+            self._enqueue_path()
+
     @property
     def running(self) -> bool:
         return self._running

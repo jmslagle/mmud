@@ -73,3 +73,39 @@ def test_attack_spell_in_combat():
     engine = SpellEngine(cfg)
     cmd = engine.decide(gs)
     assert cmd == "magic missile"
+
+
+def test_mana_heal_when_mana_low():
+    cfg = SpellsConfig(mana_heal="meditate", mana_heal_pct=0.30)
+    gs = GameState()
+    gs.set_mana(20, 100)  # 20% < 30%
+    engine = SpellEngine(cfg)
+    assert engine.decide(gs) == "meditate"
+
+
+def test_mana_heal_skipped_in_combat():
+    cfg = SpellsConfig(mana_heal="meditate", mana_heal_pct=0.30)
+    gs = GameState()
+    gs.set_mana(20, 100)
+    gs.set_combat(True)
+    engine = SpellEngine(cfg)
+    assert engine.decide(gs) != "meditate"
+
+
+def test_pre_attack_when_monster_seen():
+    cfg = SpellsConfig(pre_attack="true strike")
+    gs = GameState()
+    gs.set_combat(False)
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)
+    gs.monsters_present = ["orc"]
+    engine = SpellEngine(cfg)
+    assert engine.decide(gs) == "true strike"
+
+
+def test_pre_attack_skipped_when_no_monsters():
+    cfg = SpellsConfig(pre_attack="true strike")
+    gs = GameState()
+    gs.monsters_present = []
+    engine = SpellEngine(cfg)
+    assert engine.decide(gs) is None

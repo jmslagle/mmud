@@ -23,6 +23,10 @@ class Navigator:
     def get_path(self, from_code: str, to_code: str) -> GamePath | None:
         return self._paths.get((from_code, to_code))
 
+    def navigate_to(self, from_code: str, to_code: str) -> GamePath | None:
+        """Find any path from from_code to to_code and return it (or None)."""
+        return self._paths.get((from_code, to_code))
+
     def execute_path(self, path: GamePath, state: GameState) -> None:
         for step in path.steps:
             state.enqueue(step.command)
