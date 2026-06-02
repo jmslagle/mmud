@@ -9,9 +9,10 @@ port = 4000
 
 # ── Login ────────────────────────────────────────────────────────────────────
 [login]
-username  = "your_bbs_login"
-password  = "your_password"
-character = "Your Character Name"
+username   = "your_bbs_login"
+password   = "your_password"
+character  = "Your Character Name"
+auto_login = false   # set to true to enable automatic login on connect
 
 # ── Combat ───────────────────────────────────────────────────────────────────
 [combat]

@@ -4,7 +4,9 @@ from textual.widgets import RichLog
 
 
 class GameOutput(RichLog):
-    """Scrolling display of raw MUD server output."""
+    """Scrolling display of raw MUD server output. Not focusable — focus stays on the input."""
+
+    can_focus = False
 
     class NewLine(Message):
         def __init__(self, line: str) -> None:

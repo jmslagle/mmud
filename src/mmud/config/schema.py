@@ -13,6 +13,7 @@ class LoginConfig:
     username: str = ""
     password: str = ""
     character: str = ""
+    auto_login: bool = False   # must be explicitly true to enable auto-login
 
 
 @dataclass

@@ -23,6 +23,7 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
         cfg.login = LoginConfig(
             username=l.get("username", ""),
             password=l.get("password", ""),
+            auto_login=l.get("auto_login", False),
             character=l.get("character", ""),
         )
     if c := data.get("combat"):

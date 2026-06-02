@@ -23,7 +23,7 @@ class LoginHandler:
 
     def process_line(self, line: str) -> str | None:
         """Return the command to send in response to this line, or None."""
-        if not self._cfg.username:
+        if not self._cfg.username or not self._cfg.auto_login:
             return None
 
         stripped = line.strip()

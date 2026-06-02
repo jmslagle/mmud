@@ -3,14 +3,14 @@ from mmud.config.schema import LoginConfig
 
 
 def test_matches_username_prompt():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     cmd = handler.process_line("Enter your username:")
     assert cmd == "spawn"
 
 
 def test_matches_password_prompt():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     handler.process_line("Enter your username:")  # advance state
     cmd = handler.process_line("Enter your password:")
@@ -18,7 +18,7 @@ def test_matches_password_prompt():
 
 
 def test_matches_character_select():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     cmd = handler.process_line("Select your character (Spawn DaPrawn):")
     assert cmd is not None
@@ -26,14 +26,14 @@ def test_matches_character_select():
 
 
 def test_majormud_menu_prompt():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     cmd = handler.process_line("Welcome to MAJORMUD - Press any key to continue")
     assert cmd is not None  # sends enter or game command
 
 
 def test_game_full_detected():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     assert handler.game_full is False
     handler.process_line("The game is currently full. Please try again later.")
@@ -41,7 +41,7 @@ def test_game_full_detected():
 
 
 def test_game_entered_detected():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     assert handler.in_game is False
     handler.process_line("Your character has been saved.")
@@ -49,7 +49,7 @@ def test_game_entered_detected():
 
 
 def test_no_match_returns_none():
-    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn")
+    cfg = LoginConfig(username="spawn", password="hunter2", character="Spawn DaPrawn", auto_login=True)
     handler = LoginHandler(cfg)
     assert handler.process_line("You notice 3 orcs here.") is None
     assert handler.process_line("Obvious exits: north") is None

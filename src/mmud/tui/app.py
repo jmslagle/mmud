@@ -4,6 +4,7 @@ import pathlib
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
+from textual.events import Key
 from textual.widgets import Input
 
 from mmud.bot import MudBot
@@ -60,6 +61,19 @@ class MegaMudApp(App):
         if not self._config.ui.show_stats_bar:
             self.query_one("#stats-bar").add_class("hidden")
         self._wire_bus()
+        # Focus the command input immediately so typing works like a telnet client
+        self.query_one("#command-input", Input).focus()
+
+    def on_key(self, event: Key) -> None:
+        """Route all printable keystrokes to the command input (telnet-like behavior)."""
+        inp = self.query_one("#command-input", Input)
+        if inp.has_focus:
+            return  # already focused, let Input handle it
+        # Don't steal Ctrl/Alt bindings
+        if event.key.startswith(("ctrl+", "alt+", "f")):
+            return
+        # Refocus Input — Textual will re-deliver the key to the newly focused widget
+        inp.focus()
 
     def _wire_bus(self) -> None:
         game_out = self.query_one(GameOutput)
@@ -210,12 +224,14 @@ class MegaMudApp(App):
                 self._port,
                 data_dir=data_dir if data_dir.exists() else None,
                 event_bus=self._bus,
+                config=self._config,
             )
             self._bot_task = asyncio.create_task(self._bot.run())
             self.sub_title = f"{self._host}:{self._port} [connected]"
         else:
             self._bot_task.cancel()
             self._bot_task = None
+            self._bot = None
             self.sub_title = f"{self._host}:{self._port}"
 
     def action_toggle_loop(self) -> None:
