@@ -205,3 +205,36 @@ async def test_bot_toggle_loop(unused_tcp_port):
         assert bot._loop_runner.running is True
         bot.toggle_loop()
         assert bot._loop_runner.running is False
+
+
+def test_bot_list_paths_empty():
+    bot = MudBot("localhost", 4000, patterns=[])
+    assert isinstance(bot.list_paths(), list)
+
+
+def test_bot_status_text():
+    bot = MudBot("localhost", 4000, patterns=[])
+    status = bot.status_text()
+    assert "Room:" in status
+    assert "HP:" in status
+
+
+def test_bot_stop_all_clears_queue():
+    bot = MudBot("localhost", 4000, patterns=[])
+    bot._state.enqueue("n")
+    bot._state.enqueue("e")
+    bot.stop_all()
+    assert bot._state.dequeue() is None
+
+
+@pytest.mark.asyncio
+async def test_bot_navigate_to_room_no_current_room():
+    bot = MudBot("localhost", 4000, patterns=[])
+    msg = bot.navigate_to_room("CLKR")
+    assert "unknown" in msg.lower()
+
+
+def test_bot_start_loop_no_config():
+    bot = MudBot("localhost", 4000, patterns=[])
+    msg = bot.start_loop()
+    assert "No loop" in msg or "not found" in msg

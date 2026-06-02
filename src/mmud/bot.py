@@ -232,3 +232,65 @@ class MudBot:
             bus=self._bus or GameEventBus(),
         )
         self._loop_runner.start()
+
+    def start_loop(self, name: str = "") -> str:
+        """Start a named loop path. Returns status message."""
+        from mmud.automation.loop_runner import LoopRunner
+        if name:
+            self._config.navigation.loop_path = name.upper()
+        loop_name = self._config.navigation.loop_path
+        if not loop_name:
+            return "No loop path configured. Use :loop NAME"
+        if self._loop_runner and self._loop_runner.running:
+            self._loop_runner.stop()
+        paths = list(self._navigator._paths.values())
+        self._loop_runner = LoopRunner(
+            nav_config=self._config.navigation,
+            stealth_config=self._config.stealth,
+            paths=paths,
+            state=self._state,
+            bus=self._bus or __import__("mmud.events", fromlist=["GameEventBus"]).GameEventBus(),
+        )
+        self._loop_runner.start()
+        if self._loop_runner._path is None:
+            return f"Loop path '{loop_name}' not found in loaded paths"
+        return f"Loop started: {loop_name}"
+
+    def stop_all(self) -> str:
+        """Stop loop and clear command queue."""
+        if self._loop_runner:
+            self._loop_runner.stop()
+        while self._state.dequeue() is not None:
+            pass
+        return "Stopped."
+
+    def navigate_to_room(self, to_code: str) -> str:
+        """Navigate from current room to to_code using a loaded path."""
+        from_code = self._state.current_room
+        if not from_code:
+            return "Current room unknown — move around first to establish position"
+        path = self._navigator.navigate_to(from_code, to_code.upper())
+        if path is None:
+            return f"No direct path from {from_code} to {to_code.upper()}"
+        # Clear queue and enqueue the path
+        while self._state.dequeue() is not None:
+            pass
+        self._navigator.execute_path(path, self._state)
+        return f"Navigating: {from_code} → {to_code.upper()} ({len(path.steps)} steps)"
+
+    def list_paths(self) -> list[str]:
+        """Return all known loop path names."""
+        return self._navigator.list_loop_paths()
+
+    def status_text(self) -> str:
+        """Return a brief status string."""
+        s = self._state
+        hp_str = f"HP:{s.hp}/{s.max_hp}" if s.max_hp else "HP:?"
+        mp_str = f"MP:{s.mana}/{s.max_mana}" if s.max_mana else "MP:?"
+        room = s.current_room or "?"
+        loop = ""
+        if self._loop_runner and self._loop_runner.running:
+            name = self._config.navigation.loop_path
+            loop = f" | Loop:{name} lap:{self._loop_runner.lap}"
+        combat = " | IN COMBAT" if s.in_combat else ""
+        return f"Room:{room} {hp_str} {mp_str}{loop}{combat}"

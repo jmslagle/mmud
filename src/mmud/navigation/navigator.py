@@ -30,3 +30,13 @@ class Navigator:
     def execute_path(self, path: GamePath, state: GameState) -> None:
         for step in path.steps:
             state.enqueue(step.command)
+
+    def list_loop_paths(self) -> list[str]:
+        """Return names of all loop paths (where from_code == to_code)."""
+        seen = set()
+        result = []
+        for (fc, tc), path in self._paths.items():
+            if fc == tc and fc not in seen:
+                seen.add(fc)
+                result.append(fc)
+        return sorted(result)

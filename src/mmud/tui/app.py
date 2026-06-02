@@ -99,8 +99,89 @@ class MegaMudApp(App):
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         cmd = event.value.strip()
         event.input.clear()
-        if cmd and self._bot is not None:
+        if not cmd:
+            return
+        if cmd.startswith(":"):
+            await self._handle_bot_command(cmd[1:])
+        elif self._bot is not None:
             await self._bot._conn.send(cmd)
+
+    async def _handle_bot_command(self, cmd: str) -> None:
+        """Handle :command bot commands without sending to server."""
+        parts = cmd.strip().split(None, 1)
+        verb = parts[0].lower() if parts else ""
+        arg = parts[1] if len(parts) > 1 else ""
+        out = self.query_one(GameOutput)
+
+        if verb in ("loop", "l"):
+            if self._bot is None:
+                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                return
+            msg = self._bot.start_loop(arg)
+            out.post_message(GameOutput.NewLine(f"[bot] {msg}"))
+            running = self._bot._loop_runner and self._bot._loop_runner.running
+            self.sub_title = (
+                f"{self._host}:{self._port} [looping]" if running
+                else f"{self._host}:{self._port} [connected]"
+            )
+
+        elif verb in ("stop", "s"):
+            if self._bot:
+                msg = self._bot.stop_all()
+                out.post_message(GameOutput.NewLine(f"[bot] {msg}"))
+                self.sub_title = f"{self._host}:{self._port} [connected]"
+
+        elif verb in ("goto", "go", "g"):
+            if not arg:
+                out.post_message(GameOutput.NewLine("[bot] Usage: :goto ROOM_CODE"))
+                return
+            if self._bot is None:
+                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                return
+            msg = self._bot.navigate_to_room(arg)
+            out.post_message(GameOutput.NewLine(f"[bot] {msg}"))
+
+        elif verb in ("paths", "p"):
+            if self._bot is None:
+                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                return
+            paths = self._bot.list_paths()
+            if not paths:
+                out.post_message(GameOutput.NewLine("[bot] No loop paths loaded"))
+            else:
+                out.post_message(GameOutput.NewLine(f"[bot] {len(paths)} loop paths: {', '.join(paths[:20])}"))
+
+        elif verb in ("status", "st"):
+            if self._bot is None:
+                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                return
+            out.post_message(GameOutput.NewLine(f"[bot] {self._bot.status_text()}"))
+
+        elif verb in ("connect", "c"):
+            await self.action_toggle_connect()
+
+        elif verb in ("disconnect", "dc"):
+            if self._bot_task:
+                self._bot_task.cancel()
+                self._bot_task = None
+                self.sub_title = f"{self._host}:{self._port}"
+
+        elif verb in ("help", "h", "?"):
+            help_lines = [
+                "[bot] Bot commands (prefix with :):",
+                "  :loop [NAME]   — start loop path (optional name override)",
+                "  :stop          — stop loop, clear queue",
+                "  :goto CODE     — navigate to room by 4-letter code",
+                "  :paths         — list available loop paths",
+                "  :status        — show HP/MP/room/loop status",
+                "  :connect       — connect to server",
+                "  :disconnect    — disconnect",
+            ]
+            for line in help_lines:
+                out.post_message(GameOutput.NewLine(line))
+
+        else:
+            out.post_message(GameOutput.NewLine(f"[bot] Unknown command: {verb}. Try :help"))
 
     def action_toggle_right_panel(self) -> None:
         panel = self.query_one("#right-panel")
@@ -139,12 +220,16 @@ class MegaMudApp(App):
 
     def action_toggle_loop(self) -> None:
         if self._bot is not None:
-            self._bot.toggle_loop()
-            running = self._bot._loop_runner is not None and self._bot._loop_runner.running
-            self.sub_title = (
-                f"{self._host}:{self._port} [looping]" if running
-                else f"{self._host}:{self._port} [connected]"
-            )
+            if self._bot._loop_runner and self._bot._loop_runner.running:
+                self._bot.stop_all()
+                self.sub_title = f"{self._host}:{self._port} [connected]"
+            else:
+                msg = self._bot.start_loop()
+                running = self._bot._loop_runner and self._bot._loop_runner.running
+                self.sub_title = (
+                    f"{self._host}:{self._port} [looping]" if running
+                    else f"{self._host}:{self._port} [connected]"
+                )
 
     def action_clear_input(self) -> None:
         self.query_one("#command-input", Input).clear()
