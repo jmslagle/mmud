@@ -25,14 +25,14 @@ class MegaMudApp(App):
     TITLE = "MegaMud TUI"
 
     BINDINGS = [
-        Binding("ctrl+r", "toggle_right_panel", "Toggle Panel", show=False),
-        Binding("ctrl+b", "toggle_stats_bar", "Toggle Stats", show=False),
-        Binding("ctrl+1", "switch_tab_conversations", "Conversations", show=False),
-        Binding("ctrl+2", "switch_tab_players", "Players", show=False),
-        Binding("ctrl+3", "switch_tab_stats", "Stats", show=False),
-        Binding("ctrl+k", "toggle_connect", "Connect", show=False),
-        Binding("ctrl+l", "toggle_loop", "Loop", show=False),
-        Binding("escape", "clear_input", "Clear", show=False),
+        Binding("ctrl+r", "toggle_right_panel", "Toggle Panel", show=False, priority=True),
+        Binding("ctrl+b", "toggle_stats_bar", "Toggle Stats", show=False, priority=True),
+        Binding("ctrl+1", "switch_tab_conversations", "Conversations", show=False, priority=True),
+        Binding("ctrl+2", "switch_tab_players", "Players", show=False, priority=True),
+        Binding("ctrl+3", "switch_tab_stats", "Stats", show=False, priority=True),
+        Binding("ctrl+k", "toggle_connect", "Connect", show=False, priority=True),
+        Binding("ctrl+l", "toggle_loop", "Loop", show=False, priority=True),
+        Binding("escape", "clear_input", "Clear", show=False, priority=True),
     ]
 
     def __init__(self, config: MudConfig, host: str, port: int) -> None:
