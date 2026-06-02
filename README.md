@@ -1,0 +1,304 @@
+# mmud — MegaMud Python Port
+
+A Python reimplementation of MegaMud, the legendary MajorMud automation client. Connects to a MajorMud BBS server, parses the game output, and automates combat, navigation, and looping — with a Textual TUI.
+
+Built by reverse engineering megamud.exe using Ghidra (400+ functions annotated).
+
+---
+
+## Installation
+
+**Requires Python 3.11+**
+
+```bash
+git clone <repo>
+cd mmud
+pip install -e ".[dev]"
+```
+
+Verify:
+```bash
+python -m mmud.tui --help
+pytest
+```
+
+---
+
+## Quick Start
+
+### 1. Create a character config
+
+```bash
+cp characters/example.toml characters/mychar.toml
+$EDITOR characters/mychar.toml
+```
+
+Minimum config:
+```toml
+[server]
+host = "your.mud.server.com"
+port = 23
+
+[login]
+username  = "yourbbs"
+password  = "yourpass"
+character = "Your Character"
+```
+
+### 2. Launch the TUI
+
+```bash
+# With a config file:
+python -m mmud.tui --char characters/mychar.toml
+
+# Override server on the command line:
+python -m mmud.tui --host mud.example.com --port 23 --char characters/mychar.toml
+
+# No config (manual play, no automation):
+python -m mmud.tui --host mud.example.com --port 23
+```
+
+### 3. Connect and play
+
+Press `Ctrl+K` to connect, or type `:connect`.
+
+The bot auto-logs in if `[login]` is configured, then starts the configured loop path if `auto_start = true`.
+
+---
+
+## TUI Layout
+
+```
+┌─ View  Action  Options  Help ─────────────────────────────────────┐
+│                                          │ [Conversations][Players]│
+│  MAIN GAME OUTPUT                        │  [Stats]                │
+│  (scrolling MUD text)                    │                         │
+│                                          │  Tab content            │
+│                                          │                         │
+├─────────────────────┬────────────────────┴─────────────────────────┤
+│ HP ████░ 141/216    │ kills: 12  exp: 52497  loop: RHU2LOOP lap:5  │
+│ MP █████  89/120    │ hit_pct: 72%  avg_dmg: 31                    │
+├─────────────────────┴──────────────────────────────────────────────┤
+│ > _                         F1:menu  Ctrl+1-3:tabs  Ctrl+R  Ctrl+B │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Ctrl+K` | Connect / disconnect |
+| `Ctrl+L` | Start / stop loop |
+| `Ctrl+R` | Toggle right panel |
+| `Ctrl+B` | Toggle stats bar |
+| `Ctrl+1` | Conversations tab |
+| `Ctrl+2` | Players tab |
+| `Ctrl+3` | Stats tab |
+| `F1` | Menu |
+| `Escape` | Clear input |
+
+---
+
+## Bot Commands
+
+Type `:command` in the command input to control the bot without sending to the server.
+
+| Command | Description |
+|---|---|
+| `:loop [NAME]` | Start a loop path. Optional name overrides config. |
+| `:stop` | Stop loop, clear command queue |
+| `:goto CODE` | Navigate to a room by 4-letter code (e.g. `:goto CLKR`) |
+| `:paths` | List all available loop paths |
+| `:status` | Show room, HP/MP, loop state, combat flag |
+| `:connect` | Connect to server |
+| `:disconnect` | Disconnect |
+| `:help` | Show command reference |
+
+Anything **without** a `:` prefix is sent directly to the MUD server.
+
+---
+
+## Character Config Reference
+
+All sections are optional. Missing keys use safe defaults. `--host` / `--port` CLI args override `[server]`.
+
+```toml
+[server]
+host = "mud.example.com"
+port = 4000
+
+[login]
+username  = "bbs_login"
+password  = "password"
+character = "Character Name"   # matched against character-select prompt
+
+[combat]
+attack_cmd      = "kill"       # command sent to attack (e.g. "kill", "attack")
+flee_threshold  = 0.15         # flee when HP drops below 15%
+rest_threshold  = 0.40         # rest out-of-combat when HP below 40%
+backstab        = false
+polite_attacks  = false        # don't attack with non-party players in room
+attack_order    = "first"      # "first" | "last" | "reverse"
+mana_attack_pct = 0.20         # don't attack if mana below 20%
+
+[spells]
+attack        = ""             # e.g. "magic missile" — cast in combat each tick
+pre_attack    = ""             # cast just before engaging a monster
+multi_attack  = ""             # area-effect spell (unused in current version)
+heal          = ""             # e.g. "cure light wounds"
+heal_hp_pct   = 0.50           # heal when HP below this %
+mana_heal     = ""             # e.g. "meditate"
+mana_heal_pct = 0.30           # meditate when mana below this %
+
+# Up to 10 bless spells, each with its own mana threshold and 600-second cooldown:
+[[spells.bless]]
+cmd      = "bless"
+mana_pct = 0.80                # only cast when mana >= 80%
+
+[[spells.bless]]
+cmd      = "protection"
+mana_pct = 0.75
+
+[stealth]
+auto_sneak  = false            # sneak before each loop step and before attacking
+sneak_cmd   = "sneak"
+must_sneak  = false            # halt movement if sneak fails (not yet implemented)
+auto_hide   = false
+hide_cmd    = "hide"
+
+[navigation]
+loop_path        = ""          # 4-letter room code (loop paths: from==to) or 8-char stem
+start_room       = ""          # room code to start from (informational)
+auto_start       = false       # start loop immediately on game entry
+flee_rooms       = 3           # rooms to run on panic flee (not yet implemented)
+can_pick_locks   = false
+can_disarm_traps = false
+
+[items]
+auto_get         = false       # auto-get items (not yet implemented)
+auto_cash        = true        # auto-get coins (not yet implemented)
+collect_copper   = true
+collect_silver   = true
+collect_gold     = true
+collect_platinum = true
+collect_runic    = false
+dont_go_heavy    = true
+
+[party]
+heal_spell         = ""
+heal_hp_pct        = 0.50
+wait_hp_pct        = 0.30
+wait_max_seconds   = 30
+attack_with_leader = true
+share_cash         = false
+
+[[party.bless]]
+cmd          = "party bless"
+wait_seconds = 60
+
+[afk]
+enabled          = false
+timeout_minutes  = 5
+reply            = "I am AFK"
+hangup_on_low_hp = false
+popup_missed     = true
+
+# Per-player rules (one block per player):
+[[players]]
+name        = "FriendName"
+friend      = true
+remote_cmds = ["@do", "@loop"]
+dont_heal   = false
+dont_bless  = false
+
+[ui]
+show_right_panel = true
+show_stats_bar   = true
+default_tab      = "conversations"   # "conversations" | "players" | "stats"
+```
+
+---
+
+## Architecture
+
+```
+MudConnection (asyncio TCP)
+    │
+    ▼
+MudBot._process_line()
+    ├── LoginHandler          — BBS prompt matching, auto-login
+    ├── RoomParser            — room name → code, monster detection
+    ├── PatternMatcher        — MESSAGES.MD effect patterns
+    ├── ConversationParser    — tell/shout/party parsing
+    ├── WhoParser             — WHO list → PlayerSeen events
+    └── combat/nav exit detection
+    │
+    ▼
+GameState (HP, mana, room, effects, monsters, combat stats, queue)
+    │
+    ▼
+MudBot._next_command()
+    ├── GameState.dequeue()   — queued commands (path steps, login responses)
+    ├── SpellEngine.decide()  — heal, pre-attack, bless (with cooldowns)
+    └── CombatEngine.decide() — flee / kill <monster> / rest
+    │
+    ▼
+GameEventBus → Textual TUI widgets (GameOutput, StatsBar, RightPanel)
+```
+
+**Loop runner** (background): subscribes to `RoomChanged` events. On arrival at the loop destination, re-enqueues the path steps for the next lap.
+
+**1Hz ticker** (background asyncio task): advances spell cooldowns, checks AFK timeout.
+
+---
+
+## Game Data Files
+
+The bot loads game data from `extractions/mm103s.exe.extracted/45DAD/Default/`:
+
+| File | What it contains | Format |
+|---|---|---|
+| `MESSAGES.MD` | 404 spell/effect patterns | Text: `name:flags:\napply_msg\nremove_msg` |
+| `ROOMS.MD` | 543 room definitions | Text: `HexID:HexID:flags:Code:Region:Name` |
+| `*.MP` (1,198 files) | Navigation paths | Text: bracketed from/to + step commands |
+| `MONSTERS.MD` | 712 monster records | Binary B-tree (210 bytes/record) |
+| `ITEMS.MD` | 400 item records | Binary B-tree (200 bytes/record) |
+| `SPELLS.MD` | 141 spell records | Binary B-tree (158 bytes/record) |
+
+---
+
+## Known Limitations (v0.1)
+
+- **Room database is incomplete** — only 543 rooms from the Default/ extraction. Unknown rooms won't trigger `RoomChanged` events, so loop detection may miss arrivals in unknown areas. Mitigation: move through the area manually first to "discover" rooms.
+- **Login prompts are server-specific** — the auto-login regex patterns work for standard MajorMud but may need tuning for your BBS configuration.
+- **No auto-cash/loot collection yet** — `auto_cash` and `auto_get` config exists but the bot doesn't issue `get coin` commands.
+- **No multi-hop pathfinding** — `:goto CODE` only works if there's a direct `.MP` file between your current room and the destination.
+- **Pattern matching is regex-based** — the original used literal substring matching. Complex patterns with `{target}` may behave slightly differently.
+- **Never tested against a live server** — this is v0.1. Expect to tune prompt patterns and combat messages after your first session.
+
+---
+
+## Development
+
+```bash
+pytest                  # run all 139 tests
+pytest -v --tb=short    # verbose
+python -m mmud.tui --help
+```
+
+Source layout:
+```
+src/mmud/
+  data/         — file parsers (messages, rooms, paths, binary)
+  parser/       — pattern matcher, room parser, conversation parser, WHO parser
+  state/        — GameState
+  net/          — TCP connection
+  combat/       — CombatEngine
+  navigation/   — Navigator, paths
+  automation/   — LoginHandler, LoopRunner, SpellEngine
+  config/       — TOML schema + loader
+  events.py     — GameEventBus + event dataclasses
+  bot.py        — MudBot (orchestrates everything)
+  tui/          — Textual app + widgets
+  web/          — placeholder for future web UI
+```
