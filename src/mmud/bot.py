@@ -7,8 +7,9 @@ from mmud.data.rooms import Room, load_rooms
 from mmud.events import (
     GameEventBus, LineReceived, HpChanged, MpChanged,
     EffectApplied, EffectRemoved, CombatChanged, RoomChanged, MonstersSeen,
-    ConversationReceived,
+    ConversationReceived, PlayerSeen, SessionStatUpdated,
 )
+from mmud.parser.who_parser import WhoParser
 from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
 from mmud.parser.matcher import PatternMatcher
@@ -58,6 +59,7 @@ class MudBot:
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
+        self._who_parser = WhoParser()
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:
@@ -85,6 +87,7 @@ class MudBot:
         self._parse_combat_exit(clean)
         self._parse_conversation(clean)
         self._handle_login(clean)
+        self._parse_who_and_exp(clean)
         result = self._matcher.match(clean)
         if result:
             self._state.apply_match(result)
@@ -135,6 +138,24 @@ class MudBot:
         cmd = self._login_handler.process_line(line)
         if cmd is not None:
             self._state.enqueue(cmd)
+
+    def _parse_who_and_exp(self, line: str) -> None:
+        # WHO list entry
+        entry = self._who_parser.parse_line(line)
+        if entry:
+            self._emit(PlayerSeen(name=entry.name, level=entry.level,
+                                  rep=entry.rep, gang=entry.gang))
+            return
+        # XP tracking
+        if (exp := self._who_parser.parse_exp_line(line)) is not None:
+            self._state.set_exp(exp)
+            self._emit(SessionStatUpdated(key="exp", value=str(exp)))
+        if (lvl := self._who_parser.parse_level_line(line)) is not None:
+            self._state.set_level(lvl)
+        # Kill detection: "You have slain the X" (already in combat exit)
+        if "have slain" in line.lower() or "have killed" in line.lower():
+            self._state.add_kill()
+            self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
 
     def _parse_combat_exit(self, line: str) -> None:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):

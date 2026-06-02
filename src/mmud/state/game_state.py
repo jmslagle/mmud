@@ -21,6 +21,9 @@ class GameState:
         self.monsters_present: list[str] = []
         self.in_combat: bool = False
         self._command_queue: deque[str] = deque()
+        self.kills: int = 0
+        self.exp: int = 0
+        self.level: int = 0
 
     def apply_match(self, result: MatchResult) -> None:
         name = result.pattern.name
@@ -42,6 +45,15 @@ class GameState:
 
     def set_combat(self, in_combat: bool) -> None:
         self.in_combat = in_combat
+
+    def add_kill(self) -> None:
+        self.kills += 1
+
+    def set_exp(self, exp: int) -> None:
+        self.exp = exp
+
+    def set_level(self, level: int) -> None:
+        self.level = level
 
     def enqueue(self, command: str) -> None:
         self._command_queue.append(command)
