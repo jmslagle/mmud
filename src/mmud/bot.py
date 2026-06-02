@@ -16,6 +16,7 @@ from mmud.parser.room_parser import RoomParser
 from mmud.state.game_state import GameState
 from mmud.navigation.navigator import Navigator
 from mmud.combat.combat import CombatEngine
+from mmud.automation.login import LoginHandler
 
 _HP_RE = re.compile(r"\[HP=(\d+)/(\d+)\]")
 _MP_RE = re.compile(r"\[MP=(\d+)/(\d+)\]")
@@ -56,6 +57,7 @@ class MudBot:
         self._combat = CombatEngine(self._config.combat)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
+        self._login_handler = LoginHandler(self._config.login)
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:
@@ -82,6 +84,7 @@ class MudBot:
         self._parse_room(clean)
         self._parse_combat_exit(clean)
         self._parse_conversation(clean)
+        self._handle_login(clean)
         result = self._matcher.match(clean)
         if result:
             self._state.apply_match(result)
@@ -125,6 +128,13 @@ class MudBot:
                 sender=msg.sender,
                 text=msg.text,
             ))
+
+    def _handle_login(self, line: str) -> None:
+        if self._state.in_combat or self._login_handler.in_game:
+            return
+        cmd = self._login_handler.process_line(line)
+        if cmd is not None:
+            self._state.enqueue(cmd)
 
     def _parse_combat_exit(self, line: str) -> None:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):
