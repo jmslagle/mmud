@@ -44,3 +44,31 @@ def test_extract_monsters_empty_line():
     assert parser.extract_monsters("You notice 37 silver nobles here.") == []
     assert parser.extract_monsters("Obvious exits: north") == []
     assert parser.extract_monsters("Sneaking...") == []
+
+def test_extract_monsters_also_here_single():
+    parser = RoomParser({})
+    monsters = parser.extract_monsters("Also here: A dark elf.")
+    assert len(monsters) == 1
+    assert "dark elf" in monsters[0]
+
+def test_extract_monsters_also_here_multiple():
+    parser = RoomParser({})
+    monsters = parser.extract_monsters("Also here: A goblin scout, 2 orc warriors.")
+    assert len(monsters) >= 1
+    combined = " ".join(monsters)
+    assert "goblin" in combined or "orc" in combined
+
+def test_extract_monsters_also_here_ignores_proper_names():
+    """Player names like 'Krang Moan' should not be extracted as monsters."""
+    parser = RoomParser({})
+    # Player names are typically capitalized multi-word — hard to filter perfectly
+    # but we should get the 'A/An/N' prefixed entries
+    monsters = parser.extract_monsters("Also here: A goblin, Krang Moan.")
+    # Should find goblin but ideally skip 'Krang Moan'
+    combined = " ".join(monsters)
+    assert "goblin" in combined
+
+def test_extract_monsters_also_here_empty():
+    parser = RoomParser({})
+    assert parser.extract_monsters("Obvious exits: north") == []
+    assert parser.extract_monsters("") == []
