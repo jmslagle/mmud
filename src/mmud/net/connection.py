@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+from typing import AsyncIterator
 
 # Telnet control bytes (RFC 854)
 IAC  = 0xFF
@@ -10,13 +11,15 @@ DONT = 0xFE
 SB   = 0xFA   # subnegotiation begin
 SE   = 0xF0   # subnegotiation end
 
-# Options we accept / respond to
 OPT_ECHO       = 0x01
-OPT_SGA        = 0x03  # suppress go-ahead
-OPT_TERM_TYPE  = 0x18  # terminal type
-OPT_NAWS       = 0x19  # window size
+OPT_SGA        = 0x03
+OPT_TERM_TYPE  = 0x18
+OPT_NAWS       = 0x19
 
 _TERMINAL_TYPE = b"xterm"
+
+# Emit a partial line (prompt) if no new data arrives within this window
+_PROMPT_TIMEOUT = 0.08   # 80ms — fast enough to feel live, slow enough to batch lines
 
 
 class MudConnection:
@@ -25,7 +28,6 @@ class MudConnection:
         self.port = port
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
-        self._iac_buf: bytes = b""
 
     async def connect(self) -> None:
         self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
@@ -35,13 +37,49 @@ class MudConnection:
         self._writer.write((command + "\r\n").encode("latin-1"))
         await self._writer.drain()
 
+    async def readlines(self) -> AsyncIterator[str]:
+        """
+        Async generator yielding MUD output lines.
+
+        Emits complete lines immediately on \\n. If no \\n arrives within
+        _PROMPT_TIMEOUT seconds, emits whatever partial data is buffered —
+        this catches prompts like "[HP=141/216]:" that never end with \\n.
+        """
+        assert self._reader
+        buf = b""
+        while True:
+            try:
+                chunk = await asyncio.wait_for(
+                    self._reader.read(4096), timeout=_PROMPT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                # Nothing new arrived — emit any buffered partial line (prompt)
+                if buf.strip():
+                    yield self._strip_iac(buf)
+                    buf = b""
+                continue
+
+            if not chunk:
+                # Server closed the connection
+                if buf:
+                    yield self._strip_iac(buf)
+                break
+
+            buf += chunk
+
+            # Emit all complete lines
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                yield self._strip_iac(line + b"\n")
+
+    # Keep readline() for tests that use it directly
     async def readline(self) -> str:
         assert self._reader
-        raw = await self._reader.readline()
-        return self._strip_iac(raw)
+        data = await self._reader.readline()
+        return self._strip_iac(data)
 
     def _strip_iac(self, data: bytes) -> str:
-        """Strip IAC sequences, respond to negotiation requests, return clean text."""
+        """Strip/respond to IAC sequences, return clean text."""
         out = bytearray()
         i = 0
         while i < len(data):
@@ -51,18 +89,16 @@ class MudConnection:
                 i += 1
                 continue
             if i + 1 >= len(data):
-                break  # incomplete — drop
+                break
             cmd = data[i + 1]
             if cmd == IAC:
                 out.append(IAC)
                 i += 2
             elif cmd in (WILL, WONT, DO, DONT):
                 if i + 2 < len(data):
-                    opt = data[i + 2]
-                    self._handle_negotiation(cmd, opt)
+                    self._handle_negotiation(cmd, data[i + 2])
                 i += 3
             elif cmd == SB:
-                # Skip to IAC SE
                 end = data.find(bytes([IAC, SE]), i + 2)
                 if end >= 0:
                     self._handle_subneg(data[i + 2:end])
@@ -70,15 +106,13 @@ class MudConnection:
                 else:
                     break
             else:
-                i += 2  # 2-byte IAC command
+                i += 2
         return out.decode("latin-1", errors="replace")
 
     def _handle_negotiation(self, cmd: int, opt: int) -> None:
-        """Respond to WILL/WONT/DO/DONT option requests."""
         if self._writer is None:
             return
         if cmd == DO and opt == OPT_TERM_TYPE:
-            # Server wants terminal type — agree
             self._writer.write(bytes([IAC, WILL, OPT_TERM_TYPE]))
         elif cmd == DO and opt in (OPT_ECHO, OPT_SGA, OPT_NAWS):
             self._writer.write(bytes([IAC, WONT, opt]))
@@ -86,12 +120,10 @@ class MudConnection:
             self._writer.write(bytes([IAC, DO, opt]))
 
     def _handle_subneg(self, data: bytes) -> None:
-        """Respond to subnegotiation requests (e.g. terminal type query)."""
         if self._writer is None or len(data) < 2:
             return
         opt, req = data[0], data[1]
-        if opt == OPT_TERM_TYPE and req == 0x01:  # SEND
-            # IAC SB TERM-TYPE IS "xterm" IAC SE
+        if opt == OPT_TERM_TYPE and req == 0x01:
             self._writer.write(
                 bytes([IAC, SB, OPT_TERM_TYPE, 0x00]) + _TERMINAL_TYPE + bytes([IAC, SE])
             )

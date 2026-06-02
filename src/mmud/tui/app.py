@@ -65,15 +65,30 @@ class MegaMudApp(App):
         self.query_one("#command-input", Input).focus()
 
     def on_key(self, event: Key) -> None:
-        """Route all printable keystrokes to the command input (telnet-like behavior)."""
+        """Route all keystrokes to the command input (telnet-like behavior)."""
+        # PageUp/PageDown scroll the game output without breaking input focus
+        if event.key in ("pageup", "page_up"):
+            self.query_one(GameOutput).scroll_page_up()
+            event.prevent_default()
+            return
+        if event.key in ("pagedown", "page_down"):
+            self.query_one(GameOutput).scroll_page_down()
+            event.prevent_default()
+            return
+
         inp = self.query_one("#command-input", Input)
         if inp.has_focus:
-            return  # already focused, let Input handle it
-        # Don't steal Ctrl/Alt bindings
-        if event.key.startswith(("ctrl+", "alt+", "f")):
+            return  # Input already has it, nothing to do
+
+        # Don't steal Ctrl/Alt/F-key bindings
+        if event.key.startswith(("ctrl+", "alt+", "f")) or event.key in ("escape",):
             return
-        # Refocus Input — Textual will re-deliver the key to the newly focused widget
-        inp.focus()
+
+        # Route printable characters to the Input, inserting them directly
+        if event.is_printable and event.character:
+            inp.focus()
+            inp.insert(event.character)
+            event.prevent_default()
 
     def _wire_bus(self) -> None:
         game_out = self.query_one(GameOutput)

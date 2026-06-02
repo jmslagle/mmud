@@ -87,10 +87,7 @@ class MudBot:
         await self._conn.connect()
         ticker_task = asyncio.create_task(self._ticker())
         try:
-            while True:
-                line = await self._conn.readline()
-                if not line:
-                    break
+            async for line in self._conn.readlines():
                 await self._process_line(line)
                 cmd = self._next_command()
                 if cmd:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from rich.text import Text
 from textual.message import Message
 from textual.widgets import RichLog
 
@@ -20,7 +21,11 @@ class GameOutput(RichLog):
     def on_game_output_new_line(self, message: NewLine) -> None:
         clean = message.line.rstrip("\r\n")
         self._text_lines.append(clean)
-        self.write(clean)
+        # Convert ANSI escape codes to Rich Text so colours render properly
+        try:
+            self.write(Text.from_ansi(clean))
+        except Exception:
+            self.write(clean)
 
     def renderable_lines_text(self) -> str:
         """Return all visible text joined — for testing only."""
