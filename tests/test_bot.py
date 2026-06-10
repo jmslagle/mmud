@@ -256,3 +256,36 @@ async def test_transcript_bot_sends_nothing_when_healthy():
     bot = make_transcript_bot(["[HP=100/100]:\n"])
     await bot.run()
     assert bot._conn.sent == []
+
+
+from mmud.automation.decision import PRIO_COMBAT
+from mmud.state.tasks import TaskType
+from mmud.events import TaskChanged
+
+
+@pytest.mark.asyncio
+async def test_active_task_suppresses_combat_decider(unused_tcp_port):
+    # Low HP would normally produce "rest", but an active task at PRIO_COMBAT pins it
+    bot = make_transcript_bot(["[HP=10/100]:\n"])
+    bot._state.begin_task(TaskType.RESTING, priority=PRIO_COMBAT)
+    await bot.run()
+    assert "rest" not in bot._conn.sent
+
+
+def test_task_timeout_aborts_and_emits(unused_tcp_port):
+    from mmud.events import GameEventBus
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TaskChanged, received.append)
+    bot = make_transcript_bot([], event_bus=bus)
+    bot._state.begin_task(TaskType.CASTING, priority=10, timeout_s=5.0, now=100.0)
+    bot._check_task_timeout(now=106.0)
+    assert not bot._state.task.is_active
+    assert any(e.status == "timeout" and e.task_type == "CASTING" for e in received)
+
+
+def test_task_not_expired_is_untouched(unused_tcp_port):
+    bot = make_transcript_bot([])
+    bot._state.begin_task(TaskType.CASTING, priority=10, timeout_s=5.0, now=100.0)
+    bot._check_task_timeout(now=104.0)
+    assert bot._state.task.is_active
