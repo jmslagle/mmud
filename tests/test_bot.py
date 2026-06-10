@@ -238,3 +238,21 @@ def test_bot_start_loop_no_config():
     bot = MudBot("localhost", 4000, patterns=[])
     msg = bot.start_loop()
     assert "No loop" in msg or "not found" in msg
+
+
+from conftest import make_transcript_bot
+
+
+@pytest.mark.asyncio
+async def test_transcript_bot_rests_on_low_hp():
+    # HP 10/100 out of combat -> CombatEngine rest_threshold (0.40) says "rest"
+    bot = make_transcript_bot(["[HP=10/100]:\n"])
+    await bot.run()
+    assert "rest" in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_transcript_bot_sends_nothing_when_healthy():
+    bot = make_transcript_bot(["[HP=100/100]:\n"])
+    await bot.run()
+    assert bot._conn.sent == []
