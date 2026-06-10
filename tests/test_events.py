@@ -49,3 +49,12 @@ from mmud.events import MonstersSeen
 def test_monsters_seen_constructible():
     e = MonstersSeen(monsters=["orc warrior", "goblin scout"])
     assert e.monsters == ["orc warrior", "goblin scout"]
+
+
+from mmud.events import TaskChanged
+
+
+def test_task_changed_constructible():
+    e = TaskChanged(task_type="RESTING", status="timeout")
+    assert e.task_type == "RESTING"
+    assert e.status == "timeout"

@@ -66,6 +66,11 @@ class SessionStatUpdated:
 class MonstersSeen:
     monsters: list[str]   # monster names parsed from room content
 
+@dataclass
+class TaskChanged:
+    task_type: str   # TaskType name, e.g. "RESTING"
+    status: str      # "started" | "completed" | "aborted" | "timeout"
+
 
 class GameEventBus:
     def __init__(self) -> None:

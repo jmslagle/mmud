@@ -75,3 +75,37 @@ def test_combat_stats_reset():
     gs.reset_combat_stats()
     assert gs.combat_hits == 0
     assert gs.combat_misses == 0
+
+
+from mmud.state.tasks import TaskType
+
+
+def test_game_state_starts_idle():
+    gs = GameState()
+    assert not gs.task.is_active
+
+
+def test_begin_and_complete_task():
+    gs = GameState()
+    gs.begin_task(TaskType.RESTING, priority=50, timeout_s=30.0, now=100.0)
+    assert gs.task.is_active
+    assert gs.task.type is TaskType.RESTING
+    assert gs.task.priority == 50
+    assert gs.task.deadline == 130.0
+    gs.complete_task()
+    assert not gs.task.is_active
+
+
+def test_begin_task_without_timeout_has_no_deadline():
+    gs = GameState()
+    gs.begin_task(TaskType.CASTING, priority=10, now=100.0)
+    assert gs.task.deadline == 0.0
+
+
+def test_abort_task():
+    gs = GameState()
+    gs.begin_task(TaskType.CASTING, priority=10, payload={"condition": "BLIND"})
+    assert gs.task.payload == {"condition": "BLIND"}
+    gs.abort_task()
+    assert not gs.task.is_active
+    assert gs.task.payload == {}

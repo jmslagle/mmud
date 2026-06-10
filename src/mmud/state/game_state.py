@@ -2,6 +2,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from mmud.parser.matcher import MatchResult
+from mmud.state.tasks import TaskState, TaskType
 
 
 @dataclass
@@ -21,6 +22,7 @@ class GameState:
         self.monsters_present: list[str] = []
         self.in_combat: bool = False
         self._command_queue: deque[str] = deque()
+        self.task: TaskState = TaskState()
         self.kills: int = 0
         self.exp: int = 0
         self.level: int = 0
@@ -104,3 +106,24 @@ class GameState:
 
     def dequeue(self) -> str | None:
         return self._command_queue.popleft() if self._command_queue else None
+
+    def begin_task(
+        self,
+        task_type: TaskType,
+        priority: int,
+        timeout_s: float = 0.0,
+        payload: dict | None = None,
+        now: float = 0.0,
+    ) -> None:
+        self.task = TaskState(
+            type=task_type,
+            priority=priority,
+            deadline=(now + timeout_s) if timeout_s > 0.0 else 0.0,
+            payload=payload or {},
+        )
+
+    def complete_task(self) -> None:
+        self.task = TaskState()
+
+    def abort_task(self) -> None:
+        self.task = TaskState()

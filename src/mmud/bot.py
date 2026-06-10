@@ -9,7 +9,10 @@ from mmud.data.rooms import Room, load_rooms
 from mmud.events import (
     GameEventBus, LineReceived, HpChanged, MpChanged,
     EffectApplied, EffectRemoved, CombatChanged, RoomChanged, MonstersSeen,
-    ConversationReceived, PlayerSeen, SessionStatUpdated,
+    ConversationReceived, PlayerSeen, SessionStatUpdated, TaskChanged,
+)
+from mmud.automation.decision import (
+    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_SPELLS, PRIO_COMBAT,
 )
 from mmud.parser.who_parser import WhoParser
 from mmud.parser.conversation_parser import ConversationParser
@@ -72,6 +75,10 @@ class MudBot:
             sneak_cmd=self._config.stealth.sneak_cmd if self._config.stealth.auto_sneak else "",
         )
         self._spell_engine = SpellEngine(self._config.spells)
+        self._engine = DecisionEngine()
+        self._engine.register("queue", QueueDecider(), PRIO_QUEUE)
+        self._engine.register("spells", self._spell_engine, PRIO_SPELLS)
+        self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -103,6 +110,7 @@ class MudBot:
             await asyncio.sleep(1.0)
             self._spell_engine.tick()
             self._check_afk()
+            self._check_task_timeout(time.monotonic())
 
     def _check_afk(self) -> None:
         cfg = self._config.afk
@@ -225,13 +233,13 @@ class MudBot:
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:
-        queued = self._state.dequeue()
-        if queued:
-            return queued
-        # Spell decisions first (heal, pre-attack, bless, mana heal)
-        if cmd := self._spell_engine.decide(self._state):
-            return cmd
-        return self._combat.decide(self._state)
+        return self._engine.next_command(self._state)
+
+    def _check_task_timeout(self, now: float) -> None:
+        if self._state.task.expired(now):
+            task_name = self._state.task.type.name
+            self._state.abort_task()
+            self._emit(TaskChanged(task_type=task_name, status="timeout"))
 
     def toggle_loop(self) -> None:
         from mmud.automation.loop_runner import LoopRunner
