@@ -237,10 +237,14 @@ MudBot._process_line()
 GameState (HP, mana, room, effects, monsters, combat stats, queue)
     │
     ▼
-MudBot._next_command()
-    ├── GameState.dequeue()   — queued commands (path steps, login responses)
-    ├── SpellEngine.decide()  — heal, pre-attack, bless (with cooldowns)
-    └── CombatEngine.decide() — flee / kill <monster> / rest
+MudBot._next_command()  →  DecisionEngine.next_command()
+    │  Priority decider chain (src/mmud/automation/decision.py) with a task
+    │  state machine (src/mmud/state/tasks.py), mirroring the original MegaMud
+    │  "DoSomething" loop. First non-None command wins; an active task pins
+    │  lower-priority slots and is preempted (aborted) by any higher-priority one.
+    │  Current slots: queue (0) → SpellEngine (30) → CombatEngine (40).
+    │  Reserved for later phases: cures, flee, rest, refresh, equip, items,
+    │  party, travel, search.
     │
     ▼
 GameEventBus → Textual TUI widgets (GameOutput, StatsBar, RightPanel)
