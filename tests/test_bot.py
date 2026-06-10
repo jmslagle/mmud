@@ -289,3 +289,72 @@ def test_task_not_expired_is_untouched(unused_tcp_port):
     bot._state.begin_task(TaskType.CASTING, priority=10, timeout_s=5.0, now=100.0)
     bot._check_task_timeout(now=104.0)
     assert bot._state.task.is_active
+
+
+from mmud.config.schema import MudConfig, HealthConfig, SafetyConfig
+from mmud.events import ConditionChanged, HangupTriggered
+from mmud.state.conditions import Condition
+
+
+@pytest.mark.asyncio
+async def test_condition_onset_tracked_and_cured():
+    config = MudConfig()
+    config.health = HealthConfig(poison_cmd="cast neutralize")
+    bot = make_transcript_bot(
+        ["You have been poisoned!\n", "[HP=100/100]:\n"], config=config
+    )
+    await bot.run()
+    assert Condition.POISONED in bot._state.conditions
+    assert "cast neutralize" in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_condition_recovery_clears_and_completes_task():
+    config = MudConfig()
+    config.health = HealthConfig(poison_cmd="cast neutralize")
+    bot = make_transcript_bot(
+        ["You have been poisoned!\n", "The poison has worn off.\n"], config=config
+    )
+    await bot.run()
+    assert Condition.POISONED not in bot._state.conditions
+    assert not bot._state.task.is_active
+
+
+@pytest.mark.asyncio
+async def test_condition_events_emitted():
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(ConditionChanged, received.append)
+    bot = make_transcript_bot(
+        ["You have been poisoned!\n", "The poison has worn off.\n"], event_bus=bus
+    )
+    await bot.run()
+    assert any(e.name == "POISONED" and e.active for e in received)
+    assert any(e.name == "POISONED" and not e.active for e in received)
+
+
+@pytest.mark.asyncio
+async def test_death_hangs_up_and_stops_processing():
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(HangupTriggered, received.append)
+    config = MudConfig()
+    config.safety = SafetyConfig(hangup_on_death=True, reconnect=False)
+    bot = make_transcript_bot(
+        ["You have died!\n", "[HP=100/100]:\n"], config=config, event_bus=bus
+    )
+    await bot.run()
+    assert any("death" in e.reason for e in received)
+
+
+@pytest.mark.asyncio
+async def test_blind_onset_stops_loop():
+    from mmud.automation.loop_runner import LoopRunner
+    from mmud.config.schema import NavigationConfig, StealthConfig
+    bot = make_transcript_bot(["You are blind!\n"])
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), StealthConfig(),
+                        [], bot._state, GameEventBus())
+    runner.start()
+    bot._loop_runner = runner
+    await bot.run()
+    assert not runner.running
