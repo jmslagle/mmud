@@ -75,3 +75,38 @@ def test_ui_defaults(tmp_path):
     assert cfg.ui.show_right_panel is False
     assert cfg.ui.default_tab == "players"
     assert cfg.ui.show_stats_bar is True   # not set → default
+
+
+def test_health_and_safety_sections(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text(
+        """
+[health]
+blind_cmd = "cast purify vision"
+poison_cmd = "cast neutralize poison"
+
+[safety]
+hangup_on_death = true
+hangup_players = ["BadGuy", "Killer"]
+panic_cmd = "recall"
+reconnect = true
+max_redials = 5
+"""
+    )
+    cfg = load_config(p)
+    assert cfg.health.blind_cmd == "cast purify vision"
+    assert cfg.health.poison_cmd == "cast neutralize poison"
+    assert cfg.health.disease_cmd == ""
+    assert cfg.safety.hangup_on_death is True
+    assert cfg.safety.hangup_players == ["BadGuy", "Killer"]
+    assert cfg.safety.panic_cmd == "recall"
+    assert cfg.safety.reconnect is True
+    assert cfg.safety.max_redials == 5
+
+
+def test_health_and_safety_defaults():
+    cfg = load_config(None)
+    assert cfg.health.blind_cmd == ""
+    assert cfg.safety.hangup_on_death is True
+    assert cfg.safety.reconnect is False
+    assert cfg.safety.max_redials == 3
