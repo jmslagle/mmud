@@ -19,6 +19,7 @@ class GameState:
         self.mana: int = 0
         self.max_mana: int = 0
         self.active_effects: set[str] = set()
+        self.conditions: set = set()   # set[Condition] — active status conditions
         self.monsters_present: list[str] = []
         self.in_combat: bool = False
         self._command_queue: deque[str] = deque()
