@@ -149,6 +149,9 @@ class MudBot:
         self._engine.register("travel", self._travel, PRIO_TRAVEL)
         from mmud.automation.doors import DoorMonitor
         self._doors = DoorMonitor(self._config.navigation)
+        from mmud.automation.search import SearchDecider
+        self._engine.register("search", SearchDecider(self._config.navigation),
+                              PRIO_SEARCH)
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
