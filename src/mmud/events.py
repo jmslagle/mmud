@@ -91,6 +91,15 @@ class DbCollision:
     db: str
     record_id: int
 
+@dataclass
+class TravelResynced:
+    from_step: int
+    to_step: int
+
+@dataclass
+class TravelEnded:
+    reason: str   # "arrived" | "lost" | "blocked" | "stopped"
+
 
 class GameEventBus:
     def __init__(self) -> None:

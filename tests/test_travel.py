@@ -1,0 +1,114 @@
+from mmud.automation.travel import TravelDecider, expand_annotated
+from mmud.config.schema import ItemsConfig, StealthConfig
+from mmud.events import GameEventBus, TravelResynced, TravelEnded
+from mmud.navigation.graph import RouteStep
+from mmud.state.game_state import GameState
+
+
+def _step(cmd, *expect):
+    return RouteStep(command=cmd, expect=frozenset(expect), chosen=expect[0])
+
+
+def _decider(bus=None):
+    return TravelDecider(ItemsConfig(), StealthConfig(),
+                         bus or GameEventBus())
+
+
+def test_expand_annotated():
+    assert expand_annotated("n") == ["n"]
+    assert expand_annotated("w[search w]") == ["search w", "w"]
+    assert expand_annotated("go path") == ["go path"]
+
+
+def test_one_step_per_arrival():
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("n", "BBBB0002"), _step("e", "CCCC0003")])
+    assert d.decide(gs) == "n"
+    assert d.decide(gs) is None              # in flight: wait for arrival
+    d.on_arrival(gs, "")                     # unnamed room: trust expectation
+    assert gs.current_hex == "BBBB0002"
+    assert d.decide(gs) == "e"
+    d.on_arrival(gs, "CCCC0003")
+    assert not d.active                      # route complete
+    assert gs.current_hex == "CCCC0003"
+
+
+def test_annotation_queues_move_after_search():
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("w[search w]", "BBBB0002")])
+    assert d.decide(gs) == "search w"
+    assert gs.dequeue() == "w"               # queued for the next line
+
+
+def test_sneak_prefix():
+    d = TravelDecider(ItemsConfig(), StealthConfig(auto_sneak=True, sneak_cmd="sneak"),
+                      GameEventBus())
+    gs = GameState()
+    d.set_route([_step("n", "BBBB0002")])
+    assert d.decide(gs) == "sneak"
+    assert gs.dequeue() == "n"
+
+
+def test_resync_jumps_cursor():
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelResynced, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("n", "BBBB0002"), _step("e", "CCCC0003"),
+                 _step("s", "DDDD0004")])
+    d.decide(gs)
+    d.on_arrival(gs, "CCCC0003")             # overshot: landed after step 2
+    assert received and received[0].to_step == 2
+    assert d.decide(gs) == "s"               # cursor resumed at step 3
+
+
+def test_lost_ends_route():
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelEnded, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("n", "BBBB0002")])
+    d.decide(gs)
+    d.on_arrival(gs, "ZZZZ9999")             # nowhere on the route
+    assert not d.active
+    assert received[0].reason == "lost"
+
+
+def test_move_failed_retries_then_ends():
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelEnded, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("n", "BBBB0002")])
+    assert d.decide(gs) == "n"
+    d.on_move_failed()
+    assert d.decide(gs) == "n"               # retry 1
+    d.on_move_failed()
+    assert d.decide(gs) == "n"               # retry 2
+    d.on_move_failed()
+    assert not d.active
+    assert received[0].reason == "blocked"
+
+
+def test_loop_mode_restarts_and_counts_laps():
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("n", "BBBB0002")], loop=True)
+    d.decide(gs); d.on_arrival(gs, "")
+    assert d.lap == 1
+    assert d.decide(gs) == "n"               # restarted
+
+
+def test_encumbrance_gate():
+    from mmud.state.inventory import Inventory
+    d = TravelDecider(ItemsConfig(dont_go_heavy=True), StealthConfig(),
+                      GameEventBus())
+    gs = GameState()
+    gs.inventory = Inventory(encumbrance_level="heavy")
+    d.set_route([_step("n", "BBBB0002")])
+    assert d.decide(gs) is None              # halted while heavy

@@ -216,3 +216,27 @@ def test_learning_disabled_by_default():
     cfg = load_config(None)
     assert cfg.learning.enabled is False
     assert cfg.learning.store_path == "gamedb.json"
+
+
+def test_phase6_navigation_config(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[navigation]
+auto_search = true
+search_max = 2
+roam = true
+bash_doors = true
+""")
+    cfg = load_config(p)
+    assert cfg.navigation.auto_search is True
+    assert cfg.navigation.search_max == 2
+    assert cfg.navigation.roam is True
+    assert cfg.navigation.bash_doors is True
+
+
+def test_phase6_navigation_defaults():
+    cfg = load_config(None)
+    assert cfg.navigation.auto_search is False
+    assert cfg.navigation.search_max == 3
+    assert cfg.navigation.roam is False
+    assert cfg.navigation.bash_doors is False
