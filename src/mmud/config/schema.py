@@ -162,6 +162,16 @@ class LearningConfig:
 
 
 @dataclass
+class CommerceConfig:
+    bank_room: str = ""      # 4-letter room code; "" = banking disabled
+    shop_room: str = ""      # "" = shopping disabled
+    train_room: str = ""     # "" = training travel disabled
+    sell_items: list[str] = field(default_factory=list)  # sell these when carried
+    buy_items: list[str] = field(default_factory=list)   # keep these in inventory
+    auto_train: bool = False
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -193,5 +203,6 @@ class MudConfig:
     remote: RemoteConfig = field(default_factory=RemoteConfig)
     pvp: PvpConfig = field(default_factory=PvpConfig)
     learning: LearningConfig = field(default_factory=LearningConfig)
+    commerce: CommerceConfig = field(default_factory=CommerceConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)

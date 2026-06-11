@@ -6,6 +6,7 @@ from mmud.config.schema import (
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
     HealthConfig, SafetyConfig, RemoteConfig, PvpConfig, LearningConfig,
+    CommerceConfig,
 )
 
 
@@ -151,6 +152,15 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
         cfg.learning = LearningConfig(
             enabled=le.get("enabled", False),
             store_path=le.get("store_path", "gamedb.json"),
+        )
+    if co := data.get("commerce"):
+        cfg.commerce = CommerceConfig(
+            bank_room=co.get("bank_room", ""),
+            shop_room=co.get("shop_room", ""),
+            train_room=co.get("train_room", ""),
+            sell_items=co.get("sell_items", []),
+            buy_items=co.get("buy_items", []),
+            auto_train=co.get("auto_train", False),
         )
     cfg.players = [
         PlayerRule(

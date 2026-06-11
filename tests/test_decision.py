@@ -71,7 +71,7 @@ def test_priority_constants_are_strictly_ordered():
     from mmud.automation import decision
     names = ["PRIO_QUEUE", "PRIO_CURE", "PRIO_FLEE", "PRIO_SPELLS", "PRIO_COMBAT",
              "PRIO_REST", "PRIO_REFRESH", "PRIO_BLESS", "PRIO_EQUIP", "PRIO_ITEMS",
-             "PRIO_PARTY", "PRIO_TRAVEL", "PRIO_SEARCH"]
+             "PRIO_COMMERCE", "PRIO_PARTY", "PRIO_TRAVEL", "PRIO_SEARCH"]
     values = [getattr(decision, n) for n in names]
     assert values == sorted(values)
     assert len(set(values)) == len(values)
