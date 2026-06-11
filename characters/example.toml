@@ -105,3 +105,17 @@ popup_missed     = true
 show_right_panel = true
 show_stats_bar   = true
 default_tab      = "conversations"
+
+[health]
+# Cure commands sent automatically when the condition is detected (blank = don't cure)
+blind_cmd = ""       # e.g. "cast purify vision"
+poison_cmd = ""      # e.g. "cast neutralize poison"
+disease_cmd = ""
+freedom_cmd = ""     # break hold/paralysis
+
+[safety]
+hangup_on_death = true
+hangup_players = []  # disconnect immediately if any of these appear in the room
+panic_cmd = ""       # sent before a panic hangup
+reconnect = false    # auto-reconnect on connection loss
+max_redials = 3

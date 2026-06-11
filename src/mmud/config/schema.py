@@ -108,6 +108,23 @@ class AfkConfig:
 
 
 @dataclass
+class HealthConfig:
+    blind_cmd: str = ""      # cure blindness, e.g. "cast purify vision"
+    poison_cmd: str = ""     # cure poison
+    disease_cmd: str = ""    # cure disease
+    freedom_cmd: str = ""    # break hold/paralysis
+
+
+@dataclass
+class SafetyConfig:
+    hangup_on_death: bool = True
+    hangup_players: list[str] = field(default_factory=list)  # disconnect if seen in room
+    panic_cmd: str = ""      # sent before a panic hangup (e.g. "recall")
+    reconnect: bool = False  # auto-reconnect on connection loss
+    max_redials: int = 3
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -134,5 +151,7 @@ class MudConfig:
     items: ItemsConfig = field(default_factory=ItemsConfig)
     party: PartyConfig = field(default_factory=PartyConfig)
     afk: AfkConfig = field(default_factory=AfkConfig)
+    health: HealthConfig = field(default_factory=HealthConfig)
+    safety: SafetyConfig = field(default_factory=SafetyConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)

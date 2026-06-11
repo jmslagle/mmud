@@ -5,6 +5,7 @@ from mmud.config.schema import (
     MudConfig, ServerConfig, LoginConfig, CombatConfig,
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
+    HealthConfig, SafetyConfig,
 )
 
 
@@ -103,6 +104,21 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             hangup_on_low_hp=a.get("hangup_on_low_hp", False),
             alert=a.get("alert", False),
             popup_missed=a.get("popup_missed", True),
+        )
+    if h := data.get("health"):
+        cfg.health = HealthConfig(
+            blind_cmd=h.get("blind_cmd", ""),
+            poison_cmd=h.get("poison_cmd", ""),
+            disease_cmd=h.get("disease_cmd", ""),
+            freedom_cmd=h.get("freedom_cmd", ""),
+        )
+    if sf := data.get("safety"):
+        cfg.safety = SafetyConfig(
+            hangup_on_death=sf.get("hangup_on_death", True),
+            hangup_players=sf.get("hangup_players", []),
+            panic_cmd=sf.get("panic_cmd", ""),
+            reconnect=sf.get("reconnect", False),
+            max_redials=sf.get("max_redials", 3),
         )
     cfg.players = [
         PlayerRule(

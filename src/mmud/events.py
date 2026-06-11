@@ -71,6 +71,15 @@ class TaskChanged:
     task_type: str   # TaskType name, e.g. "RESTING"
     status: str      # "started" | "completed" | "aborted" | "timeout"
 
+@dataclass
+class ConditionChanged:
+    name: str      # Condition name, e.g. "POISONED"
+    active: bool   # True = onset, False = recovered
+
+@dataclass
+class HangupTriggered:
+    reason: str
+
 
 class GameEventBus:
     def __init__(self) -> None:

@@ -10,10 +10,14 @@ from mmud.events import (
     GameEventBus, LineReceived, HpChanged, MpChanged,
     EffectApplied, EffectRemoved, CombatChanged, RoomChanged, MonstersSeen,
     ConversationReceived, PlayerSeen, SessionStatUpdated, TaskChanged,
+    ConditionChanged, HangupTriggered,
 )
 from mmud.automation.decision import (
-    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_SPELLS, PRIO_COMBAT,
+    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_SPELLS, PRIO_COMBAT,
 )
+from mmud.automation.cures import CureDecider
+from mmud.automation.safety import SafetyMonitor
+from mmud.state.conditions import scan_onset, scan_recovery
 from mmud.parser.who_parser import WhoParser
 from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
@@ -79,23 +83,44 @@ class MudBot:
         self._engine.register("queue", QueueDecider(), PRIO_QUEUE)
         self._engine.register("spells", self._spell_engine, PRIO_SPELLS)
         self._engine.register("combat", self._combat, PRIO_COMBAT)
+        self._safety = SafetyMonitor(self._config.safety)
+        self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()
         self._last_activity = time.monotonic()
         self._auto_started = False
+        self._redial_delay_s = 5.0
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:
             self._bus.post(event)
 
     async def run(self) -> None:
+        redials = 0
+        while True:
+            try:
+                await self._run_session()
+            except (ConnectionError, OSError):
+                pass
+            if self._safety.hangup_requested:
+                break   # deliberate disconnect — never auto-reconnect past it
+            if (not self._config.safety.reconnect
+                    or redials >= self._config.safety.max_redials):
+                break
+            redials += 1
+            await asyncio.sleep(self._redial_delay_s)
+
+    async def _run_session(self) -> None:
         await self._conn.connect()
         ticker_task = asyncio.create_task(self._ticker())
         try:
             async for line in self._conn.readlines():
                 await self._process_line(line)
+                if self._safety.hangup_requested:
+                    self._emit(HangupTriggered(reason=self._safety.reason))
+                    break
                 cmd = self._next_command()
                 if cmd:
                     await self._conn.send(cmd)
@@ -125,6 +150,8 @@ class MudBot:
         self._emit(LineReceived(line=line))
         clean = _ANSI_RE.sub("", line).strip()
         self._parse_vitals(clean)
+        self._parse_conditions(clean)
+        self._safety.process_line(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
@@ -149,10 +176,32 @@ class MudBot:
             hp, max_hp = int(m.group(1)), int(m.group(2))
             self._state.set_hp(hp, max_hp)
             self._emit(HpChanged(hp=hp, max_hp=max_hp))
+            if (self._config.afk.enabled and self._config.afk.hangup_on_low_hp
+                    and max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold):
+                self._safety.request_hangup(f"low HP while AFK ({hp}/{max_hp})")
         if m := _MP_RE.search(line):
             mp, max_mp = int(m.group(1)), int(m.group(2))
             self._state.set_mana(mp, max_mp)
             self._emit(MpChanged(mp=mp, max_mp=max_mp))
+
+    def _parse_conditions(self, line: str) -> None:
+        if cond := scan_onset(line):
+            if cond not in self._state.conditions:
+                self._state.conditions.add(cond)
+                self._emit(ConditionChanged(name=cond.name, active=True))
+                # Conditions interrupt whatever the bot was doing
+                if self._state.task.is_active:
+                    self._state.abort_task()
+                # Blind blocks movement: stop any running loop
+                if cond.name == "BLIND" and self._loop_runner and self._loop_runner.running:
+                    self.stop_all()
+        if cond := scan_recovery(line):
+            self._state.conditions.discard(cond)
+            self._emit(ConditionChanged(name=cond.name, active=False))
+            # Complete the pending cure task for this condition
+            if (self._state.task.is_active
+                    and self._state.task.payload.get("condition") == cond.name):
+                self._state.complete_task()
 
     def _parse_room(self, line: str) -> None:
         if code := self._room_parser.detect_room(line):
