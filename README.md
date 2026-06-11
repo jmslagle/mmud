@@ -154,9 +154,37 @@ strangers. A known player who lacks a verb gets a `permission denied` reply.
 | `@auto-hide [on\|off]` | Toggle `[stealth] auto_hide` |
 | `@auto-get [on\|off]` | Toggle `[items] auto_get` |
 | `@auto-cash [on\|off]` | Toggle `[items] auto_cash` |
+| `@wealth` | Report carried wealth (copper-equivalent + per-denomination) |
+| `@db` | Report game-DB store stats (records / learned exits / collisions) |
 
-The original MegaMud exposed ~47 verbs; the rest (e.g. `@wealth`, `@relog`,
-party verbs) arrive as later phases wire up the subsystems they drive.
+The original MegaMud exposed ~47 verbs; the rest (e.g. `@relog`, party verbs)
+arrive as later phases wire up the subsystems they drive.
+
+---
+
+## Game DB store (`[learning]`)
+
+With `[learning] enabled = true` the bot keeps its **own JSON game database**
+(default `gamedb.json`) instead of reading the binary `.MD` files directly each
+run:
+
+- On startup the binary databases (`MONSTERS.MD`, `ITEMS.MD`, `SPELLS.MD`,
+  `PLAYERS.MD`) are **converted and merged in** — the `.MD` files are **never
+  written**. Each source is fingerprinted (sha256+size); an unchanged source is
+  skipped for an instant start.
+- When a source changes, records are merged per id: plain MD records follow the
+  source, while records you've **learned or overridden** locally survive. If the
+  MD side of an overridden record also changed, that's a **collision** — the
+  local value wins and the new MD version is logged in the store's `collisions`
+  list for review.
+- Live learning persists here too: unknown monsters seen in rooms, plus
+  `ungettable` / `no_auto_equip` marks. Phase 6 will also persist learned room
+  exits in the same store.
+- Text sources (`.MP` paths, `ROOMS.MD`, `MESSAGES.MD`) are **not** imported —
+  they stay directly-read at runtime.
+
+Check the store live with the `@db` remote verb. Deleting `gamedb.json` rebuilds
+it from the `.MD` files on the next start (losing learned data and overrides).
 
 ---
 

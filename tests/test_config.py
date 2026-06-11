@@ -198,3 +198,21 @@ def test_phase5_items_defaults():
     assert cfg.items.max_coins == 0      # 0 = no limit
     assert cfg.items.max_wealth == 0
     assert cfg.items.min_wealth == 0
+
+
+def test_learning_section(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[learning]
+enabled = true
+store_path = "mydb.json"
+""")
+    cfg = load_config(p)
+    assert cfg.learning.enabled is True
+    assert cfg.learning.store_path == "mydb.json"
+
+
+def test_learning_disabled_by_default():
+    cfg = load_config(None)
+    assert cfg.learning.enabled is False
+    assert cfg.learning.store_path == "gamedb.json"

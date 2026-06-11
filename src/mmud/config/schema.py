@@ -152,6 +152,12 @@ class PvpConfig:
 
 
 @dataclass
+class LearningConfig:
+    enabled: bool = False            # opt-in: use the GameStore + learning hooks
+    store_path: str = "gamedb.json"  # JSON store location (relative to CWD)
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -182,5 +188,6 @@ class MudConfig:
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     remote: RemoteConfig = field(default_factory=RemoteConfig)
     pvp: PvpConfig = field(default_factory=PvpConfig)
+    learning: LearningConfig = field(default_factory=LearningConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)

@@ -149,3 +149,9 @@ tell_format = "/{name} {text}"
 # name = "MyAltChar"
 # friend = true
 # remote_cmds = ["*"]
+
+[learning]
+# Use our own JSON game DB: MD binaries convert/merge in at startup (never
+# written); unknown monsters / marks / learned exits persist across sessions.
+enabled    = false
+store_path = "gamedb.json"

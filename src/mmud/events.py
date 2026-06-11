@@ -80,6 +80,17 @@ class ConditionChanged:
 class HangupTriggered:
     reason: str
 
+@dataclass
+class DbImported:
+    added: int
+    updated: int
+    collisions: int
+
+@dataclass
+class DbCollision:
+    db: str
+    record_id: int
+
 
 class GameEventBus:
     def __init__(self) -> None:
