@@ -92,6 +92,8 @@ class MudBot:
         self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._safety = SafetyMonitor(self._config.safety)
         self._remote = RemoteCommandHandler(self)
+        from mmud.combat.pvp import PvpEngine
+        self._pvp = PvpEngine(self._config.pvp, self._config.players, self._safety)
         self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
         from mmud.automation.run_rules import RunDecider
         self._engine.register("run", RunDecider(self._config.combat,
@@ -245,6 +247,8 @@ class MudBot:
             players = self._room_parser.extract_players(line)
             if players:
                 self._state.players_present = players
+                if cmd := self._pvp.check(self._state):
+                    self._state.enqueue(cmd)
 
     def _parse_conversation(self, line: str) -> None:
         msg = self._convo_parser.parse(line)

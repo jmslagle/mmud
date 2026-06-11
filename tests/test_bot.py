@@ -434,3 +434,34 @@ async def test_stranger_tell_ignored():
     )
     await bot.run()
     assert not bot._safety.hangup_requested
+
+
+@pytest.mark.asyncio
+async def test_run_rules_flee_on_crowded_room():
+    from mmud.state.tasks import TaskType
+    config = MudConfig()
+    config.combat.max_monsters = 3
+    # Single line: RunDecider fires "flee" and begins the RUNNING task. (A second
+    # line would let the QueueDecider drain a queued flee, which preempts/aborts
+    # the task — correct engine semantics, covered in test_run_rules.)
+    bot = make_transcript_bot(["Also here: 4 orc warriors.\n"], config=config)
+    await bot.run()
+    assert "flee" in bot._conn.sent
+    assert bot._state.task.type is TaskType.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_no_run_rules_attacks_crowded_room():
+    config = MudConfig()
+    config.combat.max_monsters = 0          # no limit
+    config.combat.attack_cmd = "kill"
+    bot = make_transcript_bot(
+        ["Also here: 4 orc warriors.\n", "An orc warrior swings at you!\n"],
+        config=config,
+        patterns=[MessagePattern(name="hit", flags=0, third_field=0,
+                                 apply_message="An orc warrior swings at you!",
+                                 remove_message="")],
+    )
+    await bot.run()
+    assert any(c.startswith("kill") for c in bot._conn.sent)
+    assert "flee" not in bot._conn.sent
