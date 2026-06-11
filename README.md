@@ -188,6 +188,39 @@ it from the `.MD` files on the next start (losing learned data and overrides).
 
 ---
 
+## Commerce detours (`[commerce]`)
+
+When configured, the bot interrupts its loop to run errands, then resumes:
+
+- **Bank** (`bank_room`) — deposits when wealth exceeds `[items] max_wealth`
+  (down to `min_wealth`), or withdraws when below `min_wealth`.
+- **Shop** (`shop_room`) — sells anything in `sell_items` it's carrying, buys
+  anything in `buy_items` it lacks.
+- **Train** (`train_room` + `auto_train`) — walks to the trainer when the server
+  says you're ready to advance.
+
+Each errand is a Phase-6 multi-hop travel detour: leave the loop → walk to the
+room → do the work (one command per tick) → `inv` re-sync → resume the loop.
+Commerce only triggers on fresh inventory data (never mid-travel or in combat),
+and an unroutable room disables that errand instead of retrying. Rooms are
+4-letter codes; `""` disables an errand.
+
+```toml
+[commerce]
+bank_room  = "BANK"
+shop_room  = "SHOP"
+train_room = "TRNR"
+sell_items = ["rusty sword"]
+buy_items  = ["torch"]
+auto_train = true
+```
+
+> Live-tune caveat: the `deposit`/`withdraw`/`sell`/`buy`/`train` command syntax
+> and the "ready to advance" line are reconstructed — verify against your server
+> and adjust `src/mmud/automation/commerce.py` if needed.
+
+---
+
 ## Character Config Reference
 
 All sections are optional. Missing keys use safe defaults. `--host` / `--port` CLI args override `[server]`.
