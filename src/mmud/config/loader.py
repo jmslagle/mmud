@@ -88,6 +88,9 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             runic_name=it.get("runic_name", "runic"),
             dont_go_heavy=it.get("dont_go_heavy", True),
             dont_go_medium=it.get("dont_go_medium", False),
+            max_coins=it.get("max_coins", 0),
+            max_wealth=it.get("max_wealth", 0),
+            min_wealth=it.get("min_wealth", 0),
         )
     if p := data.get("party"):
         cfg.party = PartyConfig(

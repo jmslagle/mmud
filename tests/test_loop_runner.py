@@ -64,3 +64,29 @@ def test_no_path_found():
     runner = LoopRunner(NavigationConfig(loop_path="XXXX"), StealthConfig(), [], gs, bus)
     runner.start()  # must not raise
     assert gs.dequeue() is None
+
+
+def test_encumbrance_blocks_stepping():
+    from mmud.state.inventory import Inventory
+    from mmud.config.schema import ItemsConfig
+    gs = GameState()
+    gs.inventory = Inventory(encumbrance_level="heavy")
+    bus = GameEventBus()
+    path = _loop("HOME", ["n", "e"])
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), StealthConfig(), [path], gs, bus,
+                        items_config=ItemsConfig(dont_go_heavy=True))
+    runner.start()
+    assert gs.dequeue() is None         # nothing enqueued while heavy
+
+
+def test_no_encumbrance_gate_when_light():
+    from mmud.state.inventory import Inventory
+    from mmud.config.schema import ItemsConfig
+    gs = GameState()
+    gs.inventory = Inventory(encumbrance_level="light")
+    bus = GameEventBus()
+    path = _loop("HOME", ["n", "e"])
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), StealthConfig(), [path], gs, bus,
+                        items_config=ItemsConfig(dont_go_heavy=True))
+    runner.start()
+    assert gs.dequeue() == "n"

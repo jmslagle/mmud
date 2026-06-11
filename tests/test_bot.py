@@ -465,3 +465,28 @@ async def test_no_run_rules_attacks_crowded_room():
     await bot.run()
     assert any(c.startswith("kill") for c in bot._conn.sent)
     assert "flee" not in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_inv_block_parsed_into_state():
+    bot = make_transcript_bot([
+        "You are carrying a torch, 153 copper farthings.\n",
+        "You are wearing chainmail armour.\n",
+        "Wealth: 153 copper farthings\n",
+        "Encumbrance: 45/120 - Light [37%]\n",
+    ])
+    await bot.run()
+    assert bot._state.inventory.coins["copper"] == 153
+    assert bot._state.inventory_dirty is False
+    assert bot._state.inventory.encumbrance_level == "light"
+
+
+@pytest.mark.asyncio
+async def test_auto_cash_gets_ground_coins():
+    config = MudConfig()
+    config.items.auto_cash = True
+    config.items.collect_copper = True
+    bot = make_transcript_bot(
+        ["You notice 23 copper farthings here.\n"], config=config)
+    await bot.run()
+    assert "get copper" in bot._conn.sent

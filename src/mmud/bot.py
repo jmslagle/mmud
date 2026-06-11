@@ -14,6 +14,7 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
+    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -78,6 +79,10 @@ class MudBot:
         monsters_md = (data_dir / "MONSTERS.MD") if data_dir else None
         self._monster_db = (MonsterDB.from_file(monsters_md)
                             if monsters_md and monsters_md.exists() else MonsterDB([]))
+        from mmud.data.item_db import ItemDB
+        items_md = (data_dir / "ITEMS.MD") if data_dir else None
+        self._item_db = (ItemDB.from_file(items_md)
+                         if items_md and items_md.exists() else ItemDB([]))
 
         self._state = GameState()
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
@@ -101,6 +106,19 @@ class MudBot:
         from mmud.combat.backstab import BackstabEngine
         self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
         self._engine.register("backstab", self._backstab, PRIO_COMBAT - 1)
+        from mmud.parser.inventory_parser import InventoryParser
+        from mmud.state.inventory import RefreshDecider
+        self._inv_parser = InventoryParser()
+        self._engine.register("refresh", RefreshDecider(), PRIO_REFRESH)
+        from mmud.automation.items import LootMonitor, GetDecider
+        self._loot = LootMonitor(
+            is_monster=lambda name: self._monster_db.find(name) is not None)
+        self._get_decider = GetDecider(self._config.items)
+        self._engine.register("items", self._get_decider, PRIO_ITEMS)
+        from mmud.automation.equip import EquipDecider
+        self._equip_decider = EquipDecider(self._item_db,
+                                           enabled=self._config.items.auto_get)
+        self._engine.register("equip", self._equip_decider, PRIO_EQUIP)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -168,9 +186,16 @@ class MudBot:
         self._emit(LineReceived(line=line))
         clean = _ANSI_RE.sub("", line).strip()
         self._parse_vitals(clean)
+        if inv := self._inv_parser.feed(clean):
+            self._state.inventory = inv
+            self._state.inventory_dirty = False
+            if self._state.task.type is TaskType.WAITING:
+                self._state.complete_task()
         self._parse_conditions(clean)
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
+        self._loot.process_line(clean, self._state)
+        self._parse_get_results(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
@@ -228,6 +253,8 @@ class MudBot:
             self._state.set_room(code)
             self._state.monsters_present.clear()
             self._state.players_present = []
+            self._state.ground_items.clear()
+            self._state.ground_coins.clear()
             self._backstab.reset()
             if self._state.task.type is TaskType.RUNNING:
                 self._state.complete_task()
@@ -316,10 +343,31 @@ class MudBot:
         elif m := _MONSTER_HIT_RE.search(line):
             self._state.record_monster_hit()
 
+    def _parse_get_results(self, line: str) -> None:
+        from mmud.automation.items import _CANT_GET_RE
+        task = self._state.task.type
+        low = line.lower()
+        if task is TaskType.GETTING:
+            if _CANT_GET_RE.search(line):
+                if last := self._state.task.payload.get("item"):
+                    self._get_decider.mark_ungettable(last)
+                self._state.abort_task()
+            elif low.startswith("you took") or low.startswith("you get"):
+                self._state.complete_task()
+        elif task is TaskType.EQUIPPING:
+            if low.startswith("you are now wearing") or low.startswith("you are now wielding") \
+                    or low.startswith("you are now holding"):
+                self._state.complete_task()
+            elif "is cursed" in low or "can't remove" in low or "cannot remove" in low:
+                if last := self._state.task.payload.get("item"):
+                    self._equip_decider.mark_failed(last)
+                self._state.abort_task()
+
     def _parse_combat_exit(self, line: str) -> None:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):
             self._state.set_combat(False)
             self._state.monsters_present.clear()
+            self._state.inventory_dirty = True   # loot may have dropped
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:
@@ -343,6 +391,7 @@ class MudBot:
             paths=paths,
             state=self._state,
             bus=self._bus or GameEventBus(),
+            items_config=self._config.items,
         )
         self._loop_runner.start()
 
@@ -363,6 +412,7 @@ class MudBot:
             paths=paths,
             state=self._state,
             bus=self._bus or __import__("mmud.events", fromlist=["GameEventBus"]).GameEventBus(),
+            items_config=self._config.items,
         )
         self._loop_runner.start()
         if self._loop_runner._path is None:
