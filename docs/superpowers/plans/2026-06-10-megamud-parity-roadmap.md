@@ -37,7 +37,7 @@
 | 1 | Decision Engine Core | M | ✅ complete | [2026-06-10-phase-01-decision-engine.md](2026-06-10-phase-01-decision-engine.md) |
 | 2 | Conditions, Cures, Panic Safety | M | ✅ complete | [2026-06-10-phase-02-conditions-cures-safety.md](2026-06-10-phase-02-conditions-cures-safety.md) |
 | 3 | Remote Control via Tells | S–M | ✅ complete | [2026-06-10-phase-03-remote-control.md](2026-06-10-phase-03-remote-control.md) |
-| 3.5 | **MDB2 Parser Rewrite** (prereq for 4–5) | S | planned | [2026-06-10-mdb2-parser-rewrite.md](2026-06-10-mdb2-parser-rewrite.md) |
+| 3.5 | **MDB2 Parser Rewrite** (prereq for 4–5) | S | ✅ complete | [2026-06-10-mdb2-parser-rewrite.md](2026-06-10-mdb2-parser-rewrite.md) |
 | 4 | Combat Depth | L | planned | [2026-06-10-phase-04-combat-depth.md](2026-06-10-phase-04-combat-depth.md) |
 | 5 | Inventory, Loot, Cash | L | planned | [2026-06-10-phase-05-inventory-loot-cash.md](2026-06-10-phase-05-inventory-loot-cash.md) |
 | 6 | Multi-hop Pathfinding, Resync, Doors, Search | L | not started | write plan at phase start |
