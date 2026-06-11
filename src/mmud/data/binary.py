@@ -295,62 +295,33 @@ class Spell:
 
 
 def load_spells(path: pathlib.Path) -> list[Spell]:
-    """Parse SPELLS.MD and return all active Spell records.
+    """Parse SPELLS.MD and return ALL spell records (no flag filtering).
 
-    Spells use the same page-based layout. Within each entry:
-      +0x01: u16 record_id
-      +0x03: char[31] full spell name
-    Short name (4-5 chars) appears after the null in the name block.
-    Numeric stats are at observed offsets further into the entry.
+    Spell records do not carry the monsters/items active/deleted flag dword.
+    Payload offsets (true MDB2 walk; stats provisional until a consumer
+    validates them against in-game values):
+      +0x00: u16 record_id
+      +0x02: char[31] full spell name
+      +0x21: char[~10] short name / incantation (NUL-terminated)
+      +0x5a: u16 (provisional: mana/kai cost)
+      +0x5c: u16 (provisional: level requirement)
     """
-    data = path.read_bytes()
     out: list[Spell] = []
-
-    for _page_num, eoff, page in _iter_all_entries(data):
-        if eoff + 0x70 > len(page):
-            continue
-
-        record_id = struct.unpack_from("<H", page, eoff + 0x01)[0]
-        full_name = _cstr(page, eoff + 0x03, 31)
+    for entry in walk_entries(path):
+        p = entry.payload
+        full_name = _cstr(p, 0x02, 31)
         if not full_name:
             continue
-
-        # Short name is the second null-terminated string in the name block
-        name_block = page[eoff + 0x03 : eoff + 0x03 + 31]
-        parts = name_block.split(b"\x00")
-        short_name = parts[1].decode("latin-1", errors="replace").strip() if len(parts) > 1 else ""
-
-        # Description follows the name block
-        desc_start = eoff + 0x03 + 31
-        description = _cstr(page, desc_start, 40)
-
-        # Flags: scan for active flag
-        flags = 0
-        for foff in range(eoff + 0x22, min(eoff + 0x80, len(page) - 3), 4):
-            candidate = struct.unpack_from("<I", page, foff)[0]
-            if candidate & _FLAG_ACTIVE:
-                flags = candidate
-                break
-
-        if not _active(flags):
-            continue
-
-        # Numeric stats (approximate from observed layout)
-        kai_cost  = struct.unpack_from("<i", page, eoff + 0x58)[0] if eoff + 0x5C < len(page) else 0
-        level_req = struct.unpack_from("<i", page, eoff + 0x5C)[0] if eoff + 0x60 < len(page) else 0
-        duration  = struct.unpack_from("<i", page, eoff + 0x60)[0] if eoff + 0x64 < len(page) else 0
-
         out.append(Spell(
-            record_id=record_id,
-            short_name=short_name,
+            record_id=struct.unpack_from("<H", p, 0x00)[0],
+            short_name=_cstr(p, 0x21, 10),
             full_name=full_name,
-            description=description,
-            kai_cost=kai_cost,
-            level_req=level_req,
-            duration=duration,
-            flags=flags,
+            description="",
+            kai_cost=struct.unpack_from("<H", p, 0x5A)[0],
+            level_req=struct.unpack_from("<H", p, 0x5C)[0],
+            duration=0,
+            flags=0,
         ))
-
     return out
 
 

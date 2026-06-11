@@ -192,3 +192,14 @@ def test_items_recovered_by_true_walk(data_dir):
     names = {i.name.lower() for i in items}
     assert "a statue of a bard" in names   # missed by the old heuristic
     assert all(i.is_active for i in items)
+
+
+def test_spells_all_entries_loaded(data_dir):
+    spells = load_spells(data_dir / "SPELLS.MD")
+    assert len(spells) == 936
+    names = {s.full_name.lower() for s in spells}
+    assert "major healing" in names
+    # SPELLS.MD has duplicate records (no active/deleted flag to filter on);
+    # assert on a specific record id so the short-name parse is deterministic.
+    by_id = {s.record_id: s for s in spells if s.full_name.lower() == "major healing"}
+    assert by_id[220].short_name == "han"
