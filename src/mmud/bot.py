@@ -96,6 +96,9 @@ class MudBot:
         from mmud.automation.run_rules import RunDecider
         self._engine.register("run", RunDecider(self._config.combat,
                                                 self._config.navigation), PRIO_FLEE)
+        from mmud.combat.backstab import BackstabEngine
+        self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
+        self._engine.register("backstab", self._backstab, PRIO_COMBAT - 1)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -165,6 +168,7 @@ class MudBot:
         self._parse_vitals(clean)
         self._parse_conditions(clean)
         self._safety.process_line(clean)
+        self._backstab.on_line(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
@@ -222,6 +226,7 @@ class MudBot:
             self._state.set_room(code)
             self._state.monsters_present.clear()
             self._state.players_present = []
+            self._backstab.reset()
             if self._state.task.type is TaskType.RUNNING:
                 self._state.complete_task()
             if code != prev:
