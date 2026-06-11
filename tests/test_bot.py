@@ -507,3 +507,61 @@ async def test_unknown_monster_learned_when_enabled(tmp_path):
     await bot.run()
     names = [r["name"] for r in bot._store.data["monsters"].values()]
     assert "glimmering wisp" in names
+
+
+from mmud.data.rooms import Room as _Room
+from mmud.data.paths import GamePath as _GamePath, PathStep as _PathStep
+
+_NAV_ROOMS = {
+    "HOME": _Room(code="HOME", hex_id="AAAA0001", hex_id2="", flags=(0, 0, 0),
+                  region="", name="The Home Room"),
+    "FARR": _Room(code="FARR", hex_id="CCCC0003", hex_id2="", flags=(0, 0, 0),
+                  region="", name="The Far Room"),
+}
+_NAV_PATH = _GamePath(from_code="HOME", from_region="", from_name="",
+                      to_code="FARR", to_region="", to_name="", npc="",
+                      steps=[_PathStep(hex_id="AAAA0001", command="n"),
+                             _PathStep(hex_id="BBBB0002", command="e")])
+
+
+@pytest.mark.asyncio
+async def test_multihop_goto_walks_route():
+    bot = make_transcript_bot(
+        ["Obvious exits: north\n",          # arrival signal -> first move
+         "Obvious exits: east\n",           # unnamed middle room -> second move
+         "The Far Room\n",                  # named arrival
+         "Obvious exits: west\n"],
+        rooms=_NAV_ROOMS)
+    bot._navigator._paths[("HOME", "FARR")] = _NAV_PATH
+    bot._state.set_room("HOME")
+    bot._state.current_hex = "AAAA0001"
+    msg = bot.navigate_to_room("FARR")
+    assert "2 steps" in msg
+    await bot.run()
+    assert bot._conn.sent == ["n", "e"]
+    assert bot._state.current_hex == "CCCC0003"
+    assert not bot._travel.active            # arrived
+
+
+def test_goto_unknown_destination():
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    bot._state.set_room("HOME")
+    bot._state.current_hex = "AAAA0001"
+    assert "unknown" in bot.navigate_to_room("ZZZZ").lower()
+
+
+@pytest.mark.asyncio
+async def test_observed_movement_learns_exit(tmp_path):
+    config = MudConfig()
+    config.learning.enabled = True
+    config.learning.store_path = str(tmp_path / "g.json")
+    bot = make_transcript_bot(
+        ["The Home Room\n", "Obvious exits: north\n"], config=config,
+        rooms=_NAV_ROOMS)
+    from mmud.data.store import GameStore
+    bot._store = GameStore(tmp_path / "g.json")
+    # a manual move was sent before this room appeared
+    bot._state.current_hex = "BBBB0002"
+    bot._pending_move = "s"
+    await bot.run()
+    assert ("BBBB0002", "s", "AAAA0001") in bot._store.exits()
