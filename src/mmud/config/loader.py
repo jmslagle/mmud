@@ -75,6 +75,10 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             flee_rooms=n.get("flee_rooms", 3),
             can_pick_locks=n.get("can_pick_locks", False),
             can_disarm_traps=n.get("can_disarm_traps", False),
+            auto_search=n.get("auto_search", False),
+            search_max=n.get("search_max", 3),
+            roam=n.get("roam", False),
+            bash_doors=n.get("bash_doors", False),
         )
     if it := data.get("items"):
         cfg.items = ItemsConfig(

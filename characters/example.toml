@@ -69,6 +69,10 @@ auto_start       = false
 flee_rooms       = 3
 can_pick_locks   = false
 can_disarm_traps = false
+auto_search      = false   # search for hidden exits in each new room
+search_max       = 3       # search attempts per room
+roam             = false   # wander random exits when otherwise idle
+bash_doors       = false   # bash closed/locked doors when open/pick fails
 
 # ── Items & Cash ─────────────────────────────────────────────────────────────
 [items]

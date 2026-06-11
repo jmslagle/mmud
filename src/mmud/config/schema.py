@@ -70,6 +70,10 @@ class NavigationConfig:
     flee_rooms: int = 3
     can_pick_locks: bool = False
     can_disarm_traps: bool = False
+    auto_search: bool = False   # search for hidden exits in each new room
+    search_max: int = 3         # search attempts per room
+    roam: bool = False          # wander random exits when idle
+    bash_doors: bool = False    # bash closed doors when open fails
 
 
 @dataclass
