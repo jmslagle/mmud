@@ -43,6 +43,19 @@ class MegaMudApp(App):
         self._bus = GameEventBus()
         self._bot: MudBot | None = None
         self._bot_task: asyncio.Task | None = None
+        self._macro_keys = self._load_macro_keys()
+
+    @staticmethod
+    def _load_macro_keys() -> dict[str, str]:
+        """Map terminal numpad key names -> commands from MACROS.MD."""
+        from mmud.data.macros_md import load_macros, vk_to_key_name
+        data_dir = pathlib.Path("extractions/mm103s.exe.extracted/45DAD/Default")
+        keys: dict[str, str] = {}
+        if data_dir.exists():
+            for m in load_macros(data_dir / "MACROS.MD"):
+                if name := vk_to_key_name(m.key_code):
+                    keys[name] = m.command
+        return keys
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-area"):
@@ -73,6 +86,14 @@ class MegaMudApp(App):
             return
         if event.key in ("pagedown", "page_down"):
             self.query_one(GameOutput).scroll_page_down()
+            event.prevent_default()
+            return
+
+        # Numpad macros (MACROS.MD) — fire as movement hotkeys. The kp_* key
+        # names only arrive in numpad/nav mode, so they don't clash with typing.
+        if (cmd := self._macro_keys.get(event.key)) is not None:
+            if self._bot is not None:
+                self.run_worker(self._bot._conn.send(cmd))
             event.prevent_default()
             return
 
