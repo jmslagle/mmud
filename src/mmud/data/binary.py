@@ -1,24 +1,23 @@
 """Binary data probing and parsing utilities for game database files (MONSTERS.MD, ITEMS.MD, etc.).
 
-The container is the "MDB2" CDB B-tree engine; its on-disk format (header, node,
-and length-prefixed key layout) is documented in docs/cdb-mdb2-format.md, derived
-from the decompiled cdb_* functions in megamud.exe. The summary below is the
-empirical view this parser actually uses.
+The container is the "MDB2" CDB B-tree engine, fully documented in
+docs/cdb-mdb2-format.md (derived from the decompiled cdb_* functions in
+megamud.exe). `walk_entries()` implements the true on-disk format; the
+`load_*` helpers parse each entry's payload into typed records.
 
-Format note (empirically reverse-engineered):
-  Each .MD file is a paged B-tree database:
-    - Bytes 0-1023: 1024-byte file header (magic 'MDB2X\\0', metadata)
-    - Followed by N*1024-byte pages (N = u16 at header+20)
-  Normal data pages (first 2 bytes == 0x00 0x00) hold 2 records each.
-  Index pages (first byte == 0x01 or 0x02) hold B-tree index entries.
-  Each record entry begins with marker byte 0x80:
-    entry+0x00: u8  = 0x80 (marker)
-    entry+0x01: u16 LE = record_id
-    entry+0x03: char[31] name (null-padded)
-    entry+0x22: u32 LE flags (0x40000000=active, 0x80000000=deleted)
-    ... stats fields at higher offsets (file-format specific)
-  The two entries per page are separated by 221 bytes.
-  Page prefix (before entry 1) ends at: 14 + len(level_str_null_term) + 4 padding bytes.
+Format summary (true MDB2 walk):
+  - Page 0 (bytes 0..0x3ff): file header. Magic "MDB2" in the first 4 bytes;
+    root page u16 @0x0a; page count u16 @0x14.
+  - Pages 1..N at byte offset page*0x400 (N = len(data)//0x400 - 1).
+  - Node header (0x0c bytes): type u8 @0x00 (0=leaf, 1/2=interior — skipped),
+    entry count u16 @0x02, free bytes u16 @0x04, prev/next leaf u16 @0x08/0x0a.
+  - Entries start at node+0x0c and are length-prefixed: [L u8][body L bytes],
+    next entry at ptr+L+1.
+  - Entry body: [key-class byte 0x01][ASCII record-id]\\0[int32][tag u8] then the
+    fixed-size game-record payload (monsters 210B / items 200B / spells 158B /
+    players 248B). The tag (0x80) is the record key class.
+  - Payload field offsets used below are the historical marker-relative offsets
+    minus 1 (the old "0x80 marker" was this key tag byte).
 """
 from __future__ import annotations
 
@@ -30,11 +29,8 @@ from dataclasses import dataclass
 # ── File-format constants ────────────────────────────────────────────────────
 
 _PAGE_SIZE = 1024
-_ENTRY_MARKER = 0x80
 _FLAG_ACTIVE = 0x40000000
 _FLAG_DELETED = 0x80000000
-_ENTRY_SPACING = 221       # bytes between entry 1 and entry 2 within a page
-_ENTRY_SPACING_ALT = 220   # rare variant (some pages)
 
 # ── Low-level helpers ────────────────────────────────────────────────────────
 
@@ -102,50 +98,6 @@ def walk_entries(path: pathlib.Path):
                 tag=body[nul + 5],
                 payload=bytes(body[nul + 6 :]),
             )
-
-
-def _find_entry1_offset(page: bytes) -> int:
-    """Return offset of first record entry within a 1024-byte page.
-
-    The page prefix contains 14 bytes of fixed metadata, then a
-    null-terminated decimal ASCII string (level/type indicator), then
-    4 null padding bytes, then the 0x80 entry marker.
-    """
-    null_pos = 0x0E
-    while null_pos < 0x20 and page[null_pos] != 0:
-        null_pos += 1
-    return null_pos + 1 + 4   # past null terminator + 4 padding zeros
-
-
-def _iter_page_entries(page: bytes) -> list[int]:
-    """Return offsets of all valid 0x80-marked entries in a normal data page."""
-    e1 = _find_entry1_offset(page)
-    if e1 >= len(page) - 50 or page[e1] != _ENTRY_MARKER:
-        return []
-    offsets = [e1]
-    # Try standard 221-byte spacing, fall back to 220
-    for spacing in (_ENTRY_SPACING, _ENTRY_SPACING_ALT):
-        e2 = e1 + spacing
-        if e2 + 50 < len(page) and page[e2] == _ENTRY_MARKER:
-            offsets.append(e2)
-            break
-    return offsets
-
-
-def _iter_all_entries(data: bytes):
-    """Yield (page_num, entry_offset_in_page, page_bytes) for every record
-    entry in all normal data pages of an .MD file."""
-    num_pages = len(data) // _PAGE_SIZE
-    for page_num in range(1, num_pages):
-        page_start = page_num * _PAGE_SIZE
-        if page_start + _PAGE_SIZE > len(data):
-            break
-        page = data[page_start : page_start + _PAGE_SIZE]
-        # Normal data page check (first 2 bytes must be 0x00 0x00)
-        if page[0] != 0x00 or page[1] != 0x00:
-            continue
-        for eoff in _iter_page_entries(page):
-            yield page_num, eoff, page
 
 
 # ── Monster ──────────────────────────────────────────────────────────────────
@@ -356,68 +308,38 @@ class Player:
 
 
 def load_players(path: pathlib.Path) -> list[Player]:
-    """Parse PLAYERS.MD and return all active Player records.
+    """Parse PLAYERS.MD and return all non-deleted Player records.
 
-    Uses the same page-based layout as other .MD files. Within each entry:
-      +0x01: u16 record_id (not stored per player — u16 is a 2-byte entry sub-header)
-      +0x03: char[31] player name
-    Other fields (title, guild, etc.) follow in the entry.
-    Returns an empty list if the file has no active records or cannot be parsed.
+    Payload offsets (true MDB2 walk; PLAYERS.MD is absent from the public
+    extraction, so the numeric offsets remain provisional):
+      +0x02: char[11] name   +0x0d: char[19] title   +0x20: char[31] guild
+      +0x3f: char[21] location   +0x21: u32 flags
     """
     if not path.exists():
         return []
-
-    data = path.read_bytes()
     out: list[Player] = []
-
-    for _page_num, eoff, page in _iter_all_entries(data):
-        if eoff + 0x80 > len(page):
-            continue
-
-        name = _cstr(page, eoff + 0x03, 11)
+    for entry in walk_entries(path):
+        p = entry.payload
+        name = _cstr(p, 0x02, 11)
         if not name:
             continue
-
-        # Scan for flags
-        flags = 0
-        for foff in range(eoff + 0x22, min(eoff + 0x80, len(page) - 3), 4):
-            candidate = struct.unpack_from("<I", page, foff)[0]
-            if candidate & (_FLAG_ACTIVE | 0x4000 | 0x8000 | 0x200):
-                flags = candidate
-                break
-
+        flags = struct.unpack_from("<I", p, 0x21)[0]
         if _deleted(flags):
             continue
-
-        # Text fields following the name
-        title    = _cstr(page, eoff + 0x0E, 19)
-        guild    = _cstr(page, eoff + 0x21, 31)
-        location = _cstr(page, eoff + 0x40, 21)
-
-        # Numeric fields (approximate offsets)
-        level      = struct.unpack_from("<h", page, eoff + 0x58)[0] if eoff + 0x5A < len(page) else 0
-        alignment  = struct.unpack_from("<h", page, eoff + 0x60)[0] if eoff + 0x62 < len(page) else 0
-        class_id   = struct.unpack_from("<h", page, eoff + 0x64)[0] if eoff + 0x66 < len(page) else 0
-        race_id    = struct.unpack_from("<h", page, eoff + 0x68)[0] if eoff + 0x6A < len(page) else 0
-        reputation = struct.unpack_from("<h", page, eoff + 0x6C)[0] if eoff + 0x6E < len(page) else 0
-        first_seen = struct.unpack_from("<i", page, eoff + 0x78)[0] if eoff + 0x7C < len(page) else 0
-        last_seen  = struct.unpack_from("<i", page, eoff + 0x7C)[0] if eoff + 0x80 < len(page) else 0
-
         out.append(Player(
             name=name,
-            title=title,
-            guild=guild,
-            location=location,
-            level=level,
-            alignment=alignment,
-            class_id=class_id,
-            race_id=race_id,
-            reputation=reputation,
-            first_seen=first_seen,
-            last_seen=last_seen,
+            title=_cstr(p, 0x0D, 19),
+            guild=_cstr(p, 0x20, 31),
+            location=_cstr(p, 0x3F, 21),
+            level=struct.unpack_from("<h", p, 0x57)[0],
+            alignment=struct.unpack_from("<h", p, 0x5F)[0],
+            class_id=struct.unpack_from("<h", p, 0x63)[0],
+            race_id=struct.unpack_from("<h", p, 0x67)[0],
+            reputation=struct.unpack_from("<h", p, 0x6B)[0],
+            first_seen=struct.unpack_from("<i", p, 0x77)[0],
+            last_seen=struct.unpack_from("<i", p, 0x7B)[0],
             flags=flags,
         ))
-
     return out
 
 

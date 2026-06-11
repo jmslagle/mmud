@@ -325,9 +325,9 @@ The bot loads game data from `extractions/mm103s.exe.extracted/45DAD/Default/`:
 | `MESSAGES.MD` | 404 spell/effect patterns | Text: `name:flags:\napply_msg\nremove_msg` |
 | `ROOMS.MD` | 543 room definitions | Text: `HexID:HexID:flags:Code:Region:Name` |
 | `*.MP` (1,198 files) | Navigation paths | Text: bracketed from/to + step commands |
-| `MONSTERS.MD` | 712 monster records | Binary B-tree (210 bytes/record) |
-| `ITEMS.MD` | 400 item records | Binary B-tree (200 bytes/record) |
-| `SPELLS.MD` | 141 spell records | Binary B-tree (158 bytes/record) |
+| `MONSTERS.MD` | 788 monster records | MDB2 B-tree (210-byte payload) — see [docs/cdb-mdb2-format.md](docs/cdb-mdb2-format.md) |
+| `ITEMS.MD` | 667 active item records (1,336 entries) | MDB2 B-tree (200-byte payload) |
+| `SPELLS.MD` | 936 spell records | MDB2 B-tree (158-byte payload) |
 
 ---
 
