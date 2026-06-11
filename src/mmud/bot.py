@@ -15,6 +15,7 @@ from mmud.events import (
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
     PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH, PRIO_COMMERCE,
+    PRIO_PARTY,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -164,6 +165,13 @@ class MudBot:
             travel_active=lambda: self._travel.active,
         )
         self._engine.register("commerce", self._commerce, PRIO_COMMERCE)
+        from mmud.parser.party_parser import PartyParser
+        from mmud.automation.party import PartyDecider, InviteMonitor
+        self._party_parser = PartyParser()
+        self._invites = InviteMonitor(self._config.players)
+        self._engine.register("party",
+                              PartyDecider(self._config.party, self._config.players),
+                              PRIO_PARTY)
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
@@ -253,6 +261,9 @@ class MudBot:
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
         self._commerce.on_line(clean)
+        self._party_parser.feed(clean, self._state)
+        if join_cmd := self._invites.check(clean):
+            self._state.enqueue(join_cmd)
         self._loot.process_line(clean, self._state)
         self._parse_get_results(clean)
         self._parse_room(clean)
