@@ -147,6 +147,8 @@ class MudBot:
         self._travel = TravelDecider(self._config.items, self._config.stealth,
                                      self._bus or GameEventBus())
         self._engine.register("travel", self._travel, PRIO_TRAVEL)
+        from mmud.automation.doors import DoorMonitor
+        self._doors = DoorMonitor(self._config.navigation)
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
@@ -231,6 +233,7 @@ class MudBot:
         self._parse_exits(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
+        self._handle_doors(clean)
         self._parse_nav_failure(clean)
         self._parse_conversation(clean)
         self._handle_login(clean)
@@ -390,6 +393,19 @@ class MudBot:
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()
+
+    def _handle_doors(self, line: str) -> None:
+        if not (self._travel.active or (self._loop_runner and self._loop_runner.running)):
+            return
+        door_cmds = self._doors.handle(line, self._pending_move)
+        if door_cmds is None:
+            return
+        for c in door_cmds:
+            self._state.enqueue(c)
+        if door_cmds:
+            self._travel.retry_current()   # re-send the move after opening
+        else:
+            self._travel.on_move_failed()  # can't open: normal failure path
 
     def _parse_nav_failure(self, line: str) -> None:
         if _NAV_FAIL_RE.search(line):
