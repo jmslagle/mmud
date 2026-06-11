@@ -89,6 +89,17 @@ out by `cdb_key_get_int` (`0x004a0fd0`), `cdb_key_get_tag` (`0x004a0ff0`),
 
 Comparison order is: name (`strcmp`) → int32 → tag (unless wildcard).
 
+**As observed in the game `.MD` files** (`src/mmud/data/binary.py` `walk_entries`):
+the key **name** is not the record's display name — it is a 1-byte **key class**
+(`0x01`, "by record number") followed by the record id as an **ASCII decimal
+string** (e.g. `b"\x01220"`), then the NUL, `int32` (0 in every observed file),
+and `tag = 0x80` (the record key class). The record's real fields (name, stats)
+live in the **payload after the tag**. Payloads are fixed-size per database:
+**monsters 210 B, items 200 B, spells 158 B, players 248 B**. SPELLS.MD records
+carry no active/deleted flag dword and may contain duplicate ids (old + current
+versions); the other DBs filter on `flags & 0x40000000` (active) / `0x80000000`
+(deleted) at payload `+0x21`.
+
 ## Algorithms
 
 ### Lookup (read path)

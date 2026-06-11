@@ -135,3 +135,71 @@ def test_spell_count_reasonable(data_dir):
     spells = load_spells(data_dir / "SPELLS.MD")
     print(f"SPELLS.MD: loaded {len(spells)} active spells")
     assert len(spells) > 50, f"Expected >50 spells, got {len(spells)}"
+
+
+# ── True MDB2 walker ─────────────────────────────────────────────────────────
+import pytest
+from mmud.data.binary import MdEntry, walk_entries
+
+
+def test_walker_monster_totals(data_dir):
+    entries = list(walk_entries(data_dir / "MONSTERS.MD"))
+    assert len(entries) == 788
+    assert all(e.tag == 0x80 for e in entries)
+    assert all(len(e.payload) == 210 for e in entries)
+
+
+def test_walker_item_totals(data_dir):
+    entries = list(walk_entries(data_dir / "ITEMS.MD"))
+    assert len(entries) == 1336
+    assert all(len(e.payload) == 200 for e in entries)
+
+
+def test_walker_spell_totals(data_dir):
+    entries = list(walk_entries(data_dir / "SPELLS.MD"))
+    assert len(entries) == 936
+    assert all(len(e.payload) == 158 for e in entries)
+
+
+def test_walker_classes_totals(data_dir):
+    assert len(list(walk_entries(data_dir / "CLASSES.MD"))) == 15
+
+
+def test_walker_key_id_matches_payload_id(data_dir):
+    import struct
+    for e in list(walk_entries(data_dir / "MONSTERS.MD"))[:50]:
+        assert e.record_id == struct.unpack_from("<H", e.payload, 0)[0]
+
+
+def test_walker_rejects_non_mdb2(data_dir):
+    with pytest.raises(ValueError, match="MDB2"):
+        list(walk_entries(data_dir / "ROOMS.MD"))
+
+
+def test_monsters_recovered_by_true_walk(data_dir):
+    monsters = load_monsters(data_dir / "MONSTERS.MD")
+    assert len(monsters) == 788          # every entry is active in this file
+    names = {m.name.lower() for m in monsters}
+    for missed in ("ankheg", "black orc", "acid slime", "bounty hunter"):
+        assert missed in names
+    assert "giant rat" in names
+    assert all(m.is_active for m in monsters)
+
+
+def test_items_recovered_by_true_walk(data_dir):
+    items = load_items(data_dir / "ITEMS.MD")
+    assert len(items) == 667             # active entries of 1336 total
+    names = {i.name.lower() for i in items}
+    assert "a statue of a bard" in names   # missed by the old heuristic
+    assert all(i.is_active for i in items)
+
+
+def test_spells_all_entries_loaded(data_dir):
+    spells = load_spells(data_dir / "SPELLS.MD")
+    assert len(spells) == 936
+    names = {s.full_name.lower() for s in spells}
+    assert "major healing" in names
+    # SPELLS.MD has duplicate records (no active/deleted flag to filter on);
+    # assert on a specific record id so the short-name parse is deterministic.
+    by_id = {s.record_id: s for s in spells if s.full_name.lower() == "major healing"}
+    assert by_id[220].short_name == "han"
