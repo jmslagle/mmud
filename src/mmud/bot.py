@@ -17,6 +17,7 @@ from mmud.automation.decision import (
 )
 from mmud.automation.cures import CureDecider
 from mmud.automation.safety import SafetyMonitor
+from mmud.automation.remote import RemoteCommandHandler
 from mmud.state.conditions import scan_onset, scan_recovery
 from mmud.parser.who_parser import WhoParser
 from mmud.parser.conversation_parser import ConversationParser
@@ -84,6 +85,7 @@ class MudBot:
         self._engine.register("spells", self._spell_engine, PRIO_SPELLS)
         self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._safety = SafetyMonitor(self._config.safety)
+        self._remote = RemoteCommandHandler(self)
         self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
@@ -218,12 +220,19 @@ class MudBot:
 
     def _parse_conversation(self, line: str) -> None:
         msg = self._convo_parser.parse(line)
-        if msg:
-            self._emit(ConversationReceived(
-                channel=msg.channel,
-                sender=msg.sender,
-                text=msg.text,
-            ))
+        if msg is None:
+            return
+        self._emit(ConversationReceived(
+            channel=msg.channel,
+            sender=msg.sender,
+            text=msg.text,
+        ))
+        if self._config.remote.enabled and msg.channel == "tell":
+            reply = self._remote.handle(msg.sender, msg.text)
+            if reply:
+                self._state.enqueue(
+                    self._config.remote.tell_format.format(name=msg.sender, text=reply)
+                )
 
     def _handle_login(self, line: str) -> None:
         if self._login_handler.in_game:

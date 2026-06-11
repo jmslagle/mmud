@@ -394,3 +394,43 @@ async def test_afk_low_hp_hangup():
     await bot.run()
     assert bot._safety.hangup_requested
     assert "low hp" in bot._safety.reason.lower()
+
+
+from mmud.config.schema import PlayerRule, RemoteConfig
+
+
+def _remote_config() -> MudConfig:
+    config = MudConfig()
+    config.remote = RemoteConfig(enabled=True)
+    config.players = [PlayerRule(name="Friend", friend=True, remote_cmds=["*"])]
+    return config
+
+
+@pytest.mark.asyncio
+async def test_remote_tell_executes_and_replies():
+    # The bot sends ONE command per received line, so the @kill tell queues two
+    # commands (the attack, then the reply) — a second server line drains the second.
+    bot = make_transcript_bot(
+        ["[Friend tells you] @kill orc\n", "ok\n"], config=_remote_config()
+    )
+    await bot.run()
+    assert "kill orc" in bot._conn.sent
+    assert "/Friend attacking orc" in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_remote_disabled_ignores_tells():
+    config = _remote_config()
+    config.remote.enabled = False
+    bot = make_transcript_bot(["[Friend tells you] @kill orc\n"], config=config)
+    await bot.run()
+    assert "kill orc" not in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_stranger_tell_ignored():
+    bot = make_transcript_bot(
+        ["[Stranger tells you] @hangup\n"], config=_remote_config()
+    )
+    await bot.run()
+    assert not bot._safety.hangup_requested
