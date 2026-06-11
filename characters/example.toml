@@ -23,6 +23,11 @@ backstab        = false
 polite_attacks  = false
 attack_order    = "first"
 mana_attack_pct = 0.20
+max_monsters     = 0       # run if more monsters than this in the room (0 = no limit)
+max_monster_exp  = 0       # run if summed monster exp exceeds this (0 = no limit)
+run_backwards    = false   # retrace recent moves to flee instead of "flee"
+run_if_bs_fails  = false   # run away when a backstab attempt fails
+monster_priority = []      # attack these names first, e.g. ["ancient dragon"]
 
 # ── Spells ───────────────────────────────────────────────────────────────────
 [spells]
@@ -33,6 +38,16 @@ heal          = ""
 heal_hp_pct   = 0.50
 mana_heal     = ""
 mana_heal_pct = 0.30
+max_cast_count   = 0       # attack-spell casts per encounter, then melee (0 = unlimited)
+cast_weapon_cmd  = ""      # e.g. "arm staff" — switch to casting weapon
+melee_weapon_cmd = ""      # e.g. "arm warhammer" — switch to melee weapon
+
+# ── PvP (reaction to other players in the room) ──────────────────────────────
+[pvp]
+action        = ""         # "" ignore | "flee" | "attack" | "hangup" | any command
+spell         = ""         # cast at the player when action = "attack"
+flee_rooms    = 2
+hangup_delay_s = 0
 
 # [[spells.bless]]
 # cmd      = "bless"

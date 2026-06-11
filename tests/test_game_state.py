@@ -109,3 +109,15 @@ def test_abort_task():
     gs.abort_task()
     assert not gs.task.is_active
     assert gs.task.payload == {}
+
+
+from mmud.state.game_state import MonsterSighting
+
+
+def test_sightings_and_names():
+    gs = GameState()
+    gs.monsters_present.append(MonsterSighting(name="orc", count=2, exp_each=100))
+    gs.monsters_present.append(MonsterSighting(name="rat", count=1, exp_each=20))
+    assert gs.monster_names() == ["orc", "rat"]
+    assert gs.monster_count() == 3
+    assert gs.monster_exp_total() == 220

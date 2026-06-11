@@ -13,6 +13,8 @@ class SpellEngine:
         # Initialize to -BLESS_COOLDOWN_TICKS so the first cast is always allowed
         self._bless_cooldowns: list[int] = [-BLESS_COOLDOWN_TICKS] * len(config.bless)
         self._ticks = 0
+        self._attack_casts = 0
+        self._swapped_to_melee = False
 
     def tick(self) -> None:
         """Advance one game tick (call once per ~1Hz timer)."""
@@ -22,6 +24,16 @@ class SpellEngine:
         """Return the spell command to cast, or None."""
         hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
         mp_pct = state.mana / state.max_mana if state.max_mana > 0 else 1.0
+
+        # Encounter ended: reset the cast counter, optionally swap back to the
+        # casting weapon once.
+        if not state.in_combat:
+            if self._swapped_to_melee:
+                self._swapped_to_melee = False
+                self._attack_casts = 0
+                if self._cfg.cast_weapon_cmd:
+                    return self._cfg.cast_weapon_cmd
+            self._attack_casts = 0
 
         # Mana heal (only out of combat)
         if (self._cfg.mana_heal and not state.in_combat
@@ -35,9 +47,16 @@ class SpellEngine:
                 and not state.in_combat):
             return self._cfg.heal
 
-        # Attack spell (in combat, takes priority over bless)
+        # Attack spell (in combat, takes priority over bless) — with cast limit
         if state.in_combat and self._cfg.attack and state.monsters_present:
-            return self._cfg.attack
+            limit = self._cfg.max_cast_count
+            if limit <= 0 or self._attack_casts < limit:
+                self._attack_casts += 1
+                return self._cfg.attack
+            if not self._swapped_to_melee and self._cfg.melee_weapon_cmd:
+                self._swapped_to_melee = True
+                return self._cfg.melee_weapon_cmd
+            return None
 
         # Pre-attack spell — cast just before engaging
         if (self._cfg.pre_attack and not state.in_combat

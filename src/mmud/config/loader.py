@@ -5,7 +5,7 @@ from mmud.config.schema import (
     MudConfig, ServerConfig, LoginConfig, CombatConfig,
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
-    HealthConfig, SafetyConfig, RemoteConfig,
+    HealthConfig, SafetyConfig, RemoteConfig, PvpConfig,
 )
 
 
@@ -36,6 +36,11 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             polite_attacks=c.get("polite_attacks", False),
             attack_order=c.get("attack_order", "first"),
             mana_attack_pct=c.get("mana_attack_pct", 0.20),
+            max_monsters=c.get("max_monsters", 0),
+            max_monster_exp=c.get("max_monster_exp", 0),
+            run_backwards=c.get("run_backwards", False),
+            run_if_bs_fails=c.get("run_if_bs_fails", False),
+            monster_priority=c.get("monster_priority", []),
         )
     if sp := data.get("spells"):
         cfg.spells = SpellsConfig(
@@ -50,6 +55,9 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
                 BlessSpell(cmd=b.get("cmd", ""), mana_pct=b.get("mana_pct", 0.80))
                 for b in sp.get("bless", [])
             ],
+            max_cast_count=sp.get("max_cast_count", 0),
+            cast_weapon_cmd=sp.get("cast_weapon_cmd", ""),
+            melee_weapon_cmd=sp.get("melee_weapon_cmd", ""),
         )
     if st := data.get("stealth"):
         cfg.stealth = StealthConfig(
@@ -124,6 +132,13 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
         cfg.remote = RemoteConfig(
             enabled=r.get("enabled", False),
             tell_format=r.get("tell_format", "/{name} {text}"),
+        )
+    if pv := data.get("pvp"):
+        cfg.pvp = PvpConfig(
+            action=pv.get("action", ""),
+            spell=pv.get("spell", ""),
+            flee_rooms=pv.get("flee_rooms", 2),
+            hangup_delay_s=pv.get("hangup_delay_s", 0),
         )
     cfg.players = [
         PlayerRule(

@@ -109,3 +109,44 @@ def test_pre_attack_skipped_when_no_monsters():
     gs.monsters_present = []
     engine = SpellEngine(cfg)
     assert engine.decide(gs) is None
+
+
+from mmud.state.game_state import MonsterSighting
+
+
+def _combat_state():
+    gs = GameState()
+    gs.set_hp(100, 100); gs.set_mana(100, 100); gs.set_combat(True)
+    gs.monsters_present.append(MonsterSighting(name="orc"))
+    return gs
+
+
+def test_cast_count_limit_then_weapon_swap():
+    cfg = SpellsConfig(attack="cast zap", max_cast_count=2,
+                       melee_weapon_cmd="arm warhammer")
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "arm warhammer"
+    assert eng.decide(gs) is None          # melee decider's turn now
+
+
+def test_counter_resets_and_swaps_back_after_combat():
+    cfg = SpellsConfig(attack="cast zap", max_cast_count=1,
+                       cast_weapon_cmd="arm staff", melee_weapon_cmd="arm warhammer")
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "arm warhammer"
+    gs.set_combat(False); gs.monsters_present.clear()
+    assert eng.decide(gs) == "arm staff"   # swap back once, out of combat
+    assert eng.decide(gs) is None
+
+
+def test_unlimited_when_zero():
+    cfg = SpellsConfig(attack="cast zap", max_cast_count=0)
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    for _ in range(10):
+        assert eng.decide(gs) == "cast zap"

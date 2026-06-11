@@ -13,8 +13,9 @@ from mmud.events import (
     ConditionChanged, HangupTriggered,
 )
 from mmud.automation.decision import (
-    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_SPELLS, PRIO_COMBAT,
+    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
 )
+from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
 from mmud.automation.safety import SafetyMonitor
 from mmud.automation.remote import RemoteCommandHandler
@@ -24,7 +25,7 @@ from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
 from mmud.parser.matcher import PatternMatcher
 from mmud.parser.room_parser import RoomParser
-from mmud.state.game_state import GameState
+from mmud.state.game_state import GameState, MonsterSighting
 from mmud.navigation.navigator import Navigator
 from mmud.combat.combat import CombatEngine
 from mmud.automation.login import LoginHandler
@@ -73,6 +74,11 @@ class MudBot:
         self._room_parser = RoomParser(rooms or {})
         self._convo_parser = ConversationParser()
 
+        from mmud.data.monster_db import MonsterDB
+        monsters_md = (data_dir / "MONSTERS.MD") if data_dir else None
+        self._monster_db = (MonsterDB.from_file(monsters_md)
+                            if monsters_md and monsters_md.exists() else MonsterDB([]))
+
         self._state = GameState()
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
         self._combat = CombatEngine(
@@ -86,7 +92,15 @@ class MudBot:
         self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._safety = SafetyMonitor(self._config.safety)
         self._remote = RemoteCommandHandler(self)
+        from mmud.combat.pvp import PvpEngine
+        self._pvp = PvpEngine(self._config.pvp, self._config.players, self._safety)
         self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
+        from mmud.automation.run_rules import RunDecider
+        self._engine.register("run", RunDecider(self._config.combat,
+                                                self._config.navigation), PRIO_FLEE)
+        from mmud.combat.backstab import BackstabEngine
+        self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
+        self._engine.register("backstab", self._backstab, PRIO_COMBAT - 1)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -127,6 +141,8 @@ class MudBot:
                 if cmd:
                     await self._conn.send(cmd)
                     self._last_activity = time.monotonic()
+                    if cmd in ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"):
+                        self._state.move_history.append(cmd)
         finally:
             ticker_task.cancel()
             await self._conn.close()
@@ -154,6 +170,7 @@ class MudBot:
         self._parse_vitals(clean)
         self._parse_conditions(clean)
         self._safety.process_line(clean)
+        self._backstab.on_line(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
@@ -210,13 +227,28 @@ class MudBot:
             prev = self._state.current_room
             self._state.set_room(code)
             self._state.monsters_present.clear()
+            self._state.players_present = []
+            self._backstab.reset()
+            if self._state.task.type is TaskType.RUNNING:
+                self._state.complete_task()
             if code != prev:
                 self._emit(RoomChanged(code=code, name=line.strip()))
         else:
-            monsters = self._room_parser.extract_monsters(line)
-            if monsters:
-                self._state.monsters_present.extend(monsters)
-                self._emit(MonstersSeen(monsters=monsters))
+            sightings = self._room_parser.extract_sightings(line)
+            if sightings:
+                for name, count in sightings:
+                    rec = self._monster_db.find(name)
+                    self._state.monsters_present.append(MonsterSighting(
+                        name=name, count=count,
+                        exp_each=rec.exp_value if rec else 0,
+                        record_id=rec.record_id if rec else -1,
+                    ))
+                self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
+            players = self._room_parser.extract_players(line)
+            if players:
+                self._state.players_present = players
+                if cmd := self._pvp.check(self._state):
+                    self._state.enqueue(cmd)
 
     def _parse_conversation(self, line: str) -> None:
         msg = self._convo_parser.parse(line)
