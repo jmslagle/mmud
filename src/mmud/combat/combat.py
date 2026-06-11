@@ -27,7 +27,7 @@ class CombatEngine:
             if self.sneak_cmd and not self._sneaked_this_encounter:
                 self._sneaked_this_encounter = True
                 return self.sneak_cmd
-            target = state.monsters_present[0] if state.monsters_present else ""
+            target = state.monster_names()[0] if state.monsters_present else ""
             return f"{self.attack_cmd} {target}".strip()
 
         # Reset sneak flag when not in combat

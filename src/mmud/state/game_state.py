@@ -11,6 +11,14 @@ class Effect:
     flags: int
 
 
+@dataclass
+class MonsterSighting:
+    name: str
+    count: int = 1
+    exp_each: int = 0       # from MonsterDB; 0 if unknown
+    record_id: int = -1     # MONSTERS.MD record id; -1 if unknown
+
+
 class GameState:
     def __init__(self) -> None:
         self.current_room: str = ""
@@ -20,7 +28,9 @@ class GameState:
         self.max_mana: int = 0
         self.active_effects: set[str] = set()
         self.conditions: set = set()   # set[Condition] — active status conditions
-        self.monsters_present: list[str] = []
+        self.monsters_present: list[MonsterSighting] = []
+        self.players_present: list[str] = []
+        self.move_history: deque[str] = deque(maxlen=20)  # recent movement cmds
         self.in_combat: bool = False
         self._command_queue: deque[str] = deque()
         self.task: TaskState = TaskState()
@@ -58,6 +68,15 @@ class GameState:
 
     def set_combat(self, in_combat: bool) -> None:
         self.in_combat = in_combat
+
+    def monster_names(self) -> list[str]:
+        return [s.name for s in self.monsters_present]
+
+    def monster_count(self) -> int:
+        return sum(s.count for s in self.monsters_present)
+
+    def monster_exp_total(self) -> int:
+        return sum(s.count * s.exp_each for s in self.monsters_present)
 
     def add_kill(self) -> None:
         self.kills += 1

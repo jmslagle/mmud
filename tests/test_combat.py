@@ -1,6 +1,7 @@
 from mmud.state.game_state import GameState
 from mmud.combat.combat import CombatEngine
 from mmud.config.schema import CombatConfig
+from mmud.state.game_state import MonsterSighting
 
 
 def test_attacks_when_in_combat():
@@ -46,7 +47,7 @@ def test_uses_config_attack_cmd():
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(50, 100)
-    gs.monsters_present = ["orc warrior"]
+    gs.monsters_present = [MonsterSighting(name="orc warrior")]
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
     assert ce.decide(gs) == "kill orc warrior"
 
@@ -64,7 +65,7 @@ def test_respects_mana_attack_pct():
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(10, 100)
-    gs.monsters_present = ["orc"]
+    gs.monsters_present = [MonsterSighting(name="orc")]
     ce = CombatEngine(CombatConfig(mana_attack_pct=0.20))
     assert ce.decide(gs) is None  # 10% mana < 20% threshold
 
@@ -92,7 +93,7 @@ def test_sneak_before_first_attack():
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(80, 100)
-    gs.monsters_present = ["orc"]
+    gs.monsters_present = [MonsterSighting(name="orc")]
     ce = CombatEngine(CombatConfig(), sneak_cmd="sneak")
     assert ce.decide(gs) == "sneak"         # first: sneak
     assert ce.decide(gs) == "kill orc"      # second: attack

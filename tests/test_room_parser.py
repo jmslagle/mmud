@@ -72,3 +72,25 @@ def test_extract_monsters_also_here_empty():
     parser = RoomParser({})
     assert parser.extract_monsters("Obvious exits: north") == []
     assert parser.extract_monsters("") == []
+
+
+def test_extract_sightings_with_counts():
+    p = RoomParser({})
+    s = p.extract_sightings("Also here: a dark elf, 2 orc warriors.")
+    assert ("dark elf", 1) in s
+    assert ("orc warriors", 2) in s
+
+
+def test_extract_sightings_single():
+    p = RoomParser({})
+    assert p.extract_sightings("A huge dragon is here.") == [("huge dragon", 1)]
+
+
+def test_extract_players_capitalized_names():
+    p = RoomParser({})
+    assert p.extract_players("Also here: Krang Moan, a dark elf.") == ["Krang Moan"]
+
+
+def test_extract_players_none():
+    p = RoomParser({})
+    assert p.extract_players("Also here: a dark elf, 2 orc warriors.") == []

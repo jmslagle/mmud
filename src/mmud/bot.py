@@ -24,7 +24,7 @@ from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
 from mmud.parser.matcher import PatternMatcher
 from mmud.parser.room_parser import RoomParser
-from mmud.state.game_state import GameState
+from mmud.state.game_state import GameState, MonsterSighting
 from mmud.navigation.navigator import Navigator
 from mmud.combat.combat import CombatEngine
 from mmud.automation.login import LoginHandler
@@ -72,6 +72,11 @@ class MudBot:
             rooms = load_rooms(data_dir / "ROOMS.MD")
         self._room_parser = RoomParser(rooms or {})
         self._convo_parser = ConversationParser()
+
+        from mmud.data.monster_db import MonsterDB
+        monsters_md = (data_dir / "MONSTERS.MD") if data_dir else None
+        self._monster_db = (MonsterDB.from_file(monsters_md)
+                            if monsters_md and monsters_md.exists() else MonsterDB([]))
 
         self._state = GameState()
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
@@ -210,13 +215,23 @@ class MudBot:
             prev = self._state.current_room
             self._state.set_room(code)
             self._state.monsters_present.clear()
+            self._state.players_present = []
             if code != prev:
                 self._emit(RoomChanged(code=code, name=line.strip()))
         else:
-            monsters = self._room_parser.extract_monsters(line)
-            if monsters:
-                self._state.monsters_present.extend(monsters)
-                self._emit(MonstersSeen(monsters=monsters))
+            sightings = self._room_parser.extract_sightings(line)
+            if sightings:
+                for name, count in sightings:
+                    rec = self._monster_db.find(name)
+                    self._state.monsters_present.append(MonsterSighting(
+                        name=name, count=count,
+                        exp_each=rec.exp_value if rec else 0,
+                        record_id=rec.record_id if rec else -1,
+                    ))
+                self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
+            players = self._room_parser.extract_players(line)
+            if players:
+                self._state.players_present = players
 
     def _parse_conversation(self, line: str) -> None:
         msg = self._convo_parser.parse(line)
