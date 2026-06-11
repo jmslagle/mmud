@@ -490,3 +490,16 @@ async def test_auto_cash_gets_ground_coins():
         ["You notice 23 copper farthings here.\n"], config=config)
     await bot.run()
     assert "get copper" in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_unknown_monster_learned_when_enabled(tmp_path):
+    config = MudConfig()
+    config.learning.enabled = True
+    config.learning.store_path = str(tmp_path / "gamedb.json")
+    bot = make_transcript_bot(["Also here: a glimmering wisp.\n"], config=config)
+    from mmud.data.store import GameStore
+    bot._store = GameStore(tmp_path / "gamedb.json")   # transcript bot has no data_dir
+    await bot.run()
+    names = [r["name"] for r in bot._store.data["monsters"].values()]
+    assert "glimmering wisp" in names

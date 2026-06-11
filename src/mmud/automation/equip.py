@@ -13,14 +13,18 @@ class EquipDecider:
     """PRIO_EQUIP slot: equip carried, equippable, not-yet-worn items."""
 
     def __init__(self, item_db: ItemDB, enabled: bool = True,
-                 now: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.monotonic,
+                 on_mark: Callable[[str], None] | None = None) -> None:
         self._db = item_db
         self._enabled = enabled
         self._now = now
+        self._on_mark = on_mark
         self._failed: set[str] = set()   # cursed/failed items: don't retry
 
     def mark_failed(self, name: str) -> None:
         self._failed.add(name.lower())
+        if self._on_mark is not None:
+            self._on_mark(name)
 
     def decide(self, state: GameState) -> str | None:
         if not self._enabled or state.in_combat:

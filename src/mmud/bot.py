@@ -128,12 +128,20 @@ class MudBot:
         from mmud.automation.items import LootMonitor, GetDecider
         self._loot = LootMonitor(
             is_monster=lambda name: self._monster_db.find(name) is not None)
-        self._get_decider = GetDecider(self._config.items)
+        self._get_decider = GetDecider(
+            self._config.items,
+            on_mark=(lambda n: self._store.add_mark("ungettable", n)) if self._store else None)
         self._engine.register("items", self._get_decider, PRIO_ITEMS)
         from mmud.automation.equip import EquipDecider
-        self._equip_decider = EquipDecider(self._item_db,
-                                           enabled=self._config.items.auto_get)
+        self._equip_decider = EquipDecider(
+            self._item_db, enabled=self._config.items.auto_get,
+            on_mark=(lambda n: self._store.add_mark("no_auto_equip", n)) if self._store else None)
         self._engine.register("equip", self._equip_decider, PRIO_EQUIP)
+        if self._store is not None:
+            for n in self._store.marks("ungettable"):
+                self._get_decider.mark_ungettable(n)
+            for n in self._store.marks("no_auto_equip"):
+                self._equip_decider.mark_failed(n)
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()
@@ -284,6 +292,8 @@ class MudBot:
                         exp_each=rec.exp_value if rec else 0,
                         record_id=rec.record_id if rec else -1,
                     ))
+                    if rec is None and self._store is not None:
+                        self._store.learn_monster(name)
                 self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
             players = self._room_parser.extract_players(line)
             if players:

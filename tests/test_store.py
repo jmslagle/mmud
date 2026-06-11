@@ -62,3 +62,12 @@ def test_dbs_built_from_store(tmp_path, data_dir):
     assert mdb.find("giant rat") is not None
     idb = ItemDB.from_store(s)
     assert idb.find("a statue of a bard") is not None
+
+
+def test_learn_monster_allocates_negative_ids(tmp_path):
+    s = GameStore(tmp_path / "gamedb.json")
+    rec1 = s.learn_monster("shadow fiend")
+    rec2 = s.learn_monster("dust wraith")
+    assert rec1["record_id"] == -1 and rec2["record_id"] == -2
+    assert rec1["origin"] == "learned"
+    assert s.learn_monster("Shadow Fiend")["record_id"] == -1   # dedup by name

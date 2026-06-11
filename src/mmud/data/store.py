@@ -66,6 +66,24 @@ class GameStore:
     def exits(self) -> list[tuple[str, str, str]]:
         return [tuple(e) for e in self.data["exits"]]
 
+    # ---- live learning ----------------------------------------------------
+
+    def learn_monster(self, name: str) -> dict:
+        """Record an unseen monster; learned ids are negative. Dedup by name."""
+        key = name.strip().lower()
+        for rec in self.data["monsters"].values():
+            if rec.get("origin") == "learned" and rec["name"] == key:
+                return rec
+        next_id = min((r["record_id"] for r in self.data["monsters"].values()
+                       if r["record_id"] < 0), default=0) - 1
+        rec = {"record_id": next_id, "name": key, "origin": "learned",
+               "md_hash": "", "level": 0, "exp_value": 0, "combat_rating": 0,
+               "alignment": 0, "hp_estimate": 0, "short_name1": "", "short_name2": "",
+               "flags": 0}
+        self.data["monsters"][str(next_id)] = rec
+        self.save()
+        return rec
+
 
 # ---- MD importer (binary MDB2 sources only) -------------------------------
 

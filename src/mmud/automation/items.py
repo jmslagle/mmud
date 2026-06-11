@@ -48,13 +48,17 @@ class GetDecider:
     """PRIO_ITEMS slot: pick up coins then items, one GET per decide()."""
 
     def __init__(self, config: ItemsConfig,
-                 now: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.monotonic,
+                 on_mark: Callable[[str], None] | None = None) -> None:
         self._cfg = config
         self._now = now
+        self._on_mark = on_mark
         self._ungettable: set[str] = set()
 
     def mark_ungettable(self, name: str) -> None:
         self._ungettable.add(name.lower())
+        if self._on_mark is not None:
+            self._on_mark(name)
 
     def decide(self, state: GameState) -> str | None:
         if state.in_combat:
