@@ -184,6 +184,19 @@ class SessionConfig:
 
 
 @dataclass
+class ScheduleEvent:
+    type: str = "command"      # logon|logoff|relog|goto|command|loop
+    every_seconds: int = 0     # fire interval (<=0 = disabled)
+    count: int = 0             # times to fire (0 = forever)
+    arg: str = ""              # room code / command template / loop name
+
+
+@dataclass
+class ScheduleConfig:
+    events: list[ScheduleEvent] = field(default_factory=list)
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -217,5 +230,6 @@ class MudConfig:
     learning: LearningConfig = field(default_factory=LearningConfig)
     commerce: CommerceConfig = field(default_factory=CommerceConfig)
     session: SessionConfig = field(default_factory=SessionConfig)
+    schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)
