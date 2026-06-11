@@ -110,3 +110,28 @@ def test_health_and_safety_defaults():
     assert cfg.safety.hangup_on_death is True
     assert cfg.safety.reconnect is False
     assert cfg.safety.max_redials == 3
+
+
+def test_remote_section(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text(
+        """
+[remote]
+enabled = true
+tell_format = "/{name} {text}"
+
+[[players]]
+name = "Friend"
+friend = true
+remote_cmds = ["*"]
+"""
+    )
+    cfg = load_config(p)
+    assert cfg.remote.enabled is True
+    assert cfg.remote.tell_format == "/{name} {text}"
+    assert cfg.players[0].remote_cmds == ["*"]
+
+
+def test_remote_disabled_by_default():
+    cfg = load_config(None)
+    assert cfg.remote.enabled is False

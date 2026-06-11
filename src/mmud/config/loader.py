@@ -5,7 +5,7 @@ from mmud.config.schema import (
     MudConfig, ServerConfig, LoginConfig, CombatConfig,
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
-    HealthConfig, SafetyConfig,
+    HealthConfig, SafetyConfig, RemoteConfig,
 )
 
 
@@ -119,6 +119,11 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             panic_cmd=sf.get("panic_cmd", ""),
             reconnect=sf.get("reconnect", False),
             max_redials=sf.get("max_redials", 3),
+        )
+    if r := data.get("remote"):
+        cfg.remote = RemoteConfig(
+            enabled=r.get("enabled", False),
+            tell_format=r.get("tell_format", "/{name} {text}"),
         )
     cfg.players = [
         PlayerRule(
