@@ -118,6 +118,48 @@ Anything **without** a `:` prefix is sent directly to the MUD server.
 
 ---
 
+## @-Commands (remote control)
+
+Trusted players can drive the bot from another character by sending it a **tell**
+whose text begins with `@`. This is off by default — enable it and grant
+permissions explicitly:
+
+```toml
+[remote]
+enabled     = true
+tell_format = "/{name} {text}"   # adjust to your server's telepath reply syntax
+
+[[players]]
+name        = "MyAltChar"
+friend      = true
+remote_cmds = ["*"]              # allow every verb, or list specific ones
+```
+
+Permission is per-player: a sender must match a `[[players]]` rule whose
+`remote_cmds` contains the verb (without the `@`) or `"*"`. **Unknown players are
+ignored silently** — no reply is sent, so the bot never reveals itself to
+strangers. A known player who lacks a verb gets a `permission denied` reply.
+
+| Verb | Action |
+|---|---|
+| `@status` | Reply with room, HP/MP, loop state, combat flag |
+| `@health` | Reply with `HP cur/max MP cur/max` |
+| `@loop NAME` | Start loop path `NAME` |
+| `@stop` | Stop the loop and clear the command queue |
+| `@goto CODE` | Navigate to a room by 4-letter code |
+| `@kill TARGET` | Enqueue an attack on `TARGET` |
+| `@hangup` | Disconnect immediately |
+| `@panic!` | Send the configured `[safety] panic_cmd`, then disconnect |
+| `@auto-sneak [on\|off]` | Toggle `[stealth] auto_sneak` (no arg = flip) |
+| `@auto-hide [on\|off]` | Toggle `[stealth] auto_hide` |
+| `@auto-get [on\|off]` | Toggle `[items] auto_get` |
+| `@auto-cash [on\|off]` | Toggle `[items] auto_cash` |
+
+The original MegaMud exposed ~47 verbs; the rest (e.g. `@wealth`, `@relog`,
+party verbs) arrive as later phases wire up the subsystems they drive.
+
+---
+
 ## Character Config Reference
 
 All sections are optional. Missing keys use safe defaults. `--host` / `--port` CLI args override `[server]`.
@@ -200,14 +242,32 @@ wait_seconds = 60
 enabled          = false
 timeout_minutes  = 5
 reply            = "I am AFK"
-hangup_on_low_hp = false
+hangup_on_low_hp = false        # disconnect if HP drops below flee_threshold while AFK
 popup_missed     = true
+
+[health]
+# Cure commands sent automatically when a condition is detected (blank = don't cure):
+blind_cmd   = ""               # e.g. "cast purify vision"
+poison_cmd  = ""               # e.g. "cast neutralize poison"
+disease_cmd = ""
+freedom_cmd = ""               # break hold/paralysis
+
+[safety]
+hangup_on_death = true
+hangup_players  = []           # disconnect if any of these appear in the room
+panic_cmd       = ""           # sent before a panic hangup (e.g. "recall")
+reconnect       = false        # auto-reconnect on connection loss
+max_redials     = 3
+
+[remote]
+enabled     = false            # allow trusted players to drive the bot via @-tells
+tell_format = "/{name} {text}" # reply template; adjust to your server's telepath syntax
 
 # Per-player rules (one block per player):
 [[players]]
 name        = "FriendName"
 friend      = true
-remote_cmds = ["@do", "@loop"]
+remote_cmds = ["*"]            # allowed @-verbs (without the @), or ["*"] for all
 dont_heal   = false
 dont_bless  = false
 
