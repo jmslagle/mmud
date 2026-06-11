@@ -53,7 +53,10 @@ class DecisionEngine:
                 return None
             cmd = decider.decide(state)
             if cmd is not None:
-                if state.task.is_active:
+                # Only a strictly-higher-priority slot preempts a running task.
+                # A decider that begins its own task and returns a command in the
+                # same call (CureDecider, RunDecider) must NOT abort it here.
+                if state.task.is_active and priority < state.task.priority:
                     state.abort_task()
                 return cmd
         return None

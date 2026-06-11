@@ -75,3 +75,25 @@ def test_priority_constants_are_strictly_ordered():
     values = [getattr(decision, n) for n in names]
     assert values == sorted(values)
     assert len(set(values)) == len(values)
+
+
+class TaskBeginningDecider:
+    """Begins a task at its own priority AND returns a command, like CureDecider."""
+    def __init__(self, cmd, priority):
+        self.cmd = cmd
+        self.priority = priority
+
+    def decide(self, state):
+        state.begin_task(TaskType.CASTING, priority=self.priority)
+        return self.cmd
+
+
+def test_decider_setting_own_task_is_not_self_aborted():
+    # Regression: a decider that begins a task at its own priority and returns a
+    # command must keep that task active (engine only aborts strictly-lower tasks).
+    engine = DecisionEngine()
+    engine.register("cure", TaskBeginningDecider("cast heal", PRIO_CURE), PRIO_CURE)
+    gs = GameState()
+    assert engine.next_command(gs) == "cast heal"
+    assert gs.task.is_active
+    assert gs.task.priority == PRIO_CURE
