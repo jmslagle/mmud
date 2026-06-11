@@ -44,7 +44,7 @@
 | 7 | Game DB Store + Live Learning | S–M | ✅ complete | [2026-06-10-phase-07-game-db-store.md](2026-06-10-phase-07-game-db-store.md) |
 | 8 | Shopping, Banking, Training | M | ✅ complete | [2026-06-10-phase-08-commerce.md](2026-06-10-phase-08-commerce.md) |
 | 9 | Session Management & Full Disconnect Logic | M | ✅ complete | [2026-06-10-phase-09-session-management.md](2026-06-10-phase-09-session-management.md) |
-| 10 | Party Support | M | planned | [2026-06-10-phase-10-party-support.md](2026-06-10-phase-10-party-support.md) |
+| 10 | Party Support | M | ✅ complete | [2026-06-10-phase-10-party-support.md](2026-06-10-phase-10-party-support.md) |
 | 11 | Scheduler, Scripts, Macros | M | planned | [2026-06-10-phase-11-scheduler-scripts-macros.md](2026-06-10-phase-11-scheduler-scripts-macros.md) |
 
 **Phase 11 prerequisite RESOLVED (2026-06-10 RE):** there is no binary EVENTS.MD — the original stores the schedule in the config .ini `[Schedule]` section as `EventN = type:interval:count:command` (`event_schedule_load @ 0x00422b10`; types 1=Logon 2=Logoff 3=Relog 4=GoTo 5=Command 6=LoopPath). Our TOML `[[schedule.events]]` maps it directly. MACROS.MD is text (`key:shift:ctrl:alt:command^M`) and stays directly-read.
