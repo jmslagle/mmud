@@ -162,6 +162,7 @@ strangers. A known player who lacks a verb gets a `permission denied` reply.
 | `@wait` / `@rego` | Pause / resume (party wait protocol) |
 | `@share [args]` | Share cash with the party |
 | `@forget` | Drop tracked party state |
+| `@events` | List scheduled timed events with next-fire countdowns |
 
 The original MegaMud exposed ~47 verbs; the rest (e.g. `@relog`, party verbs)
 arrive as later phases wire up the subsystems they drive.
@@ -279,6 +280,46 @@ it live with `@invite`/`@wait`/`@rego`/`@share`/`@forget`.
 > `[MP%]` columns) is reconstructed — capture your server's real party output
 > and tune `_ROW_RE` in `src/mmud/parser/party_parser.py`. The `join`/`share`/
 > `wait`/`go` command syntax is likewise reconstructed.
+
+---
+
+## Timed events (`[schedule]`) & macros
+
+`[[schedule.events]]` runs commands on a timer — the TOML form of the original's
+`.ini [Schedule] EventN = type:interval:count:command` entries. Six event types:
+
+| `type` | Action |
+|--------|--------|
+| `command` | Expand `arg` as a template and send it |
+| `goto` | Navigate to room `arg` (multi-hop) |
+| `loop` | Switch the active loop to path `arg` |
+| `relog` | Log out and back in (Phase 9 relog flow) |
+| `logoff` | Log out and disconnect |
+| `logon` | (no-op while connected — reconnect/relog own the lifecycle) |
+
+`every_seconds` sets the interval; `count` limits firings (`0` = forever).
+List the live schedule with `@events`.
+
+```toml
+[[schedule.events]]
+type          = "relog"
+every_seconds = 14400      # every 4 hours
+count         = 0
+[[schedule.events]]
+type          = "command"
+every_seconds = 300
+arg           = "gossip still here||gossip anyone about?"   # random alternative
+```
+
+**Command templates** (used by `command` events) support the original's syntax:
+`||`-separated random alternatives, `{userid}`/`{pswd}`/`{target}`/`{dmg}`/`{p1}`–`{p5}`
+substitution tokens, and `^X` control escapes (`^M` = press enter).
+
+**Macros:** `MACROS.MD` (text) maps numpad keys to commands — in the TUI, the
+numpad block (with NumLock off) fires movement/`rest` hotkeys.
+
+> Live-tune caveat: terminal numpad key names vary by emulator (`kp_0`-style are
+> Textual's); adjust `_VK_KEYS` in `src/mmud/data/macros_md.py` if they don't match.
 
 ---
 

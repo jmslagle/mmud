@@ -115,6 +115,16 @@ class MudBot:
         from mmud.session import SessionManager
         self._session = SessionManager(self._config.session)
         self._relog_pending = False
+        from mmud.automation.scheduler import Scheduler
+        self._scheduler = Scheduler(
+            self._config.schedule,
+            send=self._state.enqueue,
+            goto=self.navigate_to_room,
+            start_loop=self.start_loop,
+            relog=lambda: self.request_relog("scheduled relog"),
+            logoff=self._scheduled_logoff,
+            variables=self._template_vars,
+        )
         self._remote = RemoteCommandHandler(self)
         from mmud.combat.pvp import PvpEngine
         self._pvp = PvpEngine(self._config.pvp, self._config.players, self._safety)
@@ -237,6 +247,7 @@ class MudBot:
             self._check_afk()
             self._check_task_timeout(time.monotonic())
             self._check_session(time.monotonic())
+            self._scheduler.tick(time.monotonic())
 
     def _check_afk(self) -> None:
         cfg = self._config.afk
@@ -507,6 +518,20 @@ class MudBot:
             self._safety.request_hangup("session limit reached")
         elif action == "relog":
             self.request_relog("exp rate below minimum")
+
+    def _scheduled_logoff(self) -> None:
+        self._state.enqueue(self._config.session.logout_cmd)
+        self._safety.request_hangup("scheduled logoff")
+
+    def _template_vars(self) -> dict:
+        names = self._state.monster_names()
+        return {
+            "userid": self._config.login.username,
+            "pswd": self._config.login.password,
+            "target": names[0] if names else "",
+            "source": "",   # populated when live testing identifies the source line
+            "dmg": str(self._state.combat_dmg_sum),
+        }
 
     def request_relog(self, reason: str) -> None:
         """Log out cleanly and start one fresh session (login from scratch)."""

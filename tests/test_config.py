@@ -315,3 +315,30 @@ def test_party_additions_defaults():
     cfg = load_config(None)
     assert cfg.party.status_cmd == ""        # "" = no periodic refresh
     assert cfg.party.status_interval_s == 60
+
+
+def test_schedule_section(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[[schedule.events]]
+type = "relog"
+every_seconds = 3600
+count = 0
+
+[[schedule.events]]
+type = "command"
+every_seconds = 600
+count = 3
+arg = "say hello||say hi"
+""")
+    cfg = load_config(p)
+    assert len(cfg.schedule.events) == 2
+    assert cfg.schedule.events[0].type == "relog"
+    assert cfg.schedule.events[0].every_seconds == 3600
+    assert cfg.schedule.events[0].count == 0          # 0 = forever
+    assert cfg.schedule.events[1].arg == "say hello||say hi"
+
+
+def test_schedule_empty_by_default():
+    cfg = load_config(None)
+    assert cfg.schedule.events == []

@@ -6,7 +6,7 @@ from mmud.config.schema import (
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
     HealthConfig, SafetyConfig, RemoteConfig, PvpConfig, LearningConfig,
-    CommerceConfig, SessionConfig,
+    CommerceConfig, SessionConfig, ScheduleConfig, ScheduleEvent,
 )
 
 
@@ -173,6 +173,16 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             low_rate_action=se.get("low_rate_action", "hangup"),
             logout_cmd=se.get("logout_cmd", "x"),
         )
+    if sc := data.get("schedule"):
+        cfg.schedule = ScheduleConfig(events=[
+            ScheduleEvent(
+                type=ev.get("type", "command"),
+                every_seconds=ev.get("every_seconds", 0),
+                count=ev.get("count", 0),
+                arg=ev.get("arg", ""),
+            )
+            for ev in sc.get("events", [])
+        ])
     cfg.players = [
         PlayerRule(
             name=pl.get("name", ""),
