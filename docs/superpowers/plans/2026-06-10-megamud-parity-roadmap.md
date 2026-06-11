@@ -42,7 +42,7 @@
 | 5 | Inventory, Loot, Cash | L | ✅ complete | [2026-06-10-phase-05-inventory-loot-cash.md](2026-06-10-phase-05-inventory-loot-cash.md) |
 | 6 | Multi-hop Pathfinding, Resync, Doors, Search | L | ✅ complete | [2026-06-10-phase-06-multihop-pathfinding.md](2026-06-10-phase-06-multihop-pathfinding.md) |
 | 7 | Game DB Store + Live Learning | S–M | ✅ complete | [2026-06-10-phase-07-game-db-store.md](2026-06-10-phase-07-game-db-store.md) |
-| 8 | Shopping, Banking, Training | M | planned | [2026-06-10-phase-08-commerce.md](2026-06-10-phase-08-commerce.md) |
+| 8 | Shopping, Banking, Training | M | ✅ complete | [2026-06-10-phase-08-commerce.md](2026-06-10-phase-08-commerce.md) |
 | 9 | Session Management & Full Disconnect Logic | M | planned | [2026-06-10-phase-09-session-management.md](2026-06-10-phase-09-session-management.md) |
 | 10 | Party Support | M | not started | write plan at phase start |
 | 11 | Scheduler, Scripts, Macros | M | not started | write plan at phase start — **prereq: EVENTS.MD format RE** (file absent from the extraction; needs a Ghidra session against `events_md_load` first) |
