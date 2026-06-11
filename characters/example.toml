@@ -82,6 +82,9 @@ collect_runic    = false
 runic_name       = "runic"
 dont_go_heavy    = true
 dont_go_medium   = false
+max_coins        = 0       # drop loose coins above this per denomination (0 = off)
+max_wealth       = 0       # bank when copper-equiv wealth exceeds (Phase 8)
+min_wealth       = 0       # withdraw when below (Phase 8)
 
 # ── Party ────────────────────────────────────────────────────────────────────
 [party]

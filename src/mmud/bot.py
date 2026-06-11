@@ -14,7 +14,7 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
-    PRIO_REFRESH,
+    PRIO_REFRESH, PRIO_ITEMS,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -106,6 +106,11 @@ class MudBot:
         from mmud.state.inventory import RefreshDecider
         self._inv_parser = InventoryParser()
         self._engine.register("refresh", RefreshDecider(), PRIO_REFRESH)
+        from mmud.automation.items import LootMonitor, GetDecider
+        self._loot = LootMonitor(
+            is_monster=lambda name: self._monster_db.find(name) is not None)
+        self._get_decider = GetDecider(self._config.items)
+        self._engine.register("items", self._get_decider, PRIO_ITEMS)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -181,6 +186,8 @@ class MudBot:
         self._parse_conditions(clean)
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
+        self._loot.process_line(clean, self._state)
+        self._parse_get_results(clean)
         self._parse_room(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
@@ -238,6 +245,8 @@ class MudBot:
             self._state.set_room(code)
             self._state.monsters_present.clear()
             self._state.players_present = []
+            self._state.ground_items.clear()
+            self._state.ground_coins.clear()
             self._backstab.reset()
             if self._state.task.type is TaskType.RUNNING:
                 self._state.complete_task()
@@ -325,6 +334,17 @@ class MudBot:
             self._state.record_miss()
         elif m := _MONSTER_HIT_RE.search(line):
             self._state.record_monster_hit()
+
+    def _parse_get_results(self, line: str) -> None:
+        from mmud.automation.items import _CANT_GET_RE
+        if self._state.task.type is not TaskType.GETTING:
+            return
+        if _CANT_GET_RE.search(line):
+            if last := self._state.task.payload.get("item"):
+                self._get_decider.mark_ungettable(last)
+            self._state.abort_task()
+        elif line.lower().startswith("you took") or line.lower().startswith("you get"):
+            self._state.complete_task()
 
     def _parse_combat_exit(self, line: str) -> None:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):

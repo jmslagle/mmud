@@ -177,3 +177,24 @@ def test_phase4_defaults():
     assert cfg.combat.max_monster_exp == 0       # 0 = no limit
     assert cfg.spells.max_cast_count == 0        # 0 = unlimited
     assert cfg.pvp.action == ""                  # "" = ignore players
+
+
+def test_phase5_items_config(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[items]
+max_coins = 500
+max_wealth = 20000
+min_wealth = 1000
+""")
+    cfg = load_config(p)
+    assert cfg.items.max_coins == 500
+    assert cfg.items.max_wealth == 20000
+    assert cfg.items.min_wealth == 1000
+
+
+def test_phase5_items_defaults():
+    cfg = load_config(None)
+    assert cfg.items.max_coins == 0      # 0 = no limit
+    assert cfg.items.max_wealth == 0
+    assert cfg.items.min_wealth == 0

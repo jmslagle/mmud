@@ -84,6 +84,9 @@ class ItemsConfig:
     runic_name: str = "runic"
     dont_go_heavy: bool = True
     dont_go_medium: bool = False
+    max_coins: int = 0     # drop loose coins above this per denomination (0 = off)
+    max_wealth: int = 0    # bank when copper-equiv wealth exceeds (Phase 8 consumes)
+    min_wealth: int = 0    # withdraw when below (Phase 8 consumes)
 
 
 @dataclass

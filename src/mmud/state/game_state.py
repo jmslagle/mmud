@@ -36,6 +36,8 @@ class GameState:
         # Starts clean: the bot marks it dirty on combat-end / get / equip so an
         # idle bot never polls `inv` unprompted.
         self.inventory_dirty: bool = False
+        self.ground_items: list[str] = []
+        self.ground_coins: dict[str, int] = {}
         self.in_combat: bool = False
         self._command_queue: deque[str] = deque()
         self.task: TaskState = TaskState()
