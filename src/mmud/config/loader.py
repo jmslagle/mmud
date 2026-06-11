@@ -111,6 +111,8 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
                 PartyBless(cmd=b.get("cmd", ""), wait_seconds=b.get("wait_seconds", 60))
                 for b in p.get("bless", [])
             ],
+            status_cmd=p.get("status_cmd", ""),
+            status_interval_s=p.get("status_interval_s", 60),
         )
     if a := data.get("afk"):
         cfg.afk = AfkConfig(
