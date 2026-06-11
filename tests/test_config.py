@@ -240,3 +240,30 @@ def test_phase6_navigation_defaults():
     assert cfg.navigation.search_max == 3
     assert cfg.navigation.roam is False
     assert cfg.navigation.bash_doors is False
+
+
+def test_commerce_section(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[commerce]
+bank_room = "BANK"
+shop_room = "SHOP"
+train_room = "TRNR"
+sell_items = ["rusty sword"]
+buy_items = ["torch"]
+auto_train = true
+""")
+    cfg = load_config(p)
+    assert cfg.commerce.bank_room == "BANK"
+    assert cfg.commerce.shop_room == "SHOP"
+    assert cfg.commerce.train_room == "TRNR"
+    assert cfg.commerce.sell_items == ["rusty sword"]
+    assert cfg.commerce.buy_items == ["torch"]
+    assert cfg.commerce.auto_train is True
+
+
+def test_commerce_defaults():
+    cfg = load_config(None)
+    assert cfg.commerce.bank_room == ""       # "" = banking disabled
+    assert cfg.commerce.auto_train is False
+    assert cfg.commerce.sell_items == []

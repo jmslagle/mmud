@@ -159,3 +159,14 @@ tell_format = "/{name} {text}"
 # written); unknown monsters / marks / learned exits persist across sessions.
 enabled    = false
 store_path = "gamedb.json"
+
+[commerce]
+# Travel detours: bank when wealth > items.max_wealth (deposits down to
+# items.min_wealth), withdraw when below min_wealth, sell/buy at the shop,
+# train when level-ready. Rooms are 4-letter codes; "" disables that detour.
+bank_room  = ""
+shop_room  = ""
+train_room = ""
+sell_items = []      # e.g. ["rusty sword", "orc ear"]
+buy_items  = []      # keep these stocked, e.g. ["torch"]
+auto_train = false

@@ -14,7 +14,7 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
-    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH,
+    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH, PRIO_COMMERCE,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -152,6 +152,15 @@ class MudBot:
         from mmud.automation.search import SearchDecider
         self._engine.register("search", SearchDecider(self._config.navigation),
                               PRIO_SEARCH)
+        from mmud.automation.commerce import CommerceEngine
+        self._commerce = CommerceEngine(
+            self._config.commerce, self._config.items,
+            navigate=self.navigate_to_room,
+            resume_loop=lambda: self.start_loop(),
+            loop_running=lambda: bool(self._loop_runner and self._loop_runner.running),
+            travel_active=lambda: self._travel.active,
+        )
+        self._engine.register("commerce", self._commerce, PRIO_COMMERCE)
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
@@ -230,6 +239,7 @@ class MudBot:
         self._parse_conditions(clean)
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
+        self._commerce.on_line(clean)
         self._loot.process_line(clean, self._state)
         self._parse_get_results(clean)
         self._parse_room(clean)

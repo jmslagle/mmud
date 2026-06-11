@@ -565,3 +565,39 @@ async def test_observed_movement_learns_exit(tmp_path):
     bot._pending_move = "s"
     await bot.run()
     assert ("BBBB0002", "s", "AAAA0001") in bot._store.exits()
+
+
+_BANK_ROOMS = {
+    "HOME": _Room(code="HOME", hex_id="AAAA0001", hex_id2="", flags=(0, 0, 0),
+                  region="", name="The Home Room"),
+    "BANK": _Room(code="BANK", hex_id="BBBB0002", hex_id2="", flags=(0, 0, 0),
+                  region="", name="The Grand Bank"),
+}
+_BANK_PATH = _GamePath(from_code="HOME", from_region="", from_name="",
+                       to_code="BANK", to_region="", to_name="", npc="",
+                       steps=[_PathStep(hex_id="AAAA0001", command="n")])
+
+
+@pytest.mark.asyncio
+async def test_bank_detour_deposits_and_resyncs():
+    from mmud.state.inventory import Inventory
+    config = MudConfig()
+    config.items.max_wealth = 100
+    config.items.min_wealth = 10
+    config.commerce.bank_room = "BANK"
+    bot = make_transcript_bot(
+        ["Obvious exits: north\n",      # idle in HOME: commerce arms, travel moves
+         "The Grand Bank\n",            # named arrival
+         "Obvious exits: south\n",      # arrival signal completes the route
+         "ok\n",                        # commerce works: deposit
+         "ok\n"],                       # work done -> dirty -> refresh issues inv
+        config=config, rooms=_BANK_ROOMS)
+    bot._navigator._paths[("HOME", "BANK")] = _BANK_PATH
+    bot._state.set_room("HOME")
+    bot._state.current_hex = "AAAA0001"
+    bot._state.inventory = Inventory(coins={"copper": 500})
+    bot._state.inventory_dirty = False
+    await bot.run()
+    assert "n" in bot._conn.sent
+    assert "deposit 490 copper" in bot._conn.sent
+    assert "inv" in bot._conn.sent      # post-work re-sync
