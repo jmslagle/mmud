@@ -54,6 +54,56 @@ def _active(flags: int) -> bool:
     return bool(flags & _FLAG_ACTIVE) and not _deleted(flags)
 
 
+# ── True MDB2 B-tree walk (see docs/cdb-mdb2-format.md) ─────────────────────
+
+_MAGIC = b"MDB2"
+_NODE_HEADER_SIZE = 0x0C
+
+
+@dataclass
+class MdEntry:
+    """One B-tree leaf entry: key fields + the game-record payload."""
+    key_class: int    # first byte of the key name (0x01 = by-record-number)
+    record_id: int    # the key's ASCII record id, as int
+    key_int: int      # int32 after the key name's NUL (0 in all observed files)
+    tag: int          # key class tag byte (0x80 = record)
+    payload: bytes    # the game record (210B monsters / 200 items / 158 spells)
+
+
+def walk_entries(path: pathlib.Path):
+    """Yield every MdEntry from an MDB2 file, walking leaves in page order.
+
+    Entries are length-prefixed: [L u8][body L bytes], next at ptr+L+1.
+    Body = [key-class][ascii-id]\\0[int32][tag] + payload.
+    Raises ValueError if the file is not an MDB2 database (e.g. ROOMS.MD).
+    """
+    data = path.read_bytes()
+    if data[:4] != _MAGIC:
+        raise ValueError(f"{path.name}: not an MDB2 database (magic {data[:4]!r})")
+    num_pages = len(data) // _PAGE_SIZE - 1
+    for page_num in range(1, num_pages + 1):
+        page = data[page_num * _PAGE_SIZE : (page_num + 1) * _PAGE_SIZE]
+        if page[0] in (1, 2):       # interior/index node
+            continue
+        count = struct.unpack_from("<H", page, 0x02)[0]
+        ptr = _NODE_HEADER_SIZE
+        for _ in range(count):
+            length = page[ptr]
+            body = page[ptr + 1 : ptr + 1 + length]
+            ptr += length + 1
+            nul = body.find(b"\x00")
+            if nul < 1 or nul + 6 > len(body):
+                continue            # malformed entry: skip, never crash
+            ascii_id = body[1:nul]
+            yield MdEntry(
+                key_class=body[0],
+                record_id=int(ascii_id) if ascii_id.isdigit() else -1,
+                key_int=struct.unpack_from("<i", body, nul + 1)[0],
+                tag=body[nul + 5],
+                payload=bytes(body[nul + 6 :]),
+            )
+
+
 def _find_entry1_offset(page: bytes) -> int:
     """Return offset of first record entry within a 1024-byte page.
 

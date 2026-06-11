@@ -135,3 +135,42 @@ def test_spell_count_reasonable(data_dir):
     spells = load_spells(data_dir / "SPELLS.MD")
     print(f"SPELLS.MD: loaded {len(spells)} active spells")
     assert len(spells) > 50, f"Expected >50 spells, got {len(spells)}"
+
+
+# ── True MDB2 walker ─────────────────────────────────────────────────────────
+import pytest
+from mmud.data.binary import MdEntry, walk_entries
+
+
+def test_walker_monster_totals(data_dir):
+    entries = list(walk_entries(data_dir / "MONSTERS.MD"))
+    assert len(entries) == 788
+    assert all(e.tag == 0x80 for e in entries)
+    assert all(len(e.payload) == 210 for e in entries)
+
+
+def test_walker_item_totals(data_dir):
+    entries = list(walk_entries(data_dir / "ITEMS.MD"))
+    assert len(entries) == 1336
+    assert all(len(e.payload) == 200 for e in entries)
+
+
+def test_walker_spell_totals(data_dir):
+    entries = list(walk_entries(data_dir / "SPELLS.MD"))
+    assert len(entries) == 936
+    assert all(len(e.payload) == 158 for e in entries)
+
+
+def test_walker_classes_totals(data_dir):
+    assert len(list(walk_entries(data_dir / "CLASSES.MD"))) == 15
+
+
+def test_walker_key_id_matches_payload_id(data_dir):
+    import struct
+    for e in list(walk_entries(data_dir / "MONSTERS.MD"))[:50]:
+        assert e.record_id == struct.unpack_from("<H", e.payload, 0)[0]
+
+
+def test_walker_rejects_non_mdb2(data_dir):
+    with pytest.raises(ValueError, match="MDB2"):
+        list(walk_entries(data_dir / "ROOMS.MD"))
