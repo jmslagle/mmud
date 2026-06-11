@@ -654,3 +654,27 @@ async def test_ticker_action_low_rate_hangup(monkeypatch):
     bot._check_session(now=0.0)
     assert bot._safety.hangup_requested
     assert "session" in bot._safety.reason
+
+
+@pytest.mark.asyncio
+async def test_party_heal_e2e():
+    config = MudConfig()
+    config.party.heal_spell = "cast heal"
+    config.party.heal_hp_pct = 0.50
+    bot = make_transcript_bot(
+        ["The following people are in your party:\n",
+         "Beeze          [Cleric]    [ 40] [100]\n",   # 40: heal yes, wait no
+         "[HP=100/100]:\n"],          # ends the list; decider fires
+        config=config)
+    await bot.run()
+    assert "cast heal Beeze" in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_friend_invite_autojoin():
+    config = MudConfig()
+    config.players = [PlayerRule(name="Krang", friend=True)]
+    bot = make_transcript_bot(
+        ["Krang has invited you to join his party.\n", "ok\n"], config=config)
+    await bot.run()
+    assert "join Krang" in bot._conn.sent

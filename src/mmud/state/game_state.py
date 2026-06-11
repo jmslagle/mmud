@@ -33,6 +33,8 @@ class GameState:
         self.move_history: deque[str] = deque(maxlen=20)  # recent movement cmds
         self.current_hex: str = ""        # room hex id when known
         self.last_exits: list[str] = []   # commands from the last exits line
+        self.party: list = []             # list[PartyMember]
+        self.party_leader: str = ""
         from mmud.state.inventory import Inventory
         self.inventory: Inventory = Inventory()
         # Starts clean: the bot marks it dirty on combat-end / get / equip so an

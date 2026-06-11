@@ -155,3 +155,16 @@ def test_rate_verb():
     bot._session.on_exp(2500, now=1800.0)
     h = RemoteCommandHandler(bot)
     assert "5000" in h.handle("Friend", "@rate")
+
+
+def test_party_verbs():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    assert h.handle("Friend", "@invite") == "inviting Friend"
+    assert bot._state.dequeue() == "invite Friend"
+    assert h.handle("Friend", "@wait") == "waiting"
+    assert bot._state.dequeue() == bot._config.party.wait_cmd
+    assert h.handle("Friend", "@rego") == "resuming"
+    assert bot._state.dequeue() == bot._config.party.resume_cmd
+    assert h.handle("Friend", "@forget") == "party forgotten"
+    assert bot._state.party == []

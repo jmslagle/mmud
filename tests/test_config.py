@@ -297,3 +297,21 @@ def test_session_defaults():
     assert cfg.session.grace_minutes == 15
     assert cfg.session.low_rate_action == "hangup"
     assert cfg.session.logout_cmd == "x"
+
+
+def test_party_additions(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[party]
+status_cmd = "par"
+status_interval_s = 30
+""")
+    cfg = load_config(p)
+    assert cfg.party.status_cmd == "par"
+    assert cfg.party.status_interval_s == 30
+
+
+def test_party_additions_defaults():
+    cfg = load_config(None)
+    assert cfg.party.status_cmd == ""        # "" = no periodic refresh
+    assert cfg.party.status_interval_s == 60

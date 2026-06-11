@@ -158,6 +158,10 @@ strangers. A known player who lacks a verb gets a `permission denied` reply.
 | `@db` | Report game-DB store stats (records / learned exits / collisions) |
 | `@rate` | Report exp/hour and session length |
 | `@relog` | Log out cleanly and log back in (fresh session) |
+| `@invite` | Invite the sender to your party |
+| `@wait` / `@rego` | Pause / resume (party wait protocol) |
+| `@share [args]` | Share cash with the party |
+| `@forget` | Drop tracked party state |
 
 The original MegaMud exposed ~47 verbs; the rest (e.g. `@relog`, party verbs)
 arrive as later phases wire up the subsystems they drive.
@@ -249,6 +253,32 @@ logout_cmd        = "x"
 
 > Live-tune caveat: `logout_cmd` must cleanly exit the game — MajorMUD uses `x`
 > at the prompt, but some BBS menus need `=x` or similar.
+
+---
+
+## Party support (`[party]`)
+
+The bot tracks your party from the party-list output (`"The following people are
+in your party:"` / `"You are following <Name>."` / `"You are not in a party"`)
+and, when configured, looks after the group:
+
+- **Heal** the lowest member below `heal_hp_pct` with `heal_spell` (skips
+  players marked `dont_heal` in `[[players]]`).
+- **Wait/resume** — if a member drops below `wait_hp_pct`, send `wait_cmd` and
+  hold (pinning combat/travel) until everyone recovers, then `resume_cmd`.
+- **Bless** — cast each `[[party.bless]]` command on its `wait_seconds` cooldown.
+- **Share cash** — when `share_cash`, hand coins to the party after combat.
+- **Status refresh** — re-issue `status_cmd` every `status_interval_s` to keep
+  member HP current.
+- **Auto-join** — accept party invites from players marked `friend = true`.
+
+Party automation engages only when `heal_spell` or `status_cmd` is set; control
+it live with `@invite`/`@wait`/`@rego`/`@share`/`@forget`.
+
+> Live-tune caveat: the party member-ROW format (name / `[class]` / `[HP%]`
+> `[MP%]` columns) is reconstructed — capture your server's real party output
+> and tune `_ROW_RE` in `src/mmud/parser/party_parser.py`. The `join`/`share`/
+> `wait`/`go` command syntax is likewise reconstructed.
 
 ---
 

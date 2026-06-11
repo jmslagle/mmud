@@ -110,6 +110,8 @@ class PartyConfig:
     attack_with_leader: bool = True
     share_cash: bool = False
     bless: list[PartyBless] = field(default_factory=list)
+    status_cmd: str = ""           # command that prints the party list ("" = off)
+    status_interval_s: int = 60    # refresh cadence
 
 
 @dataclass

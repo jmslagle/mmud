@@ -100,6 +100,8 @@ wait_cmd           = "wait"
 resume_cmd         = "go"
 attack_with_leader = true
 share_cash         = false
+status_cmd         = ""        # command that prints the party list ("" = off)
+status_interval_s  = 60        # how often to refresh it
 
 # [[party.bless]]
 # cmd          = "party bless"
