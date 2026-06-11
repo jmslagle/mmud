@@ -10,7 +10,7 @@ from mmud.events import (
     GameEventBus, LineReceived, HpChanged, MpChanged,
     EffectApplied, EffectRemoved, CombatChanged, RoomChanged, MonstersSeen,
     ConversationReceived, PlayerSeen, SessionStatUpdated, TaskChanged,
-    ConditionChanged, HangupTriggered,
+    ConditionChanged, HangupTriggered, DbImported, DbCollision,
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
@@ -74,15 +74,30 @@ class MudBot:
             rooms = load_rooms(data_dir / "ROOMS.MD")
         self._room_parser = RoomParser(rooms or {})
         self._convo_parser = ConversationParser()
+        self._bus = event_bus   # assigned early so DB import can emit events
 
         from mmud.data.monster_db import MonsterDB
-        monsters_md = (data_dir / "MONSTERS.MD") if data_dir else None
-        self._monster_db = (MonsterDB.from_file(monsters_md)
-                            if monsters_md and monsters_md.exists() else MonsterDB([]))
         from mmud.data.item_db import ItemDB
-        items_md = (data_dir / "ITEMS.MD") if data_dir else None
-        self._item_db = (ItemDB.from_file(items_md)
-                         if items_md and items_md.exists() else ItemDB([]))
+        self._store = None
+        if self._config.learning.enabled and data_dir is not None:
+            from mmud.data.store import GameStore, import_md
+            self._store = GameStore(pathlib.Path(self._config.learning.store_path))
+            report = import_md(self._store, data_dir)
+            self._monster_db = MonsterDB.from_store(self._store)
+            self._item_db = ItemDB.from_store(self._store)
+            self._emit(DbImported(
+                added=sum(report.added.values()),
+                updated=sum(report.updated.values()),
+                collisions=report.collisions))
+            for c in self._store.data["collisions"][-report.collisions:] if report.collisions else []:
+                self._emit(DbCollision(db=c["db"], record_id=c["record_id"]))
+        else:
+            monsters_md = (data_dir / "MONSTERS.MD") if data_dir else None
+            self._monster_db = (MonsterDB.from_file(monsters_md)
+                                if monsters_md and monsters_md.exists() else MonsterDB([]))
+            items_md = (data_dir / "ITEMS.MD") if data_dir else None
+            self._item_db = (ItemDB.from_file(items_md)
+                             if items_md and items_md.exists() else ItemDB([]))
 
         self._state = GameState()
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
@@ -119,7 +134,6 @@ class MudBot:
         self._equip_decider = EquipDecider(self._item_db,
                                            enabled=self._config.items.auto_get)
         self._engine.register("equip", self._equip_decider, PRIO_EQUIP)
-        self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()

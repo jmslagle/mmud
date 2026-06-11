@@ -150,3 +150,20 @@ def import_md(store: GameStore, data_dir: pathlib.Path) -> ImportReport:
         report.updated[section] = updated
     store.save()
     return report
+
+
+# ---- record reconstruction (store -> dataclasses) -------------------------
+
+def _to_dataclass(cls, rec: dict):
+    names = {f.name for f in dataclasses.fields(cls)}
+    return cls(**{k: v for k, v in rec.items() if k in names})
+
+
+def store_monsters(store: GameStore) -> list:
+    from mmud.data.binary import Monster
+    return [_to_dataclass(Monster, r) for r in store.data["monsters"].values()]
+
+
+def store_items(store: GameStore) -> list:
+    from mmud.data.binary import Item
+    return [_to_dataclass(Item, r) for r in store.data["items"].values()]

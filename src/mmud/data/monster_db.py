@@ -26,6 +26,11 @@ class MonsterDB:
     def from_file(cls, path: pathlib.Path) -> "MonsterDB":
         return cls(load_monsters(path))
 
+    @classmethod
+    def from_store(cls, store) -> "MonsterDB":
+        from mmud.data.store import store_monsters
+        return cls(store_monsters(store))
+
     def find(self, name: str) -> Monster | None:
         key = normalize(name)
         if key in self._by_name:

@@ -50,3 +50,15 @@ def test_exits_api(tmp_path):
     s.add_exit("AAAA0001", "n", "BBBB0002")
     s.add_exit("AAAA0001", "n", "BBBB0002")     # dedup
     assert s.exits() == [("AAAA0001", "n", "BBBB0002")]
+
+
+def test_dbs_built_from_store(tmp_path, data_dir):
+    from mmud.data.store import import_md
+    from mmud.data.monster_db import MonsterDB
+    from mmud.data.item_db import ItemDB
+    s = GameStore(tmp_path / "gamedb.json")
+    import_md(s, data_dir)
+    mdb = MonsterDB.from_store(s)
+    assert mdb.find("giant rat") is not None
+    idb = ItemDB.from_store(s)
+    assert idb.find("a statue of a bard") is not None

@@ -5,7 +5,7 @@ from mmud.config.schema import (
     MudConfig, ServerConfig, LoginConfig, CombatConfig,
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
-    HealthConfig, SafetyConfig, RemoteConfig, PvpConfig,
+    HealthConfig, SafetyConfig, RemoteConfig, PvpConfig, LearningConfig,
 )
 
 
@@ -142,6 +142,11 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             spell=pv.get("spell", ""),
             flee_rooms=pv.get("flee_rooms", 2),
             hangup_delay_s=pv.get("hangup_delay_s", 0),
+        )
+    if le := data.get("learning"):
+        cfg.learning = LearningConfig(
+            enabled=le.get("enabled", False),
+            store_path=le.get("store_path", "gamedb.json"),
         )
     cfg.players = [
         PlayerRule(

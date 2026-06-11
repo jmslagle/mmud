@@ -18,6 +18,11 @@ class ItemDB:
     def from_file(cls, path: pathlib.Path) -> "ItemDB":
         return cls(load_items(path))
 
+    @classmethod
+    def from_store(cls, store) -> "ItemDB":
+        from mmud.data.store import store_items
+        return cls(store_items(store))
+
     def find(self, name: str) -> Item | None:
         key = normalize(name)
         if key in self._by_name:
