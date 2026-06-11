@@ -184,3 +184,11 @@ def test_monsters_recovered_by_true_walk(data_dir):
         assert missed in names
     assert "giant rat" in names
     assert all(m.is_active for m in monsters)
+
+
+def test_items_recovered_by_true_walk(data_dir):
+    items = load_items(data_dir / "ITEMS.MD")
+    assert len(items) == 667             # active entries of 1336 total
+    names = {i.name.lower() for i in items}
+    assert "a statue of a bard" in names   # missed by the old heuristic
+    assert all(i.is_active for i in items)

@@ -236,68 +236,39 @@ class Item:
 def load_items(path: pathlib.Path) -> list[Item]:
     """Parse ITEMS.MD and return all active Item records.
 
-    Items use the same page-based layout as monsters. Within each entry:
-      +0x01: u16 record_id
-      +0x03: char[31] name (first null-term string; second is alt-name/category)
-    Numeric stats are found further into the entry; exact offsets are
-    approximated from the observed data layout.
+    Payload offsets (true MDB2 walk):
+      +0x00: u16 record_id   +0x02: char[31] name   +0x21: u32 flags
+      +0x21+31..: description/suffix strings
+      +0x5f: u8 item_type   +0x60: u8 equip_slot
+      +0x63/+0x67/+0x6b: i16 ac_or_dmg / weight / value
+      +0x6f/+0x73: u32 extra stats
+    Numeric offsets are the old empirical ones shifted -1; they remain
+    approximate until Phase 5's item_db consumes them in anger.
     """
-    data = path.read_bytes()
     out: list[Item] = []
-
-    for _page_num, eoff, page in _iter_all_entries(data):
-        if eoff + 0x80 > len(page):
-            continue
-
-        record_id = struct.unpack_from("<H", page, eoff + 0x01)[0]
-        name = _cstr(page, eoff + 0x03, 31)
-        if not name:
-            continue
-
-        # Description: the next null-terminated string after the 31-byte name block
-        desc_start = eoff + 0x03 + 31
-        description = _cstr(page, desc_start, 40)
-
-        # Suffix: next null-terminated string after description (up to 14 chars)
-        suffix_start = desc_start + 40
-        suffix = _cstr(page, suffix_start, 14)
-
-        # Flags: empirically located after the main text fields
-        # Use a sentinel scan for the active flag within a plausible window
-        flags = 0
-        for foff in range(eoff + 0x22, min(eoff + 0x80, len(page) - 3), 4):
-            candidate = struct.unpack_from("<I", page, foff)[0]
-            if candidate & _FLAG_ACTIVE:
-                flags = candidate
-                break
-
+    for entry in walk_entries(path):
+        p = entry.payload
+        flags = struct.unpack_from("<I", p, 0x21)[0]
         if not _active(flags):
             continue
-
-        # Numeric stats (approximate offsets based on observed data)
-        item_type  = page[eoff + 0x60] if eoff + 0x61 < len(page) else 0
-        equip_slot = page[eoff + 0x61] if eoff + 0x62 < len(page) else 0
-        ac_or_dmg  = struct.unpack_from("<h", page, eoff + 0x64)[0] if eoff + 0x66 < len(page) else 0
-        weight     = struct.unpack_from("<h", page, eoff + 0x68)[0] if eoff + 0x6A < len(page) else 0
-        value      = struct.unpack_from("<h", page, eoff + 0x6C)[0] if eoff + 0x6E < len(page) else 0
-        extra_stat1 = struct.unpack_from("<I", page, eoff + 0x70)[0] if eoff + 0x74 < len(page) else 0
-        extra_stat2 = struct.unpack_from("<I", page, eoff + 0x74)[0] if eoff + 0x78 < len(page) else 0
-
+        name = _cstr(p, 0x02, 31)
+        if not name:
+            continue
+        desc_start = 0x02 + 31
         out.append(Item(
-            record_id=record_id,
+            record_id=struct.unpack_from("<H", p, 0x00)[0],
             name=name,
-            description=description,
-            suffix=suffix,
-            item_type=item_type,
-            equip_slot=equip_slot,
-            ac_or_dmg=ac_or_dmg,
-            weight=weight,
-            value=value,
-            extra_stat1=extra_stat1,
-            extra_stat2=extra_stat2,
+            description=_cstr(p, desc_start, 40),
+            suffix=_cstr(p, desc_start + 40, 14),
+            item_type=p[0x5F],
+            equip_slot=p[0x60],
+            ac_or_dmg=struct.unpack_from("<h", p, 0x63)[0],
+            weight=struct.unpack_from("<h", p, 0x67)[0],
+            value=struct.unpack_from("<h", p, 0x6B)[0],
+            extra_stat1=struct.unpack_from("<I", p, 0x6F)[0],
+            extra_stat2=struct.unpack_from("<I", p, 0x73)[0],
             flags=flags,
         ))
-
     return out
 
 
