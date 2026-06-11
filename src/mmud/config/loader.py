@@ -6,7 +6,7 @@ from mmud.config.schema import (
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
     HealthConfig, SafetyConfig, RemoteConfig, PvpConfig, LearningConfig,
-    CommerceConfig,
+    CommerceConfig, SessionConfig,
 )
 
 
@@ -161,6 +161,15 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             sell_items=co.get("sell_items", []),
             buy_items=co.get("buy_items", []),
             auto_train=co.get("auto_train", False),
+        )
+    if se := data.get("session"):
+        cfg.session = SessionConfig(
+            capture_file=se.get("capture_file", ""),
+            max_hours_per_day=se.get("max_hours_per_day", 0),
+            min_exp_rate=se.get("min_exp_rate", 0),
+            grace_minutes=se.get("grace_minutes", 15),
+            low_rate_action=se.get("low_rate_action", "hangup"),
+            logout_cmd=se.get("logout_cmd", "x"),
         )
     cfg.players = [
         PlayerRule(
