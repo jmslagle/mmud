@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
@@ -60,6 +61,11 @@ class RemoteCommandHandler:
         self.register("loop", lambda s, a: bot.start_loop(a))
         self.register("stop", lambda s, a: bot.stop_all())
         self.register("db", self._db_stats)
+        self.register("relog", self._relog)
+        self.register("rate", lambda s, a: (
+            f"exp rate {bot._session.exp_rate_per_hour():.0f}/hr "
+            f"({bot._session.hours_elapsed(time.monotonic()):.1f}h session)"
+        ))
         self.register("wealth", lambda s, a: (
             f"wealth {bot._state.inventory.wealth_total()} copper-equiv "
             f"({', '.join(f'{n} {d}' for d, n in bot._state.inventory.coins.items()) or 'no coins'})"
@@ -79,6 +85,10 @@ class RemoteCommandHandler:
             return "usage: @kill TARGET"
         self._bot._state.enqueue(f"{self._bot._config.combat.attack_cmd} {arg}")
         return f"attacking {arg}"
+
+    def _relog(self, sender: str, arg: str) -> str:
+        self._bot.request_relog(f"remote @relog from {sender}")
+        return "relogging"
 
     def _db_stats(self, sender: str, arg: str) -> str:
         store = getattr(self._bot, "_store", None)

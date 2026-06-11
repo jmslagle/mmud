@@ -138,3 +138,20 @@ def test_db_verb_without_store():
     bot._store = None
     h = RemoteCommandHandler(bot)
     assert "disabled" in h.handle("Friend", "@db").lower()
+
+
+def test_relog_verb():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    reply = h.handle("Friend", "@relog")
+    assert "relog" in reply.lower()
+    assert bot._relog_pending
+    assert bot._state.dequeue() == bot._config.session.logout_cmd
+
+
+def test_rate_verb():
+    bot = _bot(WILDCARD)
+    bot._session.on_exp(0, now=0.0)
+    bot._session.on_exp(2500, now=1800.0)
+    h = RemoteCommandHandler(bot)
+    assert "5000" in h.handle("Friend", "@rate")
