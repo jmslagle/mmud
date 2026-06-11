@@ -174,3 +174,13 @@ def test_walker_key_id_matches_payload_id(data_dir):
 def test_walker_rejects_non_mdb2(data_dir):
     with pytest.raises(ValueError, match="MDB2"):
         list(walk_entries(data_dir / "ROOMS.MD"))
+
+
+def test_monsters_recovered_by_true_walk(data_dir):
+    monsters = load_monsters(data_dir / "MONSTERS.MD")
+    assert len(monsters) == 788          # every entry is active in this file
+    names = {m.name.lower() for m in monsters}
+    for missed in ("ankheg", "black orc", "acid slime", "bounty hunter"):
+        assert missed in names
+    assert "giant rat" in names
+    assert all(m.is_active for m in monsters)

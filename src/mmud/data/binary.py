@@ -171,53 +171,43 @@ class Monster:
 def load_monsters(path: pathlib.Path) -> list[Monster]:
     """Parse MONSTERS.MD and return all active (non-deleted) Monster records.
 
-    Uses empirically-determined page-based layout (not the Ghidra in-memory offsets).
-    Field offsets within each entry (relative to the 0x80 marker byte):
-      +0x01: u16 record_id
-      +0x03: char[31] name
-      +0x22: u32 flags
-      +0x26: u8  combat_rating
-      +0x36: i16 level
-      +0x3a: i16 exp_value
-      +0x3e: i16 alignment
-      +0x40: i16 hp_estimate
+    Field offsets within each entry payload (true MDB2 walk; see
+    docs/cdb-mdb2-format.md):
+      +0x00: u16 record_id
+      +0x02: char[31] name
+      +0x21: u32 flags
+      +0x25: u8  combat_rating
+      +0x35: i16 level
+      +0x39: i16 exp_value
+      +0x3d: i16 alignment
+      +0x3f: i16 hp_estimate
     Short names appear within the name field (null-separated) for some monsters.
     """
-    data = path.read_bytes()
     out: list[Monster] = []
-
-    for _page_num, eoff, page in _iter_all_entries(data):
-        if eoff + 0x46 > len(page):
-            continue
-
-        flags = struct.unpack_from("<I", page, eoff + 0x22)[0]
+    for entry in walk_entries(path):
+        p = entry.payload
+        flags = struct.unpack_from("<I", p, 0x21)[0]
         if not _active(flags):
             continue
-
-        record_id = struct.unpack_from("<H", page, eoff + 0x01)[0]
-        name = _cstr(page, eoff + 0x03, 31)
+        name = _cstr(p, 0x02, 31)
         if not name:
             continue
-
-        # Extract two short names from the extended name bytes (null-separated)
-        name_block = page[eoff + 0x03 : eoff + 0x03 + 31]
+        name_block = p[0x02 : 0x02 + 31]
         parts = name_block.split(b"\x00")
         short_name1 = parts[1].decode("latin-1", errors="replace").strip() if len(parts) > 1 else ""
         short_name2 = parts[2].decode("latin-1", errors="replace").strip() if len(parts) > 2 else ""
-
         out.append(Monster(
-            record_id=record_id,
+            record_id=struct.unpack_from("<H", p, 0x00)[0],
             name=name,
-            level=struct.unpack_from("<h", page, eoff + 0x36)[0],
-            exp_value=struct.unpack_from("<h", page, eoff + 0x3A)[0],
-            combat_rating=page[eoff + 0x26],
-            alignment=struct.unpack_from("<h", page, eoff + 0x3E)[0],
-            hp_estimate=struct.unpack_from("<h", page, eoff + 0x40)[0],
+            level=struct.unpack_from("<h", p, 0x35)[0],
+            exp_value=struct.unpack_from("<h", p, 0x39)[0],
+            combat_rating=p[0x25],
+            alignment=struct.unpack_from("<h", p, 0x3D)[0],
+            hp_estimate=struct.unpack_from("<h", p, 0x3F)[0],
             short_name1=short_name1,
             short_name2=short_name2,
             flags=flags,
         ))
-
     return out
 
 
