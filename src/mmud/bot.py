@@ -91,12 +91,28 @@ class MudBot:
         self._who_parser = WhoParser()
         self._last_activity = time.monotonic()
         self._auto_started = False
+        self._redial_delay_s = 5.0
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:
             self._bus.post(event)
 
     async def run(self) -> None:
+        redials = 0
+        while True:
+            try:
+                await self._run_session()
+            except (ConnectionError, OSError):
+                pass
+            if self._safety.hangup_requested:
+                break   # deliberate disconnect — never auto-reconnect past it
+            if (not self._config.safety.reconnect
+                    or redials >= self._config.safety.max_redials):
+                break
+            redials += 1
+            await asyncio.sleep(self._redial_delay_s)
+
+    async def _run_session(self) -> None:
         await self._conn.connect()
         ticker_task = asyncio.create_task(self._ticker())
         try:
@@ -160,6 +176,9 @@ class MudBot:
             hp, max_hp = int(m.group(1)), int(m.group(2))
             self._state.set_hp(hp, max_hp)
             self._emit(HpChanged(hp=hp, max_hp=max_hp))
+            if (self._config.afk.enabled and self._config.afk.hangup_on_low_hp
+                    and max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold):
+                self._safety.request_hangup(f"low HP while AFK ({hp}/{max_hp})")
         if m := _MP_RE.search(line):
             mp, max_mp = int(m.group(1)), int(m.group(2))
             self._state.set_mana(mp, max_mp)

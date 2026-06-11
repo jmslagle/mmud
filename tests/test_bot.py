@@ -358,3 +358,39 @@ async def test_blind_onset_stops_loop():
     bot._loop_runner = runner
     await bot.run()
     assert not runner.running
+
+
+@pytest.mark.asyncio
+async def test_reconnect_retries_on_connection_loss(unused_tcp_port):
+    # Nothing listening on the port -> ConnectionRefusedError each attempt
+    config = MudConfig()
+    config.safety = SafetyConfig(reconnect=True, max_redials=2)
+    bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[], config=config)
+    attempts = []
+    original_connect = bot._conn.connect
+
+    async def counting_connect():
+        attempts.append(1)
+        await original_connect()
+
+    bot._conn.connect = counting_connect
+    bot._redial_delay_s = 0.0   # don't sleep in tests
+    await bot.run()
+    assert len(attempts) == 3   # initial + 2 redials
+
+
+@pytest.mark.asyncio
+async def test_no_reconnect_by_default(unused_tcp_port):
+    bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[])
+    await bot.run()   # must return (refused), not raise or loop
+
+
+@pytest.mark.asyncio
+async def test_afk_low_hp_hangup():
+    config = MudConfig()
+    config.afk.enabled = True
+    config.afk.hangup_on_low_hp = True
+    bot = make_transcript_bot(["[HP=5/100]:\n"], config=config)
+    await bot.run()
+    assert bot._safety.hangup_requested
+    assert "low hp" in bot._safety.reason.lower()
