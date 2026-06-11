@@ -13,8 +13,9 @@ from mmud.events import (
     ConditionChanged, HangupTriggered,
 )
 from mmud.automation.decision import (
-    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_SPELLS, PRIO_COMBAT,
+    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
 )
+from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
 from mmud.automation.safety import SafetyMonitor
 from mmud.automation.remote import RemoteCommandHandler
@@ -92,6 +93,9 @@ class MudBot:
         self._safety = SafetyMonitor(self._config.safety)
         self._remote = RemoteCommandHandler(self)
         self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
+        from mmud.automation.run_rules import RunDecider
+        self._engine.register("run", RunDecider(self._config.combat,
+                                                self._config.navigation), PRIO_FLEE)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -132,6 +136,8 @@ class MudBot:
                 if cmd:
                     await self._conn.send(cmd)
                     self._last_activity = time.monotonic()
+                    if cmd in ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"):
+                        self._state.move_history.append(cmd)
         finally:
             ticker_task.cancel()
             await self._conn.close()
@@ -216,6 +222,8 @@ class MudBot:
             self._state.set_room(code)
             self._state.monsters_present.clear()
             self._state.players_present = []
+            if self._state.task.type is TaskType.RUNNING:
+                self._state.complete_task()
             if code != prev:
                 self._emit(RoomChanged(code=code, name=line.strip()))
         else:
