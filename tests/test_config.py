@@ -135,3 +135,45 @@ remote_cmds = ["*"]
 def test_remote_disabled_by_default():
     cfg = load_config(None)
     assert cfg.remote.enabled is False
+
+
+def test_phase4_combat_config(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text(
+        """
+[combat]
+max_monsters = 3
+max_monster_exp = 5000
+run_backwards = true
+run_if_bs_fails = true
+monster_priority = ["ancient dragon", "orc chieftain"]
+
+[spells]
+max_cast_count = 4
+cast_weapon_cmd = "arm staff"
+melee_weapon_cmd = "arm warhammer"
+
+[pvp]
+action = "flee"
+spell = ""
+flee_rooms = 2
+hangup_delay_s = 10
+"""
+    )
+    cfg = load_config(p)
+    assert cfg.combat.max_monsters == 3
+    assert cfg.combat.max_monster_exp == 5000
+    assert cfg.combat.run_backwards is True
+    assert cfg.combat.monster_priority == ["ancient dragon", "orc chieftain"]
+    assert cfg.spells.max_cast_count == 4
+    assert cfg.spells.melee_weapon_cmd == "arm warhammer"
+    assert cfg.pvp.action == "flee"
+    assert cfg.pvp.hangup_delay_s == 10
+
+
+def test_phase4_defaults():
+    cfg = load_config(None)
+    assert cfg.combat.max_monsters == 0          # 0 = no limit
+    assert cfg.combat.max_monster_exp == 0       # 0 = no limit
+    assert cfg.spells.max_cast_count == 0        # 0 = unlimited
+    assert cfg.pvp.action == ""                  # "" = ignore players

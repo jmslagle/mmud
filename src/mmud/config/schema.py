@@ -25,6 +25,11 @@ class CombatConfig:
     polite_attacks: bool = False
     attack_order: str = "first"   # "first" | "last" | "reverse"
     mana_attack_pct: float = 0.20
+    max_monsters: int = 0          # run if more monsters than this (0 = no limit)
+    max_monster_exp: int = 0       # run if summed exp exceeds this (0 = no limit)
+    run_backwards: bool = False    # retrace recent moves instead of 'flee'
+    run_if_bs_fails: bool = False  # run away when a backstab attempt fails
+    monster_priority: list[str] = field(default_factory=list)  # attack these first
 
 
 @dataclass
@@ -43,6 +48,9 @@ class SpellsConfig:
     mana_heal: str = ""
     mana_heal_pct: float = 0.30
     bless: list[BlessSpell] = field(default_factory=list)
+    max_cast_count: int = 0        # attack-spell casts per encounter (0 = unlimited)
+    cast_weapon_cmd: str = ""      # full command to switch to the casting weapon
+    melee_weapon_cmd: str = ""     # full command to switch to the melee weapon
 
 
 @dataclass
@@ -133,6 +141,14 @@ class RemoteConfig:
 
 
 @dataclass
+class PvpConfig:
+    action: str = ""               # "" ignore | "attack" | "flee" | "hangup" | command string
+    spell: str = ""                # cast at the player when action == "attack"
+    flee_rooms: int = 2
+    hangup_delay_s: int = 0        # delay before hangup when action == "hangup"
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -162,5 +178,6 @@ class MudConfig:
     health: HealthConfig = field(default_factory=HealthConfig)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
     remote: RemoteConfig = field(default_factory=RemoteConfig)
+    pvp: PvpConfig = field(default_factory=PvpConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)
