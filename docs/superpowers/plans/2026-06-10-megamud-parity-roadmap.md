@@ -44,8 +44,10 @@
 | 7 | Game DB Store + Live Learning | S–M | ✅ complete | [2026-06-10-phase-07-game-db-store.md](2026-06-10-phase-07-game-db-store.md) |
 | 8 | Shopping, Banking, Training | M | ✅ complete | [2026-06-10-phase-08-commerce.md](2026-06-10-phase-08-commerce.md) |
 | 9 | Session Management & Full Disconnect Logic | M | ✅ complete | [2026-06-10-phase-09-session-management.md](2026-06-10-phase-09-session-management.md) |
-| 10 | Party Support | M | not started | write plan at phase start |
-| 11 | Scheduler, Scripts, Macros | M | not started | write plan at phase start — **prereq: EVENTS.MD format RE** (file absent from the extraction; needs a Ghidra session against `events_md_load` first) |
+| 10 | Party Support | M | planned | [2026-06-10-phase-10-party-support.md](2026-06-10-phase-10-party-support.md) |
+| 11 | Scheduler, Scripts, Macros | M | planned | [2026-06-10-phase-11-scheduler-scripts-macros.md](2026-06-10-phase-11-scheduler-scripts-macros.md) |
+
+**Phase 11 prerequisite RESOLVED (2026-06-10 RE):** there is no binary EVENTS.MD — the original stores the schedule in the config .ini `[Schedule]` section as `EventN = type:interval:count:command` (`event_schedule_load @ 0x00422b10`; types 1=Logon 2=Logoff 3=Relog 4=GoTo 5=Command 6=LoopPath). Our TOML `[[schedule.events]]` maps it directly. MACROS.MD is text (`key:shift:ctrl:alt:command^M`) and stays directly-read.
 
 **Order rationale:** Phase 1 is the refactor everything else hangs off. Phases 2–3 are small and maximize live-testing safety/value now. Phases 4–6 are the big parity pillars in dependency order (combat → inventory → pathfinding). Phases 7–11 are leaf features that each depend on one or two earlier pillars. Phase 7 is order-flexible — pull it earlier if unknown-monster sightings become annoying during Phase 4 testing.
 
