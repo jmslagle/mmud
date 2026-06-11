@@ -118,3 +118,23 @@ def test_wealth_verb():
     h = RemoteCommandHandler(bot)
     reply = h.handle("Friend", "@wealth")
     assert "307" in reply        # 3*100 + 7 copper-equivalent
+
+
+def test_db_verb_reports_store_stats():
+    bot = _bot(WILDCARD)
+    from mmud.data.store import GameStore
+    import tempfile, pathlib
+    with tempfile.TemporaryDirectory() as td:
+        bot._store = GameStore(pathlib.Path(td) / "g.json")
+        bot._store.data["monsters"]["1"] = {"record_id": 1, "name": "rat", "origin": "md"}
+        bot._store.data["collisions"].append({"db": "monsters", "record_id": 1})
+        h = RemoteCommandHandler(bot)
+        reply = h.handle("Friend", "@db")
+        assert "1 monsters" in reply and "1 collisions" in reply
+
+
+def test_db_verb_without_store():
+    bot = _bot(WILDCARD)
+    bot._store = None
+    h = RemoteCommandHandler(bot)
+    assert "disabled" in h.handle("Friend", "@db").lower()

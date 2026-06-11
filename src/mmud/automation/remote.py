@@ -59,6 +59,7 @@ class RemoteCommandHandler:
         ))
         self.register("loop", lambda s, a: bot.start_loop(a))
         self.register("stop", lambda s, a: bot.stop_all())
+        self.register("db", self._db_stats)
         self.register("wealth", lambda s, a: (
             f"wealth {bot._state.inventory.wealth_total()} copper-equiv "
             f"({', '.join(f'{n} {d}' for d, n in bot._state.inventory.coins.items()) or 'no coins'})"
@@ -78,6 +79,15 @@ class RemoteCommandHandler:
             return "usage: @kill TARGET"
         self._bot._state.enqueue(f"{self._bot._config.combat.attack_cmd} {arg}")
         return f"attacking {arg}"
+
+    def _db_stats(self, sender: str, arg: str) -> str:
+        store = getattr(self._bot, "_store", None)
+        if store is None:
+            return "learning disabled"
+        d = store.data
+        return (f"{len(d['monsters'])} monsters, {len(d['items'])} items, "
+                f"{len(d['spells'])} spells, {len(d['exits'])} learned exits, "
+                f"{len(d['collisions'])} collisions")
 
     def _hangup(self, sender: str, arg: str) -> str:
         self._bot._safety.request_hangup(f"remote @hangup from {sender}")
