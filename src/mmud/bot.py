@@ -14,7 +14,7 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
-    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP,
+    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -142,6 +142,14 @@ class MudBot:
                 self._get_decider.mark_ungettable(n)
             for n in self._store.marks("no_auto_equip"):
                 self._equip_decider.mark_failed(n)
+        self._rooms = rooms or {}
+        from mmud.automation.travel import TravelDecider
+        self._travel = TravelDecider(self._config.items, self._config.stealth,
+                                     self._bus or GameEventBus())
+        self._engine.register("travel", self._travel, PRIO_TRAVEL)
+        self._graph = None        # built on first use (corpus parse ~1s)
+        self._last_seen_hex = ""
+        self._pending_move = ""
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()
@@ -183,6 +191,7 @@ class MudBot:
                     self._last_activity = time.monotonic()
                     if cmd in ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"):
                         self._state.move_history.append(cmd)
+                        self._pending_move = cmd
         finally:
             ticker_task.cancel()
             await self._conn.close()
@@ -219,6 +228,7 @@ class MudBot:
         self._loot.process_line(clean, self._state)
         self._parse_get_results(clean)
         self._parse_room(clean)
+        self._parse_exits(clean)
         self._parse_combat_exit(clean)
         self._parse_combat_stats(clean)
         self._parse_nav_failure(clean)
@@ -272,6 +282,7 @@ class MudBot:
     def _parse_room(self, line: str) -> None:
         if code := self._room_parser.detect_room(line):
             prev = self._state.current_room
+            prev_hex = self._state.current_hex
             self._state.set_room(code)
             self._state.monsters_present.clear()
             self._state.players_present = []
@@ -280,6 +291,17 @@ class MudBot:
             self._backstab.reset()
             if self._state.task.type is TaskType.RUNNING:
                 self._state.complete_task()
+            room = self._rooms.get(code)
+            self._last_seen_hex = room.hex_id.upper() if room and room.hex_id else ""
+            if self._last_seen_hex:
+                self._state.current_hex = self._last_seen_hex
+            # Learn the exit a manual move just traversed.
+            if (self._store is not None and self._pending_move
+                    and self._state.current_hex and prev_hex
+                    and prev_hex != self._state.current_hex):
+                self._store.add_exit(prev_hex, self._pending_move,
+                                     self._state.current_hex)
+            self._pending_move = ""
             if code != prev:
                 self._emit(RoomChanged(code=code, name=line.strip()))
         else:
@@ -349,9 +371,31 @@ class MudBot:
             self._state.add_kill()
             self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
 
+    def _room_graph(self):
+        if self._graph is None:
+            from mmud.navigation.graph import RoomGraph
+            paths = list(self._navigator._paths.values())
+            self._graph = RoomGraph.from_paths(paths, self._rooms)
+            if self._store is not None:
+                self._graph.add_learned(self._store.exits())
+        return self._graph
+
+    def _parse_exits(self, line: str) -> None:
+        from mmud.parser.exits_parser import parse_exits
+        exits = parse_exits(line)
+        if exits is None:
+            return
+        self._state.last_exits = exits
+        self._travel.on_arrival(self._state, self._last_seen_hex)
+        self._last_seen_hex = ""
+        if self._state.task.type is TaskType.SEARCHING:
+            self._state.complete_task()
+
     def _parse_nav_failure(self, line: str) -> None:
         if _NAV_FAIL_RE.search(line):
-            if self._loop_runner and self._loop_runner.running:
+            if self._travel.active:
+                self._travel.on_move_failed()
+            elif self._loop_runner and self._loop_runner.running:
                 self._loop_runner.on_nav_failure()
 
     def _parse_combat_stats(self, line: str) -> None:
@@ -403,25 +447,20 @@ class MudBot:
             self._state.abort_task()
             self._emit(TaskChanged(task_type=task_name, status="timeout"))
 
-    def toggle_loop(self) -> None:
+    def _make_loop_runner(self):
         from mmud.automation.loop_runner import LoopRunner
+        paths = list(self._navigator._paths.values())
+        return LoopRunner(self._config.navigation, paths, self._rooms, self._travel)
+
+    def toggle_loop(self) -> None:
         if self._loop_runner and self._loop_runner.running:
             self._loop_runner.stop()
             return
-        paths = list(self._navigator._paths.values())
-        self._loop_runner = LoopRunner(
-            nav_config=self._config.navigation,
-            stealth_config=self._config.stealth,
-            paths=paths,
-            state=self._state,
-            bus=self._bus or GameEventBus(),
-            items_config=self._config.items,
-        )
+        self._loop_runner = self._make_loop_runner()
         self._loop_runner.start()
 
     def start_loop(self, name: str = "") -> str:
         """Start a named loop path. Returns status message."""
-        from mmud.automation.loop_runner import LoopRunner
         if name:
             self._config.navigation.loop_path = name.upper()
         loop_name = self._config.navigation.loop_path
@@ -429,41 +468,44 @@ class MudBot:
             return "No loop path configured. Use :loop NAME"
         if self._loop_runner and self._loop_runner.running:
             self._loop_runner.stop()
-        paths = list(self._navigator._paths.values())
-        self._loop_runner = LoopRunner(
-            nav_config=self._config.navigation,
-            stealth_config=self._config.stealth,
-            paths=paths,
-            state=self._state,
-            bus=self._bus or __import__("mmud.events", fromlist=["GameEventBus"]).GameEventBus(),
-            items_config=self._config.items,
-        )
-        self._loop_runner.start()
+        self._loop_runner = self._make_loop_runner()
         if self._loop_runner._path is None:
             return f"Loop path '{loop_name}' not found in loaded paths"
+        self._loop_runner.start()
         return f"Loop started: {loop_name}"
 
     def stop_all(self) -> str:
-        """Stop loop and clear command queue."""
+        """Stop loop/travel and clear command queue."""
         if self._loop_runner:
             self._loop_runner.stop()
+        self._travel.clear()
         while self._state.dequeue() is not None:
             pass
         return "Stopped."
 
     def navigate_to_room(self, to_code: str) -> str:
-        """Navigate from current room to to_code using a loaded path."""
-        from_code = self._state.current_room
-        if not from_code:
+        """Multi-hop navigate to a 4-letter room code via the room graph."""
+        from mmud.navigation.graph import NavStatus
+        dest = self._rooms.get(to_code.upper())
+        if dest is None or not dest.hex_id:
+            return f"Unknown destination room: {to_code.upper()}"
+        src_hex = self._state.current_hex
+        if not src_hex and self._state.current_room:
+            room = self._rooms.get(self._state.current_room)
+            src_hex = room.hex_id.upper() if room and room.hex_id else ""
+        if not src_hex:
             return "Current room unknown — move around first to establish position"
-        path = self._navigator.navigate_to(from_code, to_code.upper())
-        if path is None:
-            return f"No direct path from {from_code} to {to_code.upper()}"
-        # Clear queue and enqueue the path
+        result = self._room_graph().find_path(src_hex, dest.hex_id)
+        if result.status is NavStatus.UNKNOWN_START:
+            return f"Current room {src_hex} not in the path corpus"
+        if result.status is NavStatus.UNKNOWN_DEST:
+            return f"Unknown destination room: {to_code.upper()}"
+        if result.status is NavStatus.NO_PATH:
+            return f"No known route to {to_code.upper()}"
         while self._state.dequeue() is not None:
             pass
-        self._navigator.execute_path(path, self._state)
-        return f"Navigating: {from_code} → {to_code.upper()} ({len(path.steps)} steps)"
+        self._travel.set_route(result.steps)
+        return f"Navigating to {to_code.upper()} ({len(result.steps)} steps)"
 
     def list_paths(self) -> list[str]:
         """Return all known loop path names."""

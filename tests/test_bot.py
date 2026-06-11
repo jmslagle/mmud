@@ -350,12 +350,16 @@ async def test_death_hangs_up_and_stops_processing():
 @pytest.mark.asyncio
 async def test_blind_onset_stops_loop():
     from mmud.automation.loop_runner import LoopRunner
-    from mmud.config.schema import NavigationConfig, StealthConfig
+    from mmud.config.schema import NavigationConfig
+    from mmud.data.paths import GamePath, PathStep
     bot = make_transcript_bot(["You are blind!\n"])
-    runner = LoopRunner(NavigationConfig(loop_path="HOME"), StealthConfig(),
-                        [], bot._state, GameEventBus())
+    path = GamePath(from_code="HOME", from_region="", from_name="",
+                    to_code="HOME", to_region="", to_name="", npc="",
+                    steps=[PathStep(hex_id="0", command="n")])
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], {}, bot._travel)
     runner.start()
     bot._loop_runner = runner
+    assert runner.running
     await bot.run()
     assert not runner.running
 

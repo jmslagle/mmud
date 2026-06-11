@@ -1,40 +1,45 @@
 from __future__ import annotations
-from mmud.config.schema import NavigationConfig, StealthConfig, ItemsConfig
+from mmud.automation.travel import TravelDecider
+from mmud.config.schema import NavigationConfig
 from mmud.data.paths import GamePath
-from mmud.events import GameEventBus, RoomChanged, PathStepped
-from mmud.state.game_state import GameState
+from mmud.data.rooms import Room
+from mmud.navigation.graph import RouteStep
+
+
+def route_for_path(path: GamePath, rooms: dict[str, Room]) -> list[RouteStep]:
+    """A recorded .MP path -> RouteSteps. Expected hex after step i is
+    step[i+1].hex_id; the final step lands on the destination room's hex."""
+    steps: list[RouteStep] = []
+    hexes = [s.hex_id.upper() for s in path.steps]
+    for i, s in enumerate(path.steps):
+        if i + 1 < len(path.steps):
+            dest = hexes[i + 1]
+        else:
+            room = rooms.get(path.to_code.upper())
+            dest = room.hex_id.upper() if room and room.hex_id else ""
+        expect = frozenset({dest}) if dest else frozenset()
+        steps.append(RouteStep(command=s.command, expect=expect, chosen=dest))
+    return steps
 
 
 class LoopRunner:
-    """Executes a named loop path continuously, re-enqueuing on each RoomChanged arrival."""
+    """Thin adapter: arms a looping route on the shared TravelDecider."""
 
-    def __init__(
-        self,
-        nav_config: NavigationConfig,
-        stealth_config: StealthConfig,
-        paths: list[GamePath],
-        state: GameState,
-        bus: GameEventBus,
-        items_config: ItemsConfig | None = None,
-    ) -> None:
+    def __init__(self, nav_config: NavigationConfig, paths: list[GamePath],
+                 rooms: dict[str, Room], travel: TravelDecider) -> None:
         self._nav = nav_config
-        self._stealth = stealth_config
-        self._state = state
-        self._bus = bus
-        self._items = items_config or ItemsConfig()
+        self._rooms = rooms
+        self._travel = travel
         self._running = False
-        self._lap = 0
         self._path = self._find_path(paths)
 
     def _find_path(self, paths: list[GamePath]) -> GamePath | None:
         name = self._nav.loop_path.upper()
         if not name:
             return None
-        # 4-char: from_code == to_code == name
         for p in paths:
             if p.from_code.upper() == name and p.to_code.upper() == name:
                 return p
-        # 8-char stem: first 4 = from_code, last 4 = to_code
         if len(name) == 8:
             fc, tc = name[:4], name[4:]
             for p in paths:
@@ -43,46 +48,22 @@ class LoopRunner:
         return None
 
     def start(self) -> None:
+        if self._path is None:
+            return
+        self._travel.set_route(route_for_path(self._path, self._rooms), loop=True)
         self._running = True
-        self._lap = 0
-        if self._path:
-            self._enqueue_path()
-        self._bus.subscribe(RoomChanged, self._on_room_changed)
 
     def stop(self) -> None:
         self._running = False
-
-    def _on_room_changed(self, event: RoomChanged) -> None:
-        if not self._running or not self._path:
-            return
-        if event.code.upper() == self._path.to_code.upper():
-            self._lap += 1
-            self._enqueue_path()
-
-    def _enqueue_path(self) -> None:
-        level = self._state.inventory.encumbrance_level
-        if ((self._items.dont_go_heavy and level == "heavy")
-                or (self._items.dont_go_medium and level in ("medium", "heavy"))):
-            self._bus.post(PathStepped(command="(halted: encumbered)", lap=self._lap))
-            return
-        for step in self._path.steps:
-            if self._stealth.auto_sneak:
-                self._state.enqueue(self._stealth.sneak_cmd)
-            self._state.enqueue(step.command)
+        self._travel.clear(reason="stopped")
 
     def on_nav_failure(self) -> None:
-        """Called when a movement command fails. Clears queue and retries from current step."""
-        # Clear any pending queued commands
-        while self._state.dequeue() is not None:
-            pass
-        # Re-enqueue the full path from the start (simple recovery: restart the loop)
-        if self._path and self._running:
-            self._enqueue_path()
+        self._travel.on_move_failed()
 
     @property
     def running(self) -> bool:
-        return self._running
+        return self._running and self._travel.active
 
     @property
     def lap(self) -> int:
-        return self._lap
+        return self._travel.lap
