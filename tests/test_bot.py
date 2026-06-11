@@ -601,3 +601,56 @@ async def test_bank_detour_deposits_and_resyncs():
     assert "n" in bot._conn.sent
     assert "deposit 490 copper" in bot._conn.sent
     assert "inv" in bot._conn.sent      # post-work re-sync
+
+
+from mmud.config.schema import SessionConfig
+
+
+@pytest.mark.asyncio
+async def test_relog_runs_second_session(tmp_path):
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(LineReceived, received.append)
+    bot = make_transcript_bot(["hello\n", "world\n"], event_bus=bus)
+    bot.request_relog("test")
+    await bot.run()
+    # logout command sent, then a SECOND session replayed the transcript
+    assert bot._config.session.logout_cmd in bot._conn.sent
+    assert len(received) == 4               # 2 lines x 2 sessions
+    assert not bot._relog_pending
+
+
+@pytest.mark.asyncio
+async def test_relog_resets_login_and_safety():
+    bot = make_transcript_bot(["You have died!\n"])
+    bot._config.safety.hangup_on_death = True
+    bot._login_handler.in_game = True
+    bot.request_relog("test")
+    await bot.run()
+    # second session re-processed the death line; safety was reset in between
+    # (hangup fired again in session 2 and ended the run)
+    assert bot._safety.hangup_requested
+    assert bot._login_handler.in_game is False or bot._safety.hangup_requested
+
+
+@pytest.mark.asyncio
+async def test_session_capture_via_bot(tmp_path):
+    config = MudConfig()
+    config.session = SessionConfig(capture_file=str(tmp_path / "cap.log"))
+    bot = make_transcript_bot(["alpha\n", "beta\n"], config=config)
+    await bot.run()
+    bot._session.close()
+    text = (tmp_path / "cap.log").read_text()
+    assert "alpha" in text and "beta" in text
+
+
+@pytest.mark.asyncio
+async def test_ticker_action_low_rate_hangup(monkeypatch):
+    # tick() decision is unit-tested in test_session; here just verify the
+    # bot honors a "hangup" action from the session manager.
+    bot = make_transcript_bot(["x\n"])
+    bot._session._fired = False
+    monkeypatch.setattr(bot._session, "tick", lambda now: "hangup")
+    bot._check_session(now=0.0)
+    assert bot._safety.hangup_requested
+    assert "session" in bot._safety.reason

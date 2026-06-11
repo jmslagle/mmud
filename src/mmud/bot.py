@@ -111,6 +111,9 @@ class MudBot:
         self._engine.register("spells", self._spell_engine, PRIO_SPELLS)
         self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._safety = SafetyMonitor(self._config.safety)
+        from mmud.session import SessionManager
+        self._session = SessionManager(self._config.session)
+        self._relog_pending = False
         self._remote = RemoteCommandHandler(self)
         from mmud.combat.pvp import PvpEngine
         self._pvp = PvpEngine(self._config.pvp, self._config.players, self._safety)
@@ -182,6 +185,14 @@ class MudBot:
                 await self._run_session()
             except (ConnectionError, OSError):
                 pass
+            if self._relog_pending:
+                # deliberate logout-and-return: one fresh session, not a redial
+                self._relog_pending = False
+                self._login_handler.reset()
+                self._safety.reset()
+                self._state.abort_task()
+                self._session.reset(time.monotonic())
+                continue
             if self._safety.hangup_requested:
                 break   # deliberate disconnect — never auto-reconnect past it
             if (not self._config.safety.reconnect
@@ -217,6 +228,7 @@ class MudBot:
             self._spell_engine.tick()
             self._check_afk()
             self._check_task_timeout(time.monotonic())
+            self._check_session(time.monotonic())
 
     def _check_afk(self) -> None:
         cfg = self._config.afk
@@ -228,6 +240,7 @@ class MudBot:
             self._last_activity = time.monotonic()  # reset to avoid spam
 
     async def _process_line(self, line: str) -> None:
+        self._session.on_line(line)   # raw capture before ANSI strip
         self._emit(LineReceived(line=line))
         clean = _ANSI_RE.sub("", line).strip()
         self._parse_vitals(clean)
@@ -379,6 +392,7 @@ class MudBot:
         # XP tracking
         if (exp := self._who_parser.parse_exp_line(line)) is not None:
             self._state.set_exp(exp)
+            self._session.on_exp(exp, time.monotonic())
             self._emit(SessionStatUpdated(key="exp", value=str(exp)))
         if (lvl := self._who_parser.parse_level_line(line)) is not None:
             self._state.set_level(lvl)
@@ -475,6 +489,22 @@ class MudBot:
             task_name = self._state.task.type.name
             self._state.abort_task()
             self._emit(TaskChanged(task_type=task_name, status="timeout"))
+
+    def _check_session(self, now: float) -> None:
+        action = self._session.tick(now)
+        if action == "hangup":
+            self._safety.request_hangup("session limit reached")
+        elif action == "relog":
+            self.request_relog("exp rate below minimum")
+
+    def request_relog(self, reason: str) -> None:
+        """Log out cleanly and start one fresh session (login from scratch)."""
+        if self._relog_pending:
+            return
+        self._relog_pending = True
+        self._state.begin_task(TaskType.RELOGGING, priority=1, timeout_s=30.0,
+                               now=time.monotonic())
+        self._state.enqueue(self._config.session.logout_cmd)
 
     def _make_loop_runner(self):
         from mmud.automation.loop_runner import LoopRunner

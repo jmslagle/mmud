@@ -267,3 +267,33 @@ def test_commerce_defaults():
     assert cfg.commerce.bank_room == ""       # "" = banking disabled
     assert cfg.commerce.auto_train is False
     assert cfg.commerce.sell_items == []
+
+
+def test_session_section(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[session]
+capture_file = "session.log"
+max_hours_per_day = 4
+min_exp_rate = 5000
+grace_minutes = 10
+low_rate_action = "relog"
+logout_cmd = "=x"
+""")
+    cfg = load_config(p)
+    assert cfg.session.capture_file == "session.log"
+    assert cfg.session.max_hours_per_day == 4
+    assert cfg.session.min_exp_rate == 5000
+    assert cfg.session.grace_minutes == 10
+    assert cfg.session.low_rate_action == "relog"
+    assert cfg.session.logout_cmd == "=x"
+
+
+def test_session_defaults():
+    cfg = load_config(None)
+    assert cfg.session.capture_file == ""        # "" = capture off
+    assert cfg.session.max_hours_per_day == 0    # 0 = unlimited
+    assert cfg.session.min_exp_rate == 0         # 0 = disabled
+    assert cfg.session.grace_minutes == 15
+    assert cfg.session.low_rate_action == "hangup"
+    assert cfg.session.logout_cmd == "x"

@@ -172,6 +172,16 @@ class CommerceConfig:
 
 
 @dataclass
+class SessionConfig:
+    capture_file: str = ""          # append raw server lines here ("" = off)
+    max_hours_per_day: int = 0      # hangup after this many hours (0 = unlimited)
+    min_exp_rate: int = 0           # exp/hour floor (0 = disabled)
+    grace_minutes: int = 15         # no rate enforcement during warmup
+    low_rate_action: str = "hangup" # "hangup" | "relog"
+    logout_cmd: str = "x"           # command that exits the game cleanly
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -204,5 +214,6 @@ class MudConfig:
     pvp: PvpConfig = field(default_factory=PvpConfig)
     learning: LearningConfig = field(default_factory=LearningConfig)
     commerce: CommerceConfig = field(default_factory=CommerceConfig)
+    session: SessionConfig = field(default_factory=SessionConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)

@@ -170,3 +170,13 @@ train_room = ""
 sell_items = []      # e.g. ["rusty sword", "orc ear"]
 buy_items  = []      # keep these stocked, e.g. ["torch"]
 auto_train = false
+
+[session]
+# Session tracking: capture raw server output, exp-rate floor with logoff/relog,
+# and a max-hours cutoff.
+capture_file      = ""        # append raw server lines here ("" = off)
+max_hours_per_day = 0         # hangup after this many hours (0 = unlimited)
+min_exp_rate      = 0         # exp/hour floor (0 = disabled)
+grace_minutes     = 15        # no rate enforcement during warmup
+low_rate_action   = "hangup"  # "hangup" | "relog" when below min_exp_rate
+logout_cmd        = "x"       # command that exits the game cleanly

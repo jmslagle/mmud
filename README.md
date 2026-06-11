@@ -156,6 +156,8 @@ strangers. A known player who lacks a verb gets a `permission denied` reply.
 | `@auto-cash [on\|off]` | Toggle `[items] auto_cash` |
 | `@wealth` | Report carried wealth (copper-equivalent + per-denomination) |
 | `@db` | Report game-DB store stats (records / learned exits / collisions) |
+| `@rate` | Report exp/hour and session length |
+| `@relog` | Log out cleanly and log back in (fresh session) |
 
 The original MegaMud exposed ~47 verbs; the rest (e.g. `@relog`, party verbs)
 arrive as later phases wire up the subsystems they drive.
@@ -218,6 +220,35 @@ auto_train = true
 > Live-tune caveat: the `deposit`/`withdraw`/`sell`/`buy`/`train` command syntax
 > and the "ready to advance" line are reconstructed — verify against your server
 > and adjust `src/mmud/automation/commerce.py` if needed.
+
+---
+
+## Session management (`[session]`)
+
+Session-scope safety and observability:
+
+- **`capture_file`** — append every raw server line (ANSI preserved) to a log.
+- **`min_exp_rate`** — exp/hour floor. After a `grace_minutes` warmup, if the
+  rate drops below this, the bot performs `low_rate_action` (`"hangup"` or
+  `"relog"`). Check the current rate any time with the `@rate` verb.
+- **`max_hours_per_day`** — hang up after this many hours connected (0 = no
+  limit).
+- **Relog** (`@relog`, or the low-rate action) is a deliberate logout-and-return:
+  it sends `logout_cmd`, then reconnects and logs in from scratch — a separate
+  path from `[safety] reconnect`, which only covers *unexpected* connection loss.
+
+```toml
+[session]
+capture_file      = "session.log"
+max_hours_per_day = 4
+min_exp_rate      = 5000
+grace_minutes     = 15
+low_rate_action   = "relog"
+logout_cmd        = "x"
+```
+
+> Live-tune caveat: `logout_cmd` must cleanly exit the game — MajorMUD uses `x`
+> at the prompt, but some BBS menus need `=x` or similar.
 
 ---
 
