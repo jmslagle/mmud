@@ -1,5 +1,10 @@
 """Binary data probing and parsing utilities for game database files (MONSTERS.MD, ITEMS.MD, etc.).
 
+The container is the "MDB2" CDB B-tree engine; its on-disk format (header, node,
+and length-prefixed key layout) is documented in docs/cdb-mdb2-format.md, derived
+from the decompiled cdb_* functions in megamud.exe. The summary below is the
+empirical view this parser actually uses.
+
 Format note (empirically reverse-engineered):
   Each .MD file is a paged B-tree database:
     - Bytes 0-1023: 1024-byte file header (magic 'MDB2X\\0', metadata)
