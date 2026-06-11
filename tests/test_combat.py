@@ -97,3 +97,37 @@ def test_sneak_before_first_attack():
     ce = CombatEngine(CombatConfig(), sneak_cmd="sneak")
     assert ce.decide(gs) == "sneak"         # first: sneak
     assert ce.decide(gs) == "kill orc"      # second: attack
+
+
+def _sightings(gs, *names):
+    for n in names:
+        gs.monsters_present.append(MonsterSighting(name=n))
+
+
+def test_priority_target_first():
+    cfg = CombatConfig(monster_priority=["orc chieftain"])
+    gs = GameState(); gs.set_hp(100, 100); gs.set_combat(True)
+    _sightings(gs, "giant rat", "orc chieftain")
+    assert CombatEngine(cfg).decide(gs) == "kill orc chieftain"
+
+
+def test_attack_order_last():
+    cfg = CombatConfig(attack_order="last")
+    gs = GameState(); gs.set_hp(100, 100); gs.set_combat(True)
+    _sightings(gs, "rat", "orc")
+    assert CombatEngine(cfg).decide(gs) == "kill orc"
+
+
+def test_polite_attacks_blocks_when_player_present():
+    cfg = CombatConfig(polite_attacks=True)
+    gs = GameState(); gs.set_hp(100, 100); gs.set_combat(True)
+    _sightings(gs, "rat")
+    gs.players_present = ["Krang"]
+    assert CombatEngine(cfg).decide(gs) is None
+
+
+def test_polite_attacks_allows_when_alone():
+    cfg = CombatConfig(polite_attacks=True)
+    gs = GameState(); gs.set_hp(100, 100); gs.set_combat(True)
+    _sightings(gs, "rat")
+    assert CombatEngine(cfg).decide(gs) == "kill rat"

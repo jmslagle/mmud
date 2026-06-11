@@ -11,6 +11,9 @@ class CombatEngine:
         self.flee_threshold = cfg.flee_threshold
         self.rest_threshold = cfg.rest_threshold
         self.mana_attack_pct = cfg.mana_attack_pct
+        self.attack_order = cfg.attack_order
+        self.polite_attacks = cfg.polite_attacks
+        self.monster_priority = [p.lower() for p in cfg.monster_priority]
         self.sneak_cmd = sneak_cmd
         self._sneaked_this_encounter = False
 
@@ -27,7 +30,9 @@ class CombatEngine:
             if self.sneak_cmd and not self._sneaked_this_encounter:
                 self._sneaked_this_encounter = True
                 return self.sneak_cmd
-            target = state.monster_names()[0] if state.monsters_present else ""
+            if self.polite_attacks and state.players_present:
+                return None
+            target = self._pick_target(state)
             return f"{self.attack_cmd} {target}".strip()
 
         # Reset sneak flag when not in combat
@@ -36,3 +41,17 @@ class CombatEngine:
         if hp_pct < self.rest_threshold:
             return "rest"
         return None
+
+    def _pick_target(self, state: GameState) -> str:
+        names = state.monster_names()
+        if not names:
+            return ""
+        for wanted in self.monster_priority:
+            for name in names:
+                if wanted in name.lower():
+                    return name
+        if self.attack_order == "last":
+            return names[-1]
+        if self.attack_order == "reverse":
+            return names[::-1][0]
+        return names[0]
