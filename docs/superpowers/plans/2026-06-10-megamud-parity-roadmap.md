@@ -40,14 +40,16 @@
 | 3.5 | **MDB2 Parser Rewrite** (prereq for 4–5) | S | ✅ complete | [2026-06-10-mdb2-parser-rewrite.md](2026-06-10-mdb2-parser-rewrite.md) |
 | 4 | Combat Depth | L | ✅ complete | [2026-06-10-phase-04-combat-depth.md](2026-06-10-phase-04-combat-depth.md) |
 | 5 | Inventory, Loot, Cash | L | ✅ complete | [2026-06-10-phase-05-inventory-loot-cash.md](2026-06-10-phase-05-inventory-loot-cash.md) |
-| 6 | Multi-hop Pathfinding, Resync, Doors, Search | L | not started | write plan at phase start |
-| 7 | Live DB Learning | S–M | not started | write plan at phase start |
+| 6 | Multi-hop Pathfinding, Resync, Doors, Search | L | planned (execute AFTER 7) | [2026-06-10-phase-06-multihop-pathfinding.md](2026-06-10-phase-06-multihop-pathfinding.md) |
+| 7 | Game DB Store + Live Learning | S–M | planned (execute FIRST) | [2026-06-10-phase-07-game-db-store.md](2026-06-10-phase-07-game-db-store.md) |
 | 8 | Shopping, Banking, Training | M | not started | write plan at phase start |
 | 9 | Session Management & Full Disconnect Logic | M | not started | write plan at phase start |
 | 10 | Party Support | M | not started | write plan at phase start |
 | 11 | Scheduler, Scripts, Macros | M | not started | write plan at phase start |
 
 **Order rationale:** Phase 1 is the refactor everything else hangs off. Phases 2–3 are small and maximize live-testing safety/value now. Phases 4–6 are the big parity pillars in dependency order (combat → inventory → pathfinding). Phases 7–11 are leaf features that each depend on one or two earlier pillars. Phase 7 is order-flexible — pull it earlier if unknown-monster sightings become annoying during Phase 4 testing.
+
+**Phase 7 scope change + reorder (2026-06-10, user direction):** Phase 7 grew from a JSON sidecar-overlay into a full **Game DB Store**: the MDB2 binaries are converted/merged into our own JSON DB at startup (never written back) with collision detection and fingerprint-based re-import; text sources (.MP corpus, ROOMS.MD, MESSAGES.MD) stay directly-read and are never imported. Because Phase 6's learned exits persist through that store, **Phase 7 executes before Phase 6** (sanctioned by the order-flexible note above).
 
 **One deliberate deviation:** the LoopRunner step-cursor rewrite (one move at a time, resync from history) is deferred entirely to Phase 6 rather than starting in Phase 1. The current bulk-enqueue looping is live-tested and works; rewriting it before the room graph and resync logic exist would destabilize the user's active testing for no immediate gain.
 
