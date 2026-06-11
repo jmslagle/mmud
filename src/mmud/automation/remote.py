@@ -61,6 +61,11 @@ class RemoteCommandHandler:
         self.register("loop", lambda s, a: bot.start_loop(a))
         self.register("stop", lambda s, a: bot.stop_all())
         self.register("db", self._db_stats)
+        self.register("events", lambda s, a: (
+            ", ".join(f"{desc} in {int(secs)}s"
+                      for desc, secs in bot._scheduler.pending(time.monotonic()))
+            or "no events scheduled"
+        ))
         self.register("relog", self._relog)
         self.register("rate", lambda s, a: (
             f"exp rate {bot._session.exp_rate_per_hour():.0f}/hr "

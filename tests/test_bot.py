@@ -678,3 +678,15 @@ async def test_friend_invite_autojoin():
         ["Krang has invited you to join his party.\n", "ok\n"], config=config)
     await bot.run()
     assert "join Krang" in bot._conn.sent
+
+
+@pytest.mark.asyncio
+async def test_scheduled_command_fires_via_ticker():
+    from mmud.config.schema import ScheduleEvent
+    config = MudConfig()
+    config.schedule.events = [ScheduleEvent(type="command", every_seconds=1,
+                                            arg="look")]
+    bot = make_transcript_bot(["x\n"], config=config)
+    # drive the scheduler directly (the 1Hz ticker calls this in production)
+    bot._scheduler.tick(bot._scheduler._next_fire[0] + 0.1)
+    assert bot._state.dequeue() == "look"

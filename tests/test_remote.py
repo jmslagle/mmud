@@ -168,3 +168,25 @@ def test_party_verbs():
     assert bot._state.dequeue() == bot._config.party.resume_cmd
     assert h.handle("Friend", "@forget") == "party forgotten"
     assert bot._state.party == []
+
+
+def test_events_verb():
+    from mmud.config.schema import ScheduleEvent
+    config = MudConfig()
+    config.schedule.events = [ScheduleEvent(type="relog", every_seconds=3600)]
+    bot = _bot(WILDCARD)
+    bot._config.schedule = config.schedule
+    from mmud.automation.scheduler import Scheduler
+    bot._scheduler = Scheduler(config.schedule, send=lambda c: None,
+                               goto=lambda c: None, start_loop=lambda n: None,
+                               relog=lambda: None, logoff=lambda: None,
+                               now=lambda: 0.0)
+    h = RemoteCommandHandler(bot)
+    reply = h.handle("Friend", "@events")
+    assert "relog" in reply
+
+
+def test_events_verb_empty():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    assert "no events" in h.handle("Friend", "@events").lower()
