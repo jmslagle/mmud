@@ -125,6 +125,14 @@ class SafetyConfig:
 
 
 @dataclass
+class RemoteConfig:
+    enabled: bool = False    # opt-in: remote commands off unless explicitly enabled
+    # Reply template; MajorMud telepath syntax. Adjust to the live server's syntax
+    # ("/<name> <text>" or "telepath <name> <text>") during in-person testing.
+    tell_format: str = "/{name} {text}"
+
+
+@dataclass
 class PlayerRule:
     name: str = ""
     friend: bool = False
@@ -153,5 +161,6 @@ class MudConfig:
     afk: AfkConfig = field(default_factory=AfkConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
     safety: SafetyConfig = field(default_factory=SafetyConfig)
+    remote: RemoteConfig = field(default_factory=RemoteConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)

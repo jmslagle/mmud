@@ -119,3 +119,15 @@ hangup_players = []  # disconnect immediately if any of these appear in the room
 panic_cmd = ""       # sent before a panic hangup
 reconnect = false    # auto-reconnect on connection loss
 max_redials = 3
+
+[remote]
+# Allow trusted players to control the bot via tells (e.g. "@status", "@stop").
+enabled = false
+# Reply template — adjust to your server's telepath syntax.
+tell_format = "/{name} {text}"
+
+# Per-player permissions. remote_cmds is a list of allowed verbs, or ["*"] for all.
+# [[players]]
+# name = "MyAltChar"
+# friend = true
+# remote_cmds = ["*"]
