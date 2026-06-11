@@ -391,6 +391,7 @@ class MudBot:
             paths=paths,
             state=self._state,
             bus=self._bus or GameEventBus(),
+            items_config=self._config.items,
         )
         self._loop_runner.start()
 
@@ -411,6 +412,7 @@ class MudBot:
             paths=paths,
             state=self._state,
             bus=self._bus or __import__("mmud.events", fromlist=["GameEventBus"]).GameEventBus(),
+            items_config=self._config.items,
         )
         self._loop_runner.start()
         if self._loop_runner._path is None:

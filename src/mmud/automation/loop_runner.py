@@ -1,7 +1,7 @@
 from __future__ import annotations
-from mmud.config.schema import NavigationConfig, StealthConfig
+from mmud.config.schema import NavigationConfig, StealthConfig, ItemsConfig
 from mmud.data.paths import GamePath
-from mmud.events import GameEventBus, RoomChanged
+from mmud.events import GameEventBus, RoomChanged, PathStepped
 from mmud.state.game_state import GameState
 
 
@@ -15,11 +15,13 @@ class LoopRunner:
         paths: list[GamePath],
         state: GameState,
         bus: GameEventBus,
+        items_config: ItemsConfig | None = None,
     ) -> None:
         self._nav = nav_config
         self._stealth = stealth_config
         self._state = state
         self._bus = bus
+        self._items = items_config or ItemsConfig()
         self._running = False
         self._lap = 0
         self._path = self._find_path(paths)
@@ -58,6 +60,11 @@ class LoopRunner:
             self._enqueue_path()
 
     def _enqueue_path(self) -> None:
+        level = self._state.inventory.encumbrance_level
+        if ((self._items.dont_go_heavy and level == "heavy")
+                or (self._items.dont_go_medium and level in ("medium", "heavy"))):
+            self._bus.post(PathStepped(command="(halted: encumbered)", lap=self._lap))
+            return
         for step in self._path.steps:
             if self._stealth.auto_sneak:
                 self._state.enqueue(self._stealth.sneak_cmd)

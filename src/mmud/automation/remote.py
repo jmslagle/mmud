@@ -59,6 +59,10 @@ class RemoteCommandHandler:
         ))
         self.register("loop", lambda s, a: bot.start_loop(a))
         self.register("stop", lambda s, a: bot.stop_all())
+        self.register("wealth", lambda s, a: (
+            f"wealth {bot._state.inventory.wealth_total()} copper-equiv "
+            f"({', '.join(f'{n} {d}' for d, n in bot._state.inventory.coins.items()) or 'no coins'})"
+        ))
         self.register("goto", lambda s, a: bot.navigate_to_room(a) if a else "usage: @goto CODE")
         self.register("kill", self._kill)
         self.register("hangup", self._hangup)

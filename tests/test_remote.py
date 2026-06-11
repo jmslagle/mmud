@@ -109,3 +109,12 @@ def test_custom_verb_registration():
     h = _handler(WILDCARD)
     h.register("wealth", lambda sender, arg: "1234 copper")
     assert h.handle("Friend", "@wealth") == "1234 copper"
+
+
+def test_wealth_verb():
+    from mmud.state.inventory import Inventory
+    bot = _bot(WILDCARD)
+    bot._state.inventory = Inventory(coins={"gold": 3, "copper": 7})
+    h = RemoteCommandHandler(bot)
+    reply = h.handle("Friend", "@wealth")
+    assert "307" in reply        # 3*100 + 7 copper-equivalent
