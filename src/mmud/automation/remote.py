@@ -71,6 +71,15 @@ class RemoteCommandHandler:
             f"({', '.join(f'{n} {d}' for d, n in bot._state.inventory.coins.items()) or 'no coins'})"
         ))
         self.register("goto", lambda s, a: bot.navigate_to_room(a) if a else "usage: @goto CODE")
+        self.register("invite", lambda s, a: (
+            bot._state.enqueue(f"invite {s}") or f"inviting {s}"))
+        self.register("wait", lambda s, a: (
+            bot._state.enqueue(bot._config.party.wait_cmd) or "waiting"))
+        self.register("rego", lambda s, a: (
+            bot._state.enqueue(bot._config.party.resume_cmd) or "resuming"))
+        self.register("share", lambda s, a: (
+            bot._state.enqueue(f"share {a}".strip()) or "sharing"))
+        self.register("forget", self._forget_party)
         self.register("kill", self._kill)
         self.register("hangup", self._hangup)
         self.register("panic!", self._panic)
@@ -89,6 +98,11 @@ class RemoteCommandHandler:
     def _relog(self, sender: str, arg: str) -> str:
         self._bot.request_relog(f"remote @relog from {sender}")
         return "relogging"
+
+    def _forget_party(self, sender: str, arg: str) -> str:
+        self._bot._state.party = []
+        self._bot._state.party_leader = ""
+        return "party forgotten"
 
     def _db_stats(self, sender: str, arg: str) -> str:
         store = getattr(self._bot, "_store", None)
