@@ -14,6 +14,7 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
+    PRIO_REFRESH,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -101,6 +102,10 @@ class MudBot:
         from mmud.combat.backstab import BackstabEngine
         self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
         self._engine.register("backstab", self._backstab, PRIO_COMBAT - 1)
+        from mmud.parser.inventory_parser import InventoryParser
+        from mmud.state.inventory import RefreshDecider
+        self._inv_parser = InventoryParser()
+        self._engine.register("refresh", RefreshDecider(), PRIO_REFRESH)
         self._bus = event_bus
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -168,6 +173,11 @@ class MudBot:
         self._emit(LineReceived(line=line))
         clean = _ANSI_RE.sub("", line).strip()
         self._parse_vitals(clean)
+        if inv := self._inv_parser.feed(clean):
+            self._state.inventory = inv
+            self._state.inventory_dirty = False
+            if self._state.task.type is TaskType.WAITING:
+                self._state.complete_task()
         self._parse_conditions(clean)
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
@@ -320,6 +330,7 @@ class MudBot:
         if self._state.in_combat and _COMBAT_EXIT_RE.search(line):
             self._state.set_combat(False)
             self._state.monsters_present.clear()
+            self._state.inventory_dirty = True   # loot may have dropped
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:
