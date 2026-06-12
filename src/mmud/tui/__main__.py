@@ -26,7 +26,7 @@ def main() -> None:
     host = args.host or config.server.host
     port = args.port or config.server.port
 
-    app = MegaMudApp(config=config, host=host, port=port)
+    app = MegaMudApp(config=config, host=host, port=port, config_path=char_path)
     app.run()
 
 

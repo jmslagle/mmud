@@ -18,6 +18,7 @@ from mmud.tui.widgets.game_output import GameOutput
 from mmud.tui.widgets.players import PlayersPane
 from mmud.tui.widgets.right_panel import RightPanel
 from mmud.tui.widgets.stats_bar import StatsBar
+from mmud.tui.settings_screen import SettingsScreen
 
 
 class MegaMudApp(App):
@@ -32,15 +33,18 @@ class MegaMudApp(App):
         Binding("ctrl+3", "switch_tab_stats", "Stats", show=False, priority=True),
         Binding("ctrl+k", "toggle_connect", "Connect", show=False, priority=True),
         Binding("ctrl+l", "toggle_loop", "Loop", show=False, priority=True),
+        Binding("ctrl+o", "open_settings", "Settings", show=False, priority=True),
         Binding("escape", "clear_input", "Clear", show=False, priority=True),
     ]
 
-    def __init__(self, config: MudConfig, host: str, port: int) -> None:
+    def __init__(self, config: MudConfig, host: str, port: int, config_path: pathlib.Path | None = None) -> None:
         super().__init__()
         self._config = config
         self._host = host
         self._port = port
         self._bus = GameEventBus()
+        from mmud.config.runtime import ConfigService
+        self._config_service = ConfigService(self._config, bus=self._bus, path=config_path)
         self._bot: MudBot | None = None
         self._bot_task: asyncio.Task | None = None
         self._macro_keys = self._load_macro_keys()
@@ -261,6 +265,7 @@ class MegaMudApp(App):
                 data_dir=data_dir if data_dir.exists() else None,
                 event_bus=self._bus,
                 config=self._config,
+                config_service=self._config_service,
             )
             self._bot_task = asyncio.create_task(self._bot.run())
             self.sub_title = f"{self._host}:{self._port} [connected]"
@@ -282,6 +287,9 @@ class MegaMudApp(App):
                     f"{self._host}:{self._port} [looping]" if running
                     else f"{self._host}:{self._port} [connected]"
                 )
+
+    def action_open_settings(self) -> None:
+        self.push_screen(SettingsScreen(self._config_service))
 
     def action_clear_input(self) -> None:
         self.query_one("#command-input", Input).clear()
