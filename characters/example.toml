@@ -64,7 +64,6 @@ hide_cmd    = "hide"
 # ── Navigation ───────────────────────────────────────────────────────────────
 [navigation]
 loop_path        = ""
-start_room       = ""
 auto_start       = false
 flee_rooms       = 3
 can_pick_locks   = false
@@ -83,10 +82,8 @@ collect_silver   = true
 collect_gold     = true
 collect_platinum = true
 collect_runic    = false
-runic_name       = "runic"
 dont_go_heavy    = true
 dont_go_medium   = false
-max_coins        = 0       # drop loose coins above this per denomination (0 = off)
 max_wealth       = 0       # bank when copper-equiv wealth exceeds (Phase 8)
 min_wealth       = 0       # withdraw when below (Phase 8)
 
@@ -122,7 +119,6 @@ popup_missed     = true
 # friend      = true
 # remote_cmds = ["@do", "@loop"]
 # dont_heal   = false
-# dont_bless  = false
 
 # ── UI defaults ──────────────────────────────────────────────────────────────
 [ui]

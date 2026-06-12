@@ -71,7 +71,6 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
     if n := data.get("navigation"):
         cfg.navigation = NavigationConfig(
             loop_path=n.get("loop_path", ""),
-            start_room=n.get("start_room", ""),
             auto_start=n.get("auto_start", False),
             flee_rooms=n.get("flee_rooms", 3),
             can_pick_locks=n.get("can_pick_locks", False),
@@ -90,10 +89,8 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             collect_gold=it.get("collect_gold", True),
             collect_platinum=it.get("collect_platinum", True),
             collect_runic=it.get("collect_runic", False),
-            runic_name=it.get("runic_name", "runic"),
             dont_go_heavy=it.get("dont_go_heavy", True),
             dont_go_medium=it.get("dont_go_medium", False),
-            max_coins=it.get("max_coins", 0),
             max_wealth=it.get("max_wealth", 0),
             min_wealth=it.get("min_wealth", 0),
         )
@@ -189,7 +186,6 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
             friend=pl.get("friend", False),
             remote_cmds=pl.get("remote_cmds", []),
             dont_heal=pl.get("dont_heal", False),
-            dont_bless=pl.get("dont_bless", False),
         )
         for pl in data.get("players", [])
     ]

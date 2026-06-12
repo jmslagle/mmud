@@ -183,19 +183,16 @@ def test_phase5_items_config(tmp_path):
     p = tmp_path / "c.toml"
     p.write_text("""
 [items]
-max_coins = 500
 max_wealth = 20000
 min_wealth = 1000
 """)
     cfg = load_config(p)
-    assert cfg.items.max_coins == 500
     assert cfg.items.max_wealth == 20000
     assert cfg.items.min_wealth == 1000
 
 
 def test_phase5_items_defaults():
     cfg = load_config(None)
-    assert cfg.items.max_coins == 0      # 0 = no limit
     assert cfg.items.max_wealth == 0
     assert cfg.items.min_wealth == 0
 
@@ -342,3 +339,26 @@ arg = "say hello||say hi"
 def test_schedule_empty_by_default():
     cfg = load_config(None)
     assert cfg.schedule.events == []
+
+
+def test_deleted_keys_are_ignored(tmp_path):
+    # Old config keys removed during dead-config triage must be silently
+    # ignored (loader uses .get), and the attributes must no longer exist.
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[navigation]
+start_room = "TOWN"
+
+[items]
+runic_name = "runic"
+max_coins = 500
+
+[[players]]
+name = "Krang"
+dont_bless = true
+""")
+    cfg = load_config(p)
+    assert not hasattr(cfg.navigation, "start_room")
+    assert not hasattr(cfg.items, "runic_name")
+    assert not hasattr(cfg.items, "max_coins")
+    assert not hasattr(cfg.players[0], "dont_bless")
