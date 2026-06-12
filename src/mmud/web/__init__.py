@@ -1,3 +1,8 @@
-# Future web UI: FastAPI + WebSocket endpoint subscribing to GameEventBus.
-# The same event dataclasses from mmud.events will be serialised to JSON
-# and forwarded to browser clients. No changes to events.py or bot.py required.
+"""Web control panel: FastAPI + WebSocket UI driven by GameEventBus.
+
+`WebPanelServer` (server.py) registers one subscriber per event dataclass,
+serialises each event to JSON, and broadcasts it to all /ws clients. REST
+endpoints read GameState/SessionManager and drive the live MudBot. The whole
+package is optional — only imported when [web] config is enabled (see
+MudBot.maybe_build_web_server).
+"""
