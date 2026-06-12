@@ -94,8 +94,20 @@ The bot auto-logs in if `[login]` is configured, then starts the configured loop
 | `Ctrl+1` | Conversations tab |
 | `Ctrl+2` | Players tab |
 | `Ctrl+3` | Stats tab |
+| `Ctrl+O` | Open the settings editor (edit + save config without leaving the TUI) |
 | `F1` | Menu |
 | `Escape` | Clear input |
+
+### In-app configuration
+
+Press `Ctrl+O` to open a tabbed settings screen (General / Display / Combat /
+Spells / Health / Events / Stealth / Items / Party) listing every scalar config
+field. Edit a value and press Enter to apply it to the live config immediately;
+press `Ctrl+S` (or the Save button) to write it back to your character `.toml`,
+**preserving comments and any keys the schema doesn't know about**. No restart,
+no hand-editing required. The same change is also reachable remotely via `@set`
+/ `@save` (below) — all edit paths funnel through one validated service, so a
+change made anywhere is type-checked and broadcast to every open panel.
 
 ---
 
@@ -140,6 +152,11 @@ Permission is per-player: a sender must match a `[[players]]` rule whose
 ignored silently** — no reply is sent, so the bot never reveals itself to
 strangers. A known player who lacks a verb gets a `permission denied` reply.
 
+> **`@set` is powerful.** It can change *any* scalar field, including
+> `login.password`. Only grant `"set"`/`"save"` (or `"*"`) to characters you
+> fully trust, and remember `@set` changes are live immediately but only written
+> to disk on an explicit `@save`.
+
 | Verb | Action |
 |---|---|
 | `@status` | Reply with room, HP/MP, loop state, combat flag |
@@ -154,6 +171,8 @@ strangers. A known player who lacks a verb gets a `permission denied` reply.
 | `@auto-hide [on\|off]` | Toggle `[stealth] auto_hide` |
 | `@auto-get [on\|off]` | Toggle `[items] auto_get` |
 | `@auto-cash [on\|off]` | Toggle `[items] auto_cash` |
+| `@set SECTION.FIELD VALUE` | Edit any scalar config field live (e.g. `@set combat.flee_threshold 0.25`); type-checked |
+| `@save` | Persist the current config back to the character `.toml` |
 | `@wealth` | Report carried wealth (copper-equivalent + per-denomination) |
 | `@db` | Report game-DB store stats (records / learned exits / collisions) |
 | `@rate` | Report exp/hour and session length |
