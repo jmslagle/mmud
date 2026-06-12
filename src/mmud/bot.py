@@ -109,9 +109,6 @@ class MudBot:
         )
         self._spell_engine = SpellEngine(self._config.spells)
         self._engine = DecisionEngine()
-        self._engine.register("queue", QueueDecider(), PRIO_QUEUE)
-        self._engine.register("spells", self._spell_engine, PRIO_SPELLS)
-        self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._safety = SafetyMonitor(self._config.safety)
         from mmud.session import SessionManager
         self._session = SessionManager(self._config.session)
@@ -129,29 +126,20 @@ class MudBot:
         self._remote = RemoteCommandHandler(self)
         from mmud.combat.pvp import PvpEngine
         self._pvp = PvpEngine(self._config.pvp, self._config.players, self._safety)
-        self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
-        from mmud.automation.run_rules import RunDecider
-        self._engine.register("run", RunDecider(self._config.combat,
-                                                self._config.navigation), PRIO_FLEE)
         from mmud.combat.backstab import BackstabEngine
         self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
-        self._engine.register("backstab", self._backstab, PRIO_BACKSTAB)
         from mmud.parser.inventory_parser import InventoryParser
-        from mmud.state.inventory import RefreshDecider
         self._inv_parser = InventoryParser()
-        self._engine.register("refresh", RefreshDecider(), PRIO_REFRESH)
         from mmud.automation.items import LootMonitor, GetDecider
         self._loot = LootMonitor(
             is_monster=lambda name: self._monster_db.find(name) is not None)
         self._get_decider = GetDecider(
             self._config.items,
             on_mark=(lambda n: self._store.add_mark("ungettable", n)) if self._store else None)
-        self._engine.register("items", self._get_decider, PRIO_ITEMS)
         from mmud.automation.equip import EquipDecider
         self._equip_decider = EquipDecider(
             self._item_db, enabled=self._config.items.auto_get,
             on_mark=(lambda n: self._store.add_mark("no_auto_equip", n)) if self._store else None)
-        self._engine.register("equip", self._equip_decider, PRIO_EQUIP)
         if self._store is not None:
             for n in self._store.marks("ungettable"):
                 self._get_decider.mark_ungettable(n)
@@ -161,12 +149,8 @@ class MudBot:
         from mmud.automation.travel import TravelDecider
         self._travel = TravelDecider(self._config.items, self._config.stealth,
                                      self._bus or GameEventBus())
-        self._engine.register("travel", self._travel, PRIO_TRAVEL)
         from mmud.automation.doors import DoorMonitor
         self._doors = DoorMonitor(self._config.navigation)
-        from mmud.automation.search import SearchDecider
-        self._engine.register("search", SearchDecider(self._config.navigation),
-                              PRIO_SEARCH)
         from mmud.automation.commerce import CommerceEngine
         self._commerce = CommerceEngine(
             self._config.commerce, self._config.items,
@@ -175,13 +159,12 @@ class MudBot:
             loop_running=lambda: bool(self._loop_runner and self._loop_runner.running),
             travel_active=lambda: self._travel.active,
         )
-        self._engine.register("commerce", self._commerce, PRIO_COMMERCE)
         from mmud.parser.party_parser import PartyParser
         from mmud.automation.party import PartyDecider, InviteMonitor
         self._party_parser = PartyParser()
         self._invites = InviteMonitor(self._config.players)
         self._party_decider = PartyDecider(self._config.party, self._config.players)
-        self._engine.register("party", self._party_decider, PRIO_PARTY)
+        self._build_engines()
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
@@ -192,6 +175,38 @@ class MudBot:
         self._auto_started = False
         self._redial_delay_s = 5.0
         self._was_low = False   # edge-detect for health_low stat
+
+    def _build_engines(self) -> None:
+        """Register every decider into self._engine in one ordered table.
+
+        All dependencies (self._spell_engine, self._combat, self._backstab,
+        self._get_decider, self._equip_decider, self._travel, self._commerce,
+        self._party_decider) are constructed in __init__ BEFORE this runs.
+        The table is the single source of truth for slot names + priorities;
+        DecisionEngine.register sorts by priority, so list order here is just
+        for readability. Same names/priorities/instances as before => no
+        behavior change.
+        """
+        from mmud.automation.run_rules import RunDecider
+        from mmud.state.inventory import RefreshDecider
+        from mmud.automation.search import SearchDecider
+        registry: list[tuple[str, object, int]] = [
+            ("queue", QueueDecider(), PRIO_QUEUE),
+            ("cures", CureDecider(self._config.health), PRIO_CURE),
+            ("run", RunDecider(self._config.combat, self._config.navigation), PRIO_FLEE),
+            ("backstab", self._backstab, PRIO_BACKSTAB),
+            ("spells", self._spell_engine, PRIO_SPELLS),
+            ("combat", self._combat, PRIO_COMBAT),
+            ("refresh", RefreshDecider(), PRIO_REFRESH),
+            ("equip", self._equip_decider, PRIO_EQUIP),
+            ("items", self._get_decider, PRIO_ITEMS),
+            ("commerce", self._commerce, PRIO_COMMERCE),
+            ("party", self._party_decider, PRIO_PARTY),
+            ("travel", self._travel, PRIO_TRAVEL),
+            ("search", SearchDecider(self._config.navigation), PRIO_SEARCH),
+        ]
+        for name, decider, priority in registry:
+            self._engine.register(name, decider, priority)
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:

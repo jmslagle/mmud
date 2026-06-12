@@ -738,3 +738,16 @@ async def test_health_low_counter_increments():
     bot = make_transcript_bot(["[HP=10/100]\n"], config=config)
     await bot.run()
     assert bot._state.health_low >= 1
+
+
+@pytest.mark.asyncio
+async def test_engine_registry_order_and_names():
+    from mmud.config.schema import MudConfig
+    bot = make_transcript_bot([], config=MudConfig())
+    slots = bot._engine._slots          # list[tuple[priority, name, decider]]
+    prios = [s[0] for s in slots]
+    names = [s[1] for s in slots]
+    assert prios == sorted(prios)
+    for expected in ("queue", "cures", "run", "backstab", "spells", "combat",
+                     "refresh", "equip", "items", "commerce", "party", "travel", "search"):
+        assert expected in names
