@@ -9,6 +9,18 @@ class ServerConfig:
 
 
 @dataclass
+class LoginStep:
+    """One step of a scripted login: wait for `prompt`, then send `reply`.
+
+    Mirrors the original MegaMud's LogonPrompt%d / LogonReply%d table. `prompt`
+    is a case-insensitive regex; `reply` is template-expanded (`{userid}`,
+    `{pswd}`, `{character}`). An empty `reply` just presses Enter.
+    """
+    prompt: str = ""
+    reply: str = ""
+
+
+@dataclass
 class LoginConfig:
     username: str = ""
     password: str = ""
@@ -19,6 +31,11 @@ class LoginConfig:
     # Case-insensitive; "" = use the default pattern.
     username_prompt: str = ""
     password_prompt: str = ""
+    # Authentic MegaMud-style scripted login: an ordered list of expect/reply
+    # steps. When non-empty it DRIVES login (the built-in detection is the
+    # zero-config fallback). `menu_prompt` (regex) marks "now in the game".
+    menu_prompt: str = ""
+    script: list[LoginStep] = field(default_factory=list)
 
 
 @dataclass

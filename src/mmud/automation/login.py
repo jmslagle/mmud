@@ -1,5 +1,6 @@
 from __future__ import annotations
 import re
+from mmud.commands import expand_template
 from mmud.config.schema import LoginConfig
 
 # Common BBS/MUD prompt patterns. Worldgroup/Galacticomm (which hosts MajorMud)
@@ -32,6 +33,14 @@ class LoginHandler:
                          if config.username_prompt else _USERNAME_RE)
         self._pass_re = (re.compile(config.password_prompt, re.IGNORECASE)
                          if config.password_prompt else _PASSWORD_RE)
+        # Scripted login (MegaMud-style): compiled ordered expect/reply steps.
+        self._script = [(re.compile(s.prompt, re.IGNORECASE), s.reply)
+                        for s in config.script if s.prompt]
+        self._menu_re = (re.compile(config.menu_prompt, re.IGNORECASE)
+                         if config.menu_prompt else None)
+        self._vars = {"userid": config.username, "pswd": config.password,
+                      "character": config.character}
+        self._step = 0
         self._sent_username = False
         self._sent_password = False
         self.game_full = False
@@ -48,8 +57,19 @@ class LoginHandler:
         if _GAME_FULL_RE.search(stripped):
             self.game_full = True
             return None
-        if _GAME_ENTERED_RE.search(stripped):
+        if (self._menu_re and self._menu_re.search(stripped)) \
+                or _GAME_ENTERED_RE.search(stripped):
             self.in_game = True
+            return None
+
+        # Scripted login (MegaMud-style) takes precedence when configured:
+        # wait for each step's prompt in order, then send its expanded reply.
+        if self._script:
+            if self._step < len(self._script):
+                pattern, reply = self._script[self._step]
+                if pattern.search(stripped):
+                    self._step += 1
+                    return expand_template(reply, self._vars)
             return None
 
         # Username prompt
@@ -81,7 +101,8 @@ class LoginHandler:
         return None
 
     def reset(self) -> None:
-        """Reset for a new login attempt."""
+        """Reset for a new login attempt (e.g. a relog)."""
+        self._step = 0
         self._sent_username = False
         self._sent_password = False
         self.game_full = False

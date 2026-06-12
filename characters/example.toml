@@ -17,6 +17,25 @@ auto_login = false   # set to true to enable automatic login on connect
 # MUD prompts. Override with a regex (case-insensitive) if your BBS differs:
 # username_prompt = "user-id|type it in and press"
 # password_prompt = "password\\s*:"
+#
+# Scripted login — how the original MegaMud did it (LogonPrompt/LogonReply).
+# When you add [[login.script]] steps they DRIVE login in order (the built-in
+# detection above becomes the fallback). reply expands {userid}/{pswd}/
+# {character}; an empty reply just presses Enter. menu_prompt marks "in game".
+# Example for a Galacticomm Worldgroup BBS hosting MajorMud:
+#   menu_prompt = "MAJORMUD|Already playing"
+#   [[login.script]]
+#   prompt = "User-ID|type it in and press"
+#   reply  = "{userid}"
+#   [[login.script]]
+#   prompt = "[Pp]assword"
+#   reply  = "{pswd}"
+#   [[login.script]]
+#   prompt = "\\(N\\)onstop"
+#   reply  = "N"
+#   [[login.script]]
+#   prompt = "Enter your selection"   # the BBS main menu
+#   reply  = "D"                       # the key that launches MajorMud
 
 # ── Combat ───────────────────────────────────────────────────────────────────
 [combat]
