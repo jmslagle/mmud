@@ -108,6 +108,21 @@ def test_attack_with_leader_blocks_until_leader_engages():
     assert d.leader_engaged is True         # leader engaged the monster
 
 
+def test_leader_engagement_requires_word_boundary():
+    # "Krangos" is a different player whose name shares the "Krang" prefix —
+    # it must not be mistaken for the leader engaging.
+    d = PartyDecider(PartyConfig(), [], now=lambda: 0.0)
+    gs = GameState()
+    gs.party_leader = "Krang"
+    from mmud.state.game_state import MonsterSighting
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    d.decide(gs)                                 # learns the leader name
+    d.on_line("Krangos swings at the orc.")
+    assert d.leader_engaged is False             # prefix-only match rejected
+    d.on_line("Krang swings at the orc.")
+    assert d.leader_engaged is True              # exact name engages
+
+
 def test_attack_with_leader_resets_when_no_monsters():
     d = PartyDecider(PartyConfig(), [], now=lambda: 0.0)
     gs = GameState()

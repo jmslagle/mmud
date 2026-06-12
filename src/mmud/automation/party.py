@@ -52,7 +52,7 @@ class PartyDecider:
     def on_line(self, line: str) -> None:
         if not self._leader_name:
             return
-        if (line.lower().startswith(self._leader_name.lower())
+        if (re.match(rf"{re.escape(self._leader_name)}\b", line, re.IGNORECASE)
                 and _LEADER_HIT_RE.search(line)):
             self._leader_engaged = True
 
