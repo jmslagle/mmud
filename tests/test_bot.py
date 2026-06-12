@@ -645,6 +645,24 @@ async def test_relog_resets_login_and_safety():
 
 
 @pytest.mark.asyncio
+async def test_relog_rearms_health_low_edge_detect():
+    # Regression: _was_low must reset on relog so the first low-HP dip of the
+    # fresh session is counted. The transcript replays a low-HP line each
+    # session; with _was_low pre-stuck True and no relog reset, the edge would
+    # stay suppressed and health_low would never increment.
+    config = MudConfig()
+    config.combat.flee_threshold = 0.15
+    bot = make_transcript_bot(["[HP=10/100]\n"], config=config)
+    bot._was_low = True            # simulate prior session ending at low HP
+    bot.request_relog("test")
+    await bot.run()
+    # The transcript replays the low-HP line each session. Session 1's dip is
+    # suppressed (carried-over _was_low=True); without the relog reset, session 2
+    # would be suppressed too. The relog re-arm lets session 2 count the dip.
+    assert bot._state.health_low >= 1   # fresh session's first dip was counted
+
+
+@pytest.mark.asyncio
 async def test_session_capture_via_bot(tmp_path):
     config = MudConfig()
     config.session = SessionConfig(capture_file=str(tmp_path / "cap.log"))

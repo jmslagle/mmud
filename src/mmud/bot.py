@@ -213,6 +213,7 @@ class MudBot:
                 self._safety.reset()
                 self._state.abort_task()
                 self._session.reset(time.monotonic())
+                self._was_low = False   # fresh session: re-arm health_low edge-detect
                 continue
             if self._safety.hangup_requested:
                 break   # deliberate disconnect — never auto-reconnect past it
