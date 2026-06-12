@@ -15,6 +15,7 @@ class SpellEngine:
         self._ticks = 0
         self._attack_casts = 0
         self._swapped_to_melee = False
+        self._cast_primary_next = True
 
     def tick(self) -> None:
         """Advance one game tick (call once per ~1Hz timer)."""
@@ -31,9 +32,11 @@ class SpellEngine:
             if self._swapped_to_melee:
                 self._swapped_to_melee = False
                 self._attack_casts = 0
+                self._cast_primary_next = True
                 if self._cfg.cast_weapon_cmd:
                     return self._cfg.cast_weapon_cmd
             self._attack_casts = 0
+            self._cast_primary_next = True
 
         # Mana heal (only out of combat)
         if (self._cfg.mana_heal and not state.in_combat
@@ -52,6 +55,12 @@ class SpellEngine:
             limit = self._cfg.max_cast_count
             if limit <= 0 or self._attack_casts < limit:
                 self._attack_casts += 1
+                if self._cfg.multi_attack:
+                    if self._cast_primary_next:
+                        self._cast_primary_next = False
+                        return self._cfg.attack
+                    self._cast_primary_next = True
+                    return self._cfg.multi_attack
                 return self._cfg.attack
             if not self._swapped_to_melee and self._cfg.melee_weapon_cmd:
                 self._swapped_to_melee = True

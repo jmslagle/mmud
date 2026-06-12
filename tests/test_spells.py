@@ -150,3 +150,21 @@ def test_unlimited_when_zero():
     gs = _combat_state()
     for _ in range(10):
         assert eng.decide(gs) == "cast zap"
+
+
+def test_multi_attack_chains_after_primary_attack():
+    cfg = SpellsConfig(attack="cast zap", multi_attack="cast bolt")
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast bolt"
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast bolt"
+
+
+def test_multi_attack_inert_when_unset():
+    cfg = SpellsConfig(attack="cast zap")
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    for _ in range(5):
+        assert eng.decide(gs) == "cast zap"

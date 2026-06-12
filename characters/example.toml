@@ -33,7 +33,7 @@ monster_priority = []      # attack these names first, e.g. ["ancient dragon"]
 [spells]
 attack        = ""
 pre_attack    = ""
-multi_attack  = ""
+multi_attack  = ""      # secondary attack spell, alternated with attack
 heal          = ""
 heal_hp_pct   = 0.50
 mana_heal     = ""
