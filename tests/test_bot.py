@@ -751,3 +751,17 @@ async def test_engine_registry_order_and_names():
     for expected in ("queue", "cures", "run", "backstab", "spells", "combat",
                      "refresh", "equip", "items", "commerce", "party", "travel", "search"):
         assert expected in names
+
+
+@pytest.mark.asyncio
+async def test_connection_loss_is_logged(caplog):
+    import logging
+    from mmud.config.schema import MudConfig
+    bot = make_transcript_bot([], config=MudConfig())
+    async def boom():
+        raise ConnectionError("boom")
+    bot._run_session = boom  # type: ignore[method-assign]
+    with caplog.at_level(logging.WARNING, logger="mmud.bot"):
+        await bot.run()
+    assert any("boom" in r.getMessage() or "connection" in r.getMessage().lower()
+               for r in caplog.records)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import logging
 import pathlib
 import re
 import time
@@ -51,6 +52,8 @@ _PLAYER_HIT_RE = re.compile(r"You (?:hit|strike|slash|pierce|bash|backstab)\w* \
 _PLAYER_MISS_RE = re.compile(r"You miss\b", re.IGNORECASE)
 _MONSTER_HIT_RE = re.compile(r"(?:hits?|strikes?|slashes?|bashes?|pierces?) you for (\d+) damage", re.IGNORECASE)
 _BACKSTAB_RE = re.compile(r"You backstab", re.IGNORECASE)
+
+_log = logging.getLogger(__name__)
 
 
 class MudBot:
@@ -235,7 +238,8 @@ class MudBot:
         while True:
             try:
                 await self._run_session()
-            except (ConnectionError, OSError):
+            except (ConnectionError, OSError) as exc:
+                _log.warning("connection lost: %s", exc)
                 self._session.on_carrier_lost()
                 self._emit(SessionStatUpdated(key="carrier_lost",
                                               value=str(self._session.carrier_lost)))
