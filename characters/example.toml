@@ -57,7 +57,7 @@ hangup_delay_s = 0
 [stealth]
 auto_sneak  = false
 sneak_cmd   = "sneak"
-must_sneak  = false
+must_sneak  = false     # require a successful sneak before attacking
 auto_hide   = false
 hide_cmd    = "hide"
 

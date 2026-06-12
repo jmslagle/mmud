@@ -105,6 +105,7 @@ class MudBot:
         self._combat = CombatEngine(
             config=self._config.combat,
             sneak_cmd=self._config.stealth.sneak_cmd if self._config.stealth.auto_sneak else "",
+            must_sneak=self._config.stealth.must_sneak,
         )
         self._spell_engine = SpellEngine(self._config.spells)
         self._engine = DecisionEngine()
@@ -271,6 +272,7 @@ class MudBot:
         self._parse_conditions(clean)
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
+        self._combat.on_line(clean)
         self._commerce.on_line(clean)
         self._party_parser.feed(clean, self._state)
         if join_cmd := self._invites.check(clean):

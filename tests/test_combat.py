@@ -99,6 +99,34 @@ def test_sneak_before_first_attack():
     assert ce.decide(gs) == "kill orc"      # second: attack
 
 
+def test_must_sneak_holds_attack_until_sneak_succeeds():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    ce = CombatEngine(CombatConfig(), sneak_cmd="sneak", must_sneak=True)
+    assert ce.decide(gs) == "sneak"     # issue the sneak
+    assert ce.decide(gs) is None        # hold: not confirmed yet
+    ce.on_line("You move silently into the shadows.")
+    assert ce.decide(gs) == "kill orc"  # confirmed: attack
+
+
+def test_must_sneak_retries_after_failure():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    ce = CombatEngine(CombatConfig(), sneak_cmd="sneak", must_sneak=True)
+    assert ce.decide(gs) == "sneak"     # issue the sneak
+    ce.on_line("You fail to sneak and make a noise.")
+    assert ce.decide(gs) == "sneak"     # retry the sneak
+    assert ce.decide(gs) is None        # still holding
+    ce.on_line("You begin to sneak around.")
+    assert ce.decide(gs) == "kill orc"  # confirmed: attack
+
+
 def _sightings(gs, *names):
     for n in names:
         gs.monsters_present.append(MonsterSighting(name=n))
