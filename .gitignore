@@ -17,6 +17,11 @@ venv/
 characters/*.toml
 !characters/example.toml
 
+# Web frontend build artifacts + deps (never commit)
+src/mmud/web/frontend/node_modules/
+src/mmud/web/frontend/dist/
+src/mmud/web/frontend/*.tsbuildinfo
+
 # Local build / reverse-engineering artifacts (never commit)
 .coverage
 extractions/
