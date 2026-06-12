@@ -209,6 +209,13 @@ class UiConfig:
 
 
 @dataclass
+class WebConfig:
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8080
+
+
+@dataclass
 class MudConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     login: LoginConfig = field(default_factory=LoginConfig)
@@ -229,3 +236,4 @@ class MudConfig:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     players: list[PlayerRule] = field(default_factory=list)
     ui: UiConfig = field(default_factory=UiConfig)
+    web: WebConfig = field(default_factory=WebConfig)

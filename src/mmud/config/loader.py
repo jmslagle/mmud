@@ -8,7 +8,7 @@ from mmud.config.schema import (
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
     HealthConfig, SafetyConfig, RemoteConfig, PvpConfig, LearningConfig,
-    CommerceConfig, SessionConfig, ScheduleConfig, ScheduleEvent,
+    CommerceConfig, SessionConfig, ScheduleConfig, ScheduleEvent, WebConfig,
 )
 
 _T = TypeVar("_T")
@@ -63,6 +63,8 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
         cfg.session = unpack_dataclass(SessionConfig, se)
     if u := data.get("ui"):
         cfg.ui = unpack_dataclass(UiConfig, u)
+    if w := data.get("web"):
+        cfg.web = unpack_dataclass(WebConfig, w)
 
     # Sections with nested list-of-dataclass fields: unpack the flat fields,
     # then build the nested lists explicitly.
