@@ -44,7 +44,7 @@ Leave everything else at defaults for now.
 ```bash
 pytest -q
 ```
-Expected: 139 passed. If any fail, don't proceed — fix the environment first.
+Expected: 434 passed. If any fail, don't proceed — fix the environment first.
 
 ### Step 3: Open a capture log
 
@@ -351,3 +351,316 @@ Based on your session, update these files:
 | `src/mmud/bot.py` | `_COMBAT_EXIT_RE`, `_NAV_FAIL_RE` |
 | `src/mmud/parser/conversation_parser.py` | Channel formats if your server uses different bracket styles |
 | `characters/mychar.toml` | Thresholds, spells, loop path |
+
+
+---
+
+# Part 2 — Live-Tuning Plan: Reconstructed Regexes
+
+Most of the bot's line-matching regexes were reconstructed from the MegaMud
+binary and from educated guesses about server wording, not from observed live
+output. They are *load-bearing*: a missed onset line leaves a condition
+untracked, a missed exits line stalls travel, a missed train line skips
+training. This document lists every such pattern with its source `file:line`,
+the **current** pattern quoted verbatim, and a blank **Real capture** slot to
+fill in once you have seen the real server line.
+
+## Tuning procedure (apply to every pattern below)
+
+1. **Capture.** Trigger the event in-game (get poisoned, walk a room, open a
+   door, train, backstab, etc.) and copy the *exact* server line — including
+   punctuation and any leading whitespace — into the matching `Real capture:`
+   slot below.
+2. **Add a failing test.** Write a test that feeds that real line through the
+   relevant parser/monitor and asserts the expected result. Prefer the
+   transcript harness (`FakeConnection`) for bot-level flows, or a direct unit
+   test for a standalone parser/regex.
+3. **Run + adjust.** Run the test (`python -m pytest tests/<file>.py -q`),
+   watch it fail, then adjust the regex *minimally* so the real line matches
+   while existing tests stay green. Re-run the whole suite (`python -m pytest -q`).
+4. **Commit.** Commit the pair together:
+   `test+fix: tune <pattern> against live capture`.
+
+Keep edits minimal — widen alternations or relax anchors only as far as the
+real line demands; do not rewrite a working pattern.
+
+---
+
+## 1. Conditions onset / recovery
+
+**File:** `src/mmud/state/conditions.py`
+
+`ONSET_PATTERNS` (lines 17–24):
+
+- L18 POISONED — `r"you (?:are|have been|feel) .*poison"`
+- L19 DISEASED — `r"you (?:are|have been) diseased|you feel very ill"`
+- L20 HELD — `r"you (?:are|have been) (?:held|paralyzed)|you cannot move"`
+- L21 STUNNED — `r"you (?:are|have been) stunned|you see stars"`
+- L22 BLIND — `r"you (?:are|have been|go) blind|you cannot see"`
+- L23 CONFUSED — `r"you (?:are|feel) confused|your head spins"`
+
+`RECOVERY_PATTERNS` (lines 26–33):
+
+- L27 POISONED — `r"poison has worn off|poison leaves? your"`
+- L28 DISEASED — `r"you feel healthy again|disease has been cured"`
+- L29 HELD — `r"you can move again|no longer (?:held|paralyzed)"`
+- L30 STUNNED — `r"no longer stunned|your head clears"`
+- L31 BLIND — `r"you can see again|your (?:sight|vision) returns"`
+- L32 CONFUSED — `r"no longer confused|your mind clears"`
+
+All compiled `re.IGNORECASE`, matched with `.search()`.
+
+Real capture (onset, per condition):
+- POISONED: ___
+- DISEASED: ___
+- HELD/paralyzed: ___
+- STUNNED: ___
+- BLIND: ___
+- CONFUSED: ___
+
+Real capture (recovery, per condition):
+- POISONED: ___
+- DISEASED: ___
+- HELD/paralyzed: ___
+- STUNNED: ___
+- BLIND: ___
+- CONFUSED: ___
+
+---
+
+## 2. Inventory — carrying / wearing / wealth / encumbrance
+
+**File:** `src/mmud/parser/inventory_parser.py`
+
+Current (all anchored at `^`, `re.IGNORECASE`, matched with `.match()`):
+
+- L5  `_CARRYING_RE` — `r"^You are carrying\s+(.*)$"`
+- L6  `_WEARING_RE` — `r"^You are wearing\s+(.*)$"`
+- L7–8 `_WEALTH_RE` — `r"^Wealth:\s+(\d+)\s+(copper|silver|gold|platinum|runic)"`
+- L9–10 `_ENCUMBRANCE_RE` — `r"^Encumbrance:\s+(\d+)/(\d+)\s*-\s*(\w+)\s*\[(\d+)%\]"`
+- L11 `_COUNT_ITEM_RE` — `r"^(\d+)\s+(.*)$"` (leading "N <item>" count)
+- L12 `_ARTICLE_RE` — `r"^(?:a|an|the|some)\s+"` (article stripper)
+- L13–14 `_COIN_RE` — `r"^(\d+)\s+(copper|silver|gold|platinum|runic)\b"`
+- L18 item splitter (inline) — `re.split(r",\s*|\s+and\s+", ...)`
+
+Note: wrapped carrying/wearing continuation lines are matched by a
+`line.startswith(" ")` check (L61), not a regex.
+
+Real capture:
+- `You are carrying` line: ___
+- `You are wearing` line: ___
+- `Wealth:` line: ___
+- `Encumbrance:` line: ___
+- A wrapped continuation line (leading spaces): ___
+
+---
+
+## 3. Loot — "You notice ... here."
+
+**File:** `src/mmud/automation/items.py`
+
+Current:
+
+- L14 `_NOTICE_RE` — `r"^You notice (.+?) here\.?$"` (`re.IGNORECASE`, `.match()`)
+- L15–16 `_COIN_RE` — `r"^(\d+)\s+(copper|silver|gold|platinum|runic)\b"`
+- L17 `_ARTICLE_RE` — `r"^(?:a|an|the|some)\s+"`
+- L18 `_CANT_GET_RE` — `r"you can'?t (?:get|take|pick up)"` (used from `bot.py` L502)
+- L35 list splitter (inline) — `re.split(r",\s*|\s+and\s+", m.group(1))`
+
+Real capture:
+- Single-item notice: ___
+- Multi-item notice (comma/and list): ___
+- Coins-on-ground notice: ___
+- A "can't get" refusal line: ___
+
+---
+
+## 4. Exits — "Obvious exits:" (also the arrival signal)
+
+**File:** `src/mmud/parser/exits_parser.py`
+
+Current:
+
+- L4 `_EXITS_RE` — `r"^Obvious exits:\s*(.+?)\.?$"` (`re.IGNORECASE`, `.match()` on the stripped line)
+- L30 direction splitter (inline) — `re.split(r",\s*|\s+and\s+", body)`
+
+This line doubles as the **arrival signal** for unnamed rooms (~88% of the
+graph); `TravelDecider` advances on it, so tuning this also tunes travel. A
+body of `none` yields `[]` (no exits).
+
+Real capture:
+- Multi-exit line: ___
+- `none` line: ___
+- Single-exit line: ___
+
+---
+
+## 5. Doors — closed / locked
+
+**File:** `src/mmud/automation/doors.py`
+
+Current (both `re.IGNORECASE`, matched with `.search()`):
+
+- L6 `_CLOSED_RE` — `r"(?:the )?door is closed|it'?s closed"`
+- L7 `_LOCKED_RE` — `r"(?:the )?door is locked|it'?s locked"`
+
+Locked is checked before closed; a match drives `open`/`pick`/`bash <dir>`.
+
+Real capture:
+- Door-closed line: ___
+- Door-locked line: ___
+
+---
+
+## 6. Party — member row / leader / invite / leader-hit
+
+**File:** `src/mmud/parser/party_parser.py`
+
+- L7  `_NOT_IN_PARTY_RE` — `r"You are not in a party"`
+- L8  `_LIST_HEADER_RE` — `r"The following people are in your"`
+- L9  `_FOLLOWING_RE` — `r"^You are following\s+(\w+)"`
+- L13–20 `_ROW_RE` (RECONSTRUCTED member-row layout):
+
+```
+^\s*([A-Z][\w']*)            # first name
+(?:\s+[A-Z][\w']*)?          # optional surname
+\s+\[([^\]]+)\]              # [Class]
+\s+\[\s*(\d+)\]              # [HP%]
+(?:\s+\[\s*(\d+)\])?         # [MP%] (optional)
+(?:\s+(P))?\s*$              # leader/rank flag
+```
+
+The header/not-in/following anchors are noted in source as EXACT anchors from
+`party_list_parse @ 0x004618e0`; the **row layout is reconstructed** and is the
+highest-risk pattern here — verify field order/brackets against a live
+`party`/`who` listing.
+
+**File:** `src/mmud/automation/party.py`
+
+- L14 `_INVITE_RE` — `r"(\w+) has invited you to join"` (`.search()`)
+- L15–16 `_LEADER_HIT_RE` (newly added) —
+  `r"\b(?:swings?|attacks?|hits?|strikes?|slashes?|casts?)\b"`
+  Used in `on_line` (L52–57): the line must *start* with the escaped leader
+  name (`re.match(rf"{leader}\b", ...)`) **and** `_LEADER_HIT_RE.search(line)`
+  must hit, to set `leader_engaged`.
+
+Real capture:
+- A party member row (verbatim, preserve spacing/brackets): ___
+- The list header line: ___
+- `You are following <name>` line: ___
+- `not in a party` line: ___
+- An invite line: ___
+- A leader-acting-in-combat line (leader name + verb): ___
+
+---
+
+## 7. Commerce — train ready/done + bank/shop/share command syntax
+
+**File:** `src/mmud/automation/commerce.py`
+
+Line monitors (`re.IGNORECASE`, `.search()`):
+
+- L15–17 `_TRAIN_READY_RE` —
+  `r"enough experience to advance|you may now advance|ready to train"`
+- L18–19 `_TRAIN_DONE_RE` —
+  `r"you advance to level|you are now level|welcome to level"`
+
+Outbound **command syntax** generated by `_build_work` (verify the server
+accepts these exact verbs/forms):
+
+- deposit — `f"deposit {k} {denom}"` (L138)
+- withdraw — `f"withdraw {need} copper"` (L143)
+- sell — `f"sell {i.lower()}"` (L146)
+- buy — `f"buy {i.lower()}"` (L150)
+- train — `"train"` (L153)
+
+**File:** `src/mmud/automation/party.py` — share command syntax:
+
+- share — `f"share {n} {denom}"` (L105)
+
+Real capture / verification:
+- Train-ready line: ___
+- Train-complete line: ___
+- Bank deposit accepted? (command echo / confirmation): ___
+- Bank withdraw accepted?: ___
+- Shop sell accepted?: ___
+- Shop buy accepted?: ___
+- `train` accepted?: ___
+- `share` accepted?: ___
+
+---
+
+## 8. Backstab — hide / sneak / backstab stage lines
+
+**File:** `src/mmud/combat/backstab.py`
+
+All `re.IGNORECASE`, matched with `.search()`:
+
+- L10 `_HIDE_OK_RE` — `r"slip into the shadows|you are hidden"`
+- L11 `_HIDE_FAIL_RE` — `r"fail to hide|can'?t hide"`
+- L12 `_SNEAK_OK_RE` — `r"move silently|begin to sneak"`
+- L13 `_SNEAK_FAIL_RE` — `r"fail to sneak|make a noise"`
+- L14 `_BS_OK_RE` — `r"plant your weapon|backstab.*for \d+"`
+- L15 `_BS_FAIL_RE` — `r"backstab attempt fails|fails? to find an opening"`
+
+Note: the hide/sneak success/fail wording overlaps with the combat-engine sneak
+patterns in area 10 — capture once and tune both call sites consistently.
+
+Real capture:
+- Hide success: ___
+- Hide fail: ___
+- Sneak success: ___
+- Sneak fail: ___
+- Backstab success (with damage): ___
+- Backstab fail: ___
+
+---
+
+## 9. Combat — player-hit / miss / monster-hit / backstab
+
+**File:** `src/mmud/bot.py` (combat-stat regexes near the top)
+
+- L36 `_HP_RE` — `r"\[HP=(\d+)/(\d+)\]"` (prompt HP, `.search()`)
+- L37 `_MP_RE` — `r"\[MP=(\d+)/(\d+)\]"` (prompt MP)
+- L38 `_ANSI_RE` — `r"\x1b\[[0-9;]*m"` (ANSI strip)
+- L39–44 `_COMBAT_EXIT_RE` —
+  `r"breaks off combat|Combat Engaged:\s*Off|You have (?:slain|killed)|falls? to the ground|(?:is|are) dead\b"`
+- L45–49 `_NAV_FAIL_RE` —
+  `r"(?:you can'?t go that way|alas|there is no exit|you cannot go that direction|no exit|blocked|closed)"`
+- L50 `_PLAYER_HIT_RE` —
+  `r"You (?:hit|strike|slash|pierce|bash|backstab)\w* \w.+? for (\d+) damage"`
+- L51 `_PLAYER_MISS_RE` — `r"You miss\b"`
+- L52 `_MONSTER_HIT_RE` —
+  `r"(?:hits?|strikes?|slashes?|bashes?|pierces?) you for (\d+) damage"`
+- L53 `_BACKSTAB_RE` — `r"You backstab"`
+
+All combat lines `re.IGNORECASE`, `.search()`. `_PLAYER_HIT_RE` captures damage
+in group 1; `_BACKSTAB_RE` tags the hit as a backstab.
+
+Real capture:
+- Prompt line showing `[HP=.../...]` (and `[MP=.../...]`): ___
+- A player-hit line (with damage): ___
+- A player-miss line: ___
+- A monster-hit line (with damage): ___
+- A player-backstab line: ___
+- A kill / combat-exit line: ___
+- A movement-blocked / nav-fail line: ___
+
+---
+
+## 10. Sneak ok / fail (combat engine)
+
+**File:** `src/mmud/combat/combat.py`
+
+Newly added, `re.IGNORECASE`, `.search()`:
+
+- L6 `_SNEAK_OK_RE` — `r"move silently|begin to sneak"`
+- L7 `_SNEAK_FAIL_RE` — `r"fail to sneak|make a noise"`
+
+Identical wording to the backstab-engine sneak patterns (area 8); when
+`must_sneak` is set, success sets `_sneak_confirmed` and a fail clears
+`_sneaked_this_encounter`. Tune in lockstep with area 8.
+
+Real capture:
+- Sneak success: ___
+- Sneak fail: ___
