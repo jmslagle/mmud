@@ -131,11 +131,11 @@ class RemoteCommandHandler:
 
     def _toggle(self, section: str, attr: str) -> VerbHandler:
         def toggle(sender: str, arg: str) -> str:
-            cfg = getattr(self._bot._config, section)
+            svc = self._bot._config_service
             if arg:
-                value = arg.lower() in ("on", "true", "1", "yes")
+                value = arg.strip().lower() in ("on", "true", "1", "yes")
             else:
-                value = not getattr(cfg, attr)
-            setattr(cfg, attr, value)
+                value = not getattr(getattr(svc.config, section), attr)
+            svc.patch(section, attr, value)
             return f"{attr} {'on' if value else 'off'}"
         return toggle

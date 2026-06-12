@@ -84,6 +84,8 @@ class MudBot:
         event_bus: GameEventBus | None = None,
         rooms: dict[str, Room] | None = None,
         config: MudConfig | None = None,
+        config_path: pathlib.Path | None = None,
+        config_service=None,
     ) -> None:
         self._conn = MudConnection(host, port)
         self._config = config or MudConfig()
@@ -97,6 +99,13 @@ class MudBot:
         self._room_parser = RoomParser(rooms or {})
         self._convo_parser = ConversationParser()
         self._bus = event_bus   # assigned early so DB import can emit events
+
+        from mmud.config.runtime import ConfigService
+        self._config_service = config_service or ConfigService(
+            self._config,
+            bus=self._bus or GameEventBus(),
+            path=config_path,
+        )
 
         from mmud.data.monster_db import MonsterDB
         from mmud.data.item_db import ItemDB
