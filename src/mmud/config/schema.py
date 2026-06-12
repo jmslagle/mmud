@@ -14,6 +14,11 @@ class LoginConfig:
     password: str = ""
     character: str = ""
     auto_login: bool = False   # must be explicitly true to enable auto-login
+    # Optional regex overrides for servers whose prompts differ from the
+    # built-in defaults (which cover Worldgroup/Galacticomm + common MUDs).
+    # Case-insensitive; "" = use the default pattern.
+    username_prompt: str = ""
+    password_prompt: str = ""
 
 
 @dataclass

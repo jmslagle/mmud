@@ -13,6 +13,10 @@ username   = "your_bbs_login"
 password   = "your_password"
 character  = "Your Character Name"
 auto_login = false   # set to true to enable automatic login on connect
+# Defaults detect Worldgroup/Galacticomm ("...have a User-ID...") and common
+# MUD prompts. Override with a regex (case-insensitive) if your BBS differs:
+# username_prompt = "user-id|type it in and press"
+# password_prompt = "password\\s*:"
 
 # ── Combat ───────────────────────────────────────────────────────────────────
 [combat]
