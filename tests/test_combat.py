@@ -112,6 +112,22 @@ def test_must_sneak_holds_attack_until_sneak_succeeds():
     assert ce.decide(gs) == "kill orc"  # confirmed: attack
 
 
+def test_must_sneak_issues_sneak_without_auto_sneak():
+    # Regression: with sneak_cmd supplied + must_sneak, the FIRST decide must
+    # issue the sneak (not deadlock on None waiting for a confirm that never
+    # comes). Proves the engine is fine; the deadlock was bot wiring passing "".
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    ce = CombatEngine(CombatConfig(), sneak_cmd="sneak", must_sneak=True)
+    assert ce.decide(gs) == "sneak"     # first: issues the sneak, no deadlock
+    assert ce.decide(gs) is None        # then holds until confirmed
+    ce.on_line("You move silently into the shadows.")
+    assert ce.decide(gs) == "kill orc"  # confirmed: attack
+
+
 def test_must_sneak_retries_after_failure():
     gs = GameState()
     gs.set_combat(True)

@@ -263,6 +263,17 @@ from mmud.state.tasks import TaskType
 from mmud.events import TaskChanged
 
 
+def test_must_sneak_wires_sneak_cmd_without_auto_sneak():
+    # Regression: must_sneak=True with auto_sneak=False must still hand the
+    # CombatEngine a non-empty sneak_cmd, else decide() deadlocks on None.
+    from mmud.config.schema import MudConfig, StealthConfig
+    config = MudConfig()
+    config.stealth = StealthConfig(auto_sneak=False, must_sneak=True,
+                                   sneak_cmd="sneak")
+    bot = make_transcript_bot([], config=config)
+    assert bot._combat.sneak_cmd == "sneak"
+
+
 @pytest.mark.asyncio
 async def test_active_task_suppresses_combat_decider(unused_tcp_port):
     # Low HP would normally produce "rest", but an active task at PRIO_COMBAT pins it
