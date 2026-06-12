@@ -14,8 +14,8 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
-    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH, PRIO_COMMERCE,
-    PRIO_PARTY,
+    PRIO_BACKSTAB, PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH,
+    PRIO_COMMERCE, PRIO_PARTY,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -135,7 +135,7 @@ class MudBot:
                                                 self._config.navigation), PRIO_FLEE)
         from mmud.combat.backstab import BackstabEngine
         self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
-        self._engine.register("backstab", self._backstab, PRIO_COMBAT - 1)
+        self._engine.register("backstab", self._backstab, PRIO_BACKSTAB)
         from mmud.parser.inventory_parser import InventoryParser
         from mmud.state.inventory import RefreshDecider
         self._inv_parser = InventoryParser()

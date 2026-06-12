@@ -9,6 +9,7 @@ PRIO_CURE = 10      # condition cures + panic            (Phase 2)
 PRIO_FLEE = 20      # flee/run rules                     (Phase 4)
 PRIO_SPELLS = 30    # heal/mana/attack/pre-attack/bless  (current SpellEngine)
 PRIO_COMBAT = 40    # melee attack/rest                  (current CombatEngine)
+PRIO_BACKSTAB = PRIO_COMBAT - 1  # hide/sneak/stab, just before melee
 PRIO_REST = 50      # rest task management               (Phase 4)
 PRIO_REFRESH = 60   # stats/inventory refresh            (Phase 5)
 PRIO_BLESS = 70     # bless scheduling split-out         (Phase 4)

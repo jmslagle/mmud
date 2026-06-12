@@ -97,3 +97,8 @@ def test_decider_setting_own_task_is_not_self_aborted():
     assert engine.next_command(gs) == "cast heal"
     assert gs.task.is_active
     assert gs.task.priority == PRIO_CURE
+
+
+def test_prio_backstab_sits_just_above_combat():
+    from mmud.automation.decision import PRIO_BACKSTAB, PRIO_COMBAT
+    assert PRIO_BACKSTAB == PRIO_COMBAT - 1
