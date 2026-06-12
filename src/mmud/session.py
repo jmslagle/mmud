@@ -67,6 +67,12 @@ class SessionManager:
     def hours_elapsed(self, now: float) -> float:
         return (now - self.started_at) / 3600.0
 
+    def time_to_level_hours(self, exp_to_next: int) -> float:
+        rate = self.exp_rate_per_hour()
+        if rate <= 0 or exp_to_next <= 0:
+            return 0.0
+        return exp_to_next / rate
+
     # ---- 1Hz decision -----------------------------------------------------------
 
     def tick(self, now: float) -> str | None:
