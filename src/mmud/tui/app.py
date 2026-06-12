@@ -37,14 +37,14 @@ class MegaMudApp(App):
         Binding("escape", "clear_input", "Clear", show=False, priority=True),
     ]
 
-    def __init__(self, config: MudConfig, host: str, port: int) -> None:
+    def __init__(self, config: MudConfig, host: str, port: int, config_path: pathlib.Path | None = None) -> None:
         super().__init__()
         self._config = config
         self._host = host
         self._port = port
         self._bus = GameEventBus()
         from mmud.config.runtime import ConfigService
-        self._config_service = ConfigService(self._config, bus=self._bus, path=None)
+        self._config_service = ConfigService(self._config, bus=self._bus, path=config_path)
         self._bot: MudBot | None = None
         self._bot_task: asyncio.Task | None = None
         self._macro_keys = self._load_macro_keys()
