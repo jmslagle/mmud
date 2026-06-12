@@ -111,6 +111,62 @@ change made anywhere is type-checked and broadcast to every open panel.
 
 ---
 
+## Web Control Panel (browser UI)
+
+An optional browser UI that mirrors MegaMud's multi-window layout — a game
+terminal, conversations, player/session statistics, an online-players list, and
+quick-tools (a compass plus action buttons). It is driven live by the same
+`GameEventBus` that powers the TUI, so both stay in sync. It is **off by
+default**.
+
+### Install
+
+```
+# Python extras (FastAPI + uvicorn):
+python -m pip install -e '.[web]'
+```
+
+```
+# Build the SPA (one time, or after frontend changes):
+cd src/mmud/web/frontend
+npm install
+npm run build
+```
+
+### Enable
+
+Add to the character `.toml`:
+
+```
+[web]
+enabled = true
+host    = "127.0.0.1"   # localhost only — see SECURITY below
+port    = 8080
+```
+
+### Launch
+
+Run the TUI as usual and connect:
+
+```
+python -m mmud.tui --char characters/yours.toml
+```
+
+When `[web].enabled = true` the bot starts the panel automatically — open
+<http://127.0.0.1:8080>. The built SPA is served by FastAPI from
+`src/mmud/web/frontend/dist`. For frontend development with hot reload, run
+`npm run dev` in the frontend dir; it proxies `/api` and `/ws` to port 8080.
+
+### SECURITY
+
+The panel binds to `127.0.0.1` (localhost) by default and is
+**UNAUTHENTICATED**. It can send game commands and edit your config. Do **not**
+set `host` to `0.0.0.0` or expose the port publicly without an authenticating
+reverse proxy or an SSH tunnel — anyone who can reach the port can drive your
+character.
+
+---
+
 ## Bot Commands
 
 Type `:command` in the command input to control the bot without sending to the server.
