@@ -47,6 +47,7 @@ class MegaMudApp(App):
         self._config_service = ConfigService(self._config, bus=self._bus, path=config_path)
         self._bot: MudBot | None = None
         self._bot_task: asyncio.Task | None = None
+        self._web_task: asyncio.Task | None = None
         self._macro_keys = self._load_macro_keys()
 
     @staticmethod
@@ -268,10 +269,16 @@ class MegaMudApp(App):
                 config_service=self._config_service,
             )
             self._bot_task = asyncio.create_task(self._bot.run())
+            server = self._bot.maybe_build_web_server()
+            if server is not None:
+                self._web_task = asyncio.create_task(server.serve())
             self.sub_title = f"{self._host}:{self._port} [connected]"
         else:
             self._bot_task.cancel()
             self._bot_task = None
+            if getattr(self, "_web_task", None) is not None:
+                self._web_task.cancel()
+                self._web_task = None
             self._bot = None
             self.sub_title = f"{self._host}:{self._port}"
 

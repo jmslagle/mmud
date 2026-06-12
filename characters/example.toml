@@ -185,3 +185,12 @@ logout_cmd        = "x"       # command that exits the game cleanly
 # every_seconds = 3600
 # count         = 0           # 0 = forever
 # arg           = ""          # goto: room code; command: template; loop: name
+
+# Web control panel (browser UI). Optional; off by default.
+# When enabled, the bot starts a FastAPI server bound to host:port.
+# SECURITY: binds 127.0.0.1 by default. The panel can SEND game commands.
+# Do NOT change host to 0.0.0.0 / expose publicly without adding auth.
+[web]
+enabled = false
+host    = "127.0.0.1"
+port    = 8080
