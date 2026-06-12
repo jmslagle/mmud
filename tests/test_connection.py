@@ -34,6 +34,9 @@ class FakeWriter:
     def write(self, data):
         self.written.extend(data)
 
+    async def drain(self):
+        return None
+
 
 def _conn(reader=None, writer=None):
     c = MudConnection("host", 23)
@@ -128,3 +131,23 @@ def test_readlines_strips_iac_in_framed_line():
             return line
 
     assert asyncio.run(run()) == "hithere\n"
+
+
+def test_send_appends_crlf():
+    w = FakeWriter()
+    c = _conn(writer=w)
+    asyncio.run(c.send("look"))
+    assert bytes(w.written) == b"look\r\n"
+
+
+def test_send_raw_writes_verbatim_no_newline():
+    w = FakeWriter()
+    c = _conn(writer=w)
+    asyncio.run(c.send_raw("a"))
+    asyncio.run(c.send_raw("\x1b[A"))   # an arrow-key sequence
+    assert bytes(w.written) == b"a\x1b[A"   # no appended CRLF
+
+
+def test_send_raw_without_writer_is_noop():
+    c = _conn(writer=None)
+    asyncio.run(c.send_raw("x"))   # must not raise

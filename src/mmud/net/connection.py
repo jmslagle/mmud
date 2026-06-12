@@ -37,6 +37,18 @@ class MudConnection:
         self._writer.write((command + "\r\n").encode("latin-1"))
         await self._writer.drain()
 
+    async def send_raw(self, data: str) -> None:
+        """Write `data` verbatim — no appended newline, no buffering.
+
+        Used by the TUI's character mode so each keystroke (including control
+        sequences like arrow keys) reaches the server immediately, which the
+        in-game full-screen editor requires.
+        """
+        if self._writer is None:
+            return
+        self._writer.write(data.encode("latin-1"))
+        await self._writer.drain()
+
     async def readlines(self) -> AsyncIterator[str]:
         """
         Async generator yielding MUD output lines.

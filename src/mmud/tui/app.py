@@ -82,8 +82,18 @@ class MegaMudApp(App):
         # Focus the command input immediately so typing works like a telnet client
         self.query_one("#command-input", Input).focus()
 
+    def on_game_output_raw_input(self, message: GameOutput.RawInput) -> None:
+        """Character mode: a keystroke captured by the focused GameOutput is
+        forwarded raw to the server (no newline) for the in-game editor."""
+        if self._bot is not None:
+            self.run_worker(self._bot._conn.send_raw(message.data))
+
     def on_key(self, event: Key) -> None:
         """Route all keystrokes to the command input (telnet-like behavior)."""
+        # In character mode the focused GameOutput already claimed the key
+        # (GameOutput.on_key stops it); nothing to do here.
+        if self.query_one(GameOutput).has_focus:
+            return
         # PageUp/PageDown scroll the game output without breaking input focus
         if event.key in ("pageup", "page_up"):
             self.query_one(GameOutput).scroll_page_up()
@@ -113,7 +123,7 @@ class MegaMudApp(App):
         # Route printable characters to the Input, inserting them directly
         if event.is_printable and event.character:
             inp.focus()
-            inp.insert(event.character)
+            inp.insert_text_at_cursor(event.character)
             event.prevent_default()
 
     def _wire_bus(self) -> None:
