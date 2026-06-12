@@ -93,6 +93,8 @@ class RemoteCommandHandler:
         self.register("auto-hide", self._toggle("stealth", "auto_hide"))
         self.register("auto-get", self._toggle("items", "auto_get"))
         self.register("auto-cash", self._toggle("items", "auto_cash"))
+        self.register("set", self._set_config)
+        self.register("save", self._save_config)
 
     def _kill(self, sender: str, arg: str) -> str:
         if not arg:
@@ -128,6 +130,28 @@ class RemoteCommandHandler:
             self._bot._state.enqueue(panic_cmd)
         self._bot._safety.request_hangup(f"remote @panic from {sender}")
         return "panic!"
+
+    def _set_config(self, sender: str, arg: str) -> str:
+        # "@set combat.attack_cmd bash" -> patch combat.attack_cmd = "bash"
+        parts = arg.split(None, 1)
+        if len(parts) != 2 or "." not in parts[0]:
+            return "usage: @set SECTION.FIELD VALUE"
+        dotted, value = parts
+        section, field = dotted.split(".", 1)
+        try:
+            self._bot._config_service.patch(section, field, value)
+        except KeyError:
+            return f"unknown field {section}.{field}"
+        except ValueError as exc:
+            return f"error: {exc}"
+        return f"{section}.{field} = {value}"
+
+    def _save_config(self, sender: str, arg: str) -> str:
+        try:
+            self._bot._config_service.save()
+        except RuntimeError as exc:
+            return str(exc)
+        return "config saved"
 
     def _toggle(self, section: str, attr: str) -> VerbHandler:
         def toggle(sender: str, arg: str) -> str:

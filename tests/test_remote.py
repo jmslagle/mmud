@@ -190,3 +190,54 @@ def test_events_verb_empty():
     bot = _bot(WILDCARD)
     h = RemoteCommandHandler(bot)
     assert "no events" in h.handle("Friend", "@events").lower()
+
+
+def test_set_verb_mutates_config():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    reply = h.handle("Friend", "@set combat.attack_cmd bash")
+    assert "combat.attack_cmd" in reply and "bash" in reply
+    assert bot._config.combat.attack_cmd == "bash"
+
+
+def test_set_verb_coerces_type():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    h.handle("Friend", "@set server.port 1234")
+    assert bot._config.server.port == 1234
+
+
+def test_set_verb_usage_on_bad_syntax():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    assert "usage" in h.handle("Friend", "@set combat.attack_cmd").lower()
+    assert "usage" in h.handle("Friend", "@set noseparator value").lower()
+
+
+def test_set_verb_unknown_field_reports_error():
+    bot = _bot(WILDCARD)
+    h = RemoteCommandHandler(bot)
+    reply = h.handle("Friend", "@set combat.nope x")
+    assert "unknown" in reply.lower() or "error" in reply.lower()
+
+
+def test_save_verb_writes_file(tmp_path):
+    import tomllib
+    from mmud.config.runtime import ConfigService
+    from mmud.events import GameEventBus
+    bot = _bot(WILDCARD)
+    path = tmp_path / "config.toml"
+    bot._config_service = ConfigService(bot._config, bus=GameEventBus(), path=path)
+    h = RemoteCommandHandler(bot)
+    h.handle("Friend", "@set combat.attack_cmd smash")
+    reply = h.handle("Friend", "@save")
+    assert "saved" in reply.lower()
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert data["combat"]["attack_cmd"] == "smash"
+
+
+def test_save_verb_without_path():
+    bot = _bot(WILDCARD)   # default service has path=None
+    h = RemoteCommandHandler(bot)
+    reply = h.handle("Friend", "@save")
+    assert "no" in reply.lower() or "cannot" in reply.lower()
