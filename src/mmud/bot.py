@@ -54,6 +54,24 @@ _BACKSTAB_RE = re.compile(r"You backstab", re.IGNORECASE)
 
 
 class MudBot:
+    """Top-level bot: reads MUD lines, updates GameState, decides next command.
+
+    Data flow per line: the connection yields a raw line, which _process_line
+    runs through an ordered pipeline of parser/monitor hooks that mutate
+    self._state (and emit events on self._bus). After each line the
+    DecisionEngine (self._engine) is consulted via _next_command() to pick the
+    single next command to send.
+
+    Lifecycle:
+      * __init__ builds the parsers, line-monitors, deciders, and the decision
+        registry (the decider table is assembled in _build_engines()).
+      * run() drives the reconnect/relog loop, calling _run_session() per
+        connection and handling carrier loss / redial / hangup.
+      * _run_session() owns one connection's read -> _process_line -> decide ->
+        send loop, plus a 1Hz background _ticker() (cooldowns, AFK, timeouts,
+        session limits, scheduler).
+    """
+
     def __init__(
         self,
         host: str,
@@ -284,6 +302,35 @@ class MudBot:
             self._last_activity = time.monotonic()  # reset to avoid spam
 
     async def _process_line(self, line: str) -> None:
+        # Hook pipeline, in order. Each step mutates self._state and/or emits
+        # events; ordering matters where a later hook depends on state a prior
+        # hook set. After this method, _next_command() decides what to send.
+        #
+        #  1. session.on_line   raw line captured BEFORE ANSI strip (transcript)
+        #  2. emit LineReceived raw line broadcast to the UI/event bus
+        #     --- ANSI stripped into `clean`; all hooks below see `clean` ---
+        #  3. _parse_vitals     HP/MP -> state, health_low edge, AFK low-HP hangup
+        #  4. inv_parser.feed   inventory snapshot; completes a WAITING task
+        #  5. _parse_conditions condition onset/recovery; aborts/completes tasks
+        #  6. safety.process    panic/hangup triggers on dangerous lines
+        #  7. backstab.on_line  feed stealth/backstab state machine
+        #  8. combat.on_line    feed combat engine (sneak/attack bookkeeping)
+        #  9. commerce.on_line  bank/shop/train dialogue progress
+        # 10. party_parser.feed party roster -> state
+        # 11. party_decider.on_line  party heal/wait/share bookkeeping
+        # 12. invites.check    auto-accept party invites -> enqueue join
+        # 13. loot.process     remember dropped loot for the get decider
+        # 14. _parse_get_results  GETTING/EQUIPPING task success/failure
+        # 15. _parse_room      room detection: resets per-room state, learns exits
+        # 16. _parse_exits     exit list -> travel arrival, completes SEARCHING
+        # 17. _parse_combat_exit  combat end -> clear monsters, mark inv dirty
+        # 18. _parse_combat_stats hit/miss/backstab accounting
+        # 19. _handle_doors    open doors when travelling/looping (needs room/exits)
+        # 20. _parse_nav_failure  "can't go that way" -> travel/loop failure
+        # 21. _parse_conversation tells/says; remote command replies
+        # 22. _handle_login    login state machine; auto_start loop on entry
+        # 23. _parse_who_and_exp  WHO entries, exp/level, kill counting
+        # 24. matcher.match    generic message patterns -> effects / combat flag
         self._session.on_line(line)   # raw capture before ANSI strip
         self._emit(LineReceived(line=line))
         clean = _ANSI_RE.sub("", line).strip()
