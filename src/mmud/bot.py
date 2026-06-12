@@ -180,9 +180,8 @@ class MudBot:
         from mmud.automation.party import PartyDecider, InviteMonitor
         self._party_parser = PartyParser()
         self._invites = InviteMonitor(self._config.players)
-        self._engine.register("party",
-                              PartyDecider(self._config.party, self._config.players),
-                              PRIO_PARTY)
+        self._party_decider = PartyDecider(self._config.party, self._config.players)
+        self._engine.register("party", self._party_decider, PRIO_PARTY)
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
@@ -275,6 +274,7 @@ class MudBot:
         self._combat.on_line(clean)
         self._commerce.on_line(clean)
         self._party_parser.feed(clean, self._state)
+        self._party_decider.on_line(clean)
         if join_cmd := self._invites.check(clean):
             self._state.enqueue(join_cmd)
         self._loot.process_line(clean, self._state)
