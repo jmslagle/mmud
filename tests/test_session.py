@@ -70,3 +70,28 @@ def test_no_capture_when_unset(tmp_path):
     m.on_line("hello\n")                   # must not crash or create files
     m.close()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_comms_counters_increment():
+    from mmud.config.schema import SessionConfig
+    from mmud.session import SessionManager
+    m = SessionManager(SessionConfig(), now=lambda: 0.0)
+    assert m.dialed == 0
+    m.on_dial(); m.on_dial(); m.on_connect(); m.on_dial_failed(); m.on_carrier_lost()
+    assert (m.dialed, m.connected, m.dial_failed, m.carrier_lost) == (2, 1, 1, 1)
+
+
+def test_time_to_level_eta_hours():
+    from mmud.config.schema import SessionConfig
+    from mmud.session import SessionManager
+    m = SessionManager(SessionConfig(), now=lambda: 0.0)
+    m.on_exp(0, now=0.0)
+    m.on_exp(1000, now=3600.0)
+    assert m.time_to_level_hours(exp_to_next=2500) == 2.5
+
+
+def test_time_to_level_eta_zero_rate():
+    from mmud.config.schema import SessionConfig
+    from mmud.session import SessionManager
+    m = SessionManager(SessionConfig(), now=lambda: 0.0)
+    assert m.time_to_level_hours(exp_to_next=2500) == 0.0

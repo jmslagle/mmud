@@ -19,6 +19,11 @@ class SessionManager:
         self._last_exp: tuple[float, int] | None = None
         self._capture = None
         self._fired = False    # actions fire once per session
+        # Comms counters (lifetime-of-process; NOT cleared on reset)
+        self.dialed = 0
+        self.dial_failed = 0
+        self.connected = 0
+        self.carrier_lost = 0
 
     # ---- feeds ---------------------------------------------------------------
 
@@ -36,6 +41,18 @@ class SessionManager:
             self._first_exp = (now, value)
         self._last_exp = (now, value)
 
+    def on_dial(self) -> None:
+        self.dialed += 1
+
+    def on_dial_failed(self) -> None:
+        self.dial_failed += 1
+
+    def on_connect(self) -> None:
+        self.connected += 1
+
+    def on_carrier_lost(self) -> None:
+        self.carrier_lost += 1
+
     # ---- queries ---------------------------------------------------------------
 
     def exp_rate_per_hour(self) -> float:
@@ -49,6 +66,12 @@ class SessionManager:
 
     def hours_elapsed(self, now: float) -> float:
         return (now - self.started_at) / 3600.0
+
+    def time_to_level_hours(self, exp_to_next: int) -> float:
+        rate = self.exp_rate_per_hour()
+        if rate <= 0 or exp_to_next <= 0:
+            return 0.0
+        return exp_to_next / rate
 
     # ---- 1Hz decision -----------------------------------------------------------
 

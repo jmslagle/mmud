@@ -16,3 +16,12 @@ venv/
 .superpowers/
 characters/*.toml
 !characters/example.toml
+
+# Local build / reverse-engineering artifacts (never commit)
+.coverage
+extractions/
+mmud.gpr
+mmud.lock
+mmud.lock~
+mmud.rep/
+*.exe

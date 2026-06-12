@@ -58,6 +58,12 @@ class GameState:
         self.monster_misses: int = 0
         self.backstab_attempts: int = 0
         self.backstab_successes: int = 0
+        # Stealth / evasion stats (web-panel facing)
+        self.sneak_attempts: int = 0
+        self.sneak_successes: int = 0
+        self.dodges: int = 0
+        self.ran_away: int = 0
+        self.health_low: int = 0
 
     def apply_match(self, result: MatchResult) -> None:
         name = result.pattern.name
@@ -113,10 +119,37 @@ class GameState:
         if success:
             self.backstab_successes += 1
 
+    def record_sneak(self, success: bool) -> None:
+        self.sneak_attempts += 1
+        if success:
+            self.sneak_successes += 1
+
+    def record_dodge(self) -> None:
+        self.dodges += 1
+
+    def record_ran_away(self) -> None:
+        self.ran_away += 1
+
+    def record_health_low(self) -> None:
+        self.health_low += 1
+
     @property
     def hit_pct(self) -> float:
         total = self.combat_hits + self.combat_misses + self.combat_special
         return (self.combat_hits / total * 100) if total > 0 else 0.0
+
+    @property
+    def sneak_pct(self) -> float:
+        return (self.sneak_successes * 100 / self.sneak_attempts) if self.sneak_attempts > 0 else 0.0
+
+    @property
+    def dodge_pct(self) -> float:
+        total = self.dodges + self.monster_hits
+        return (self.dodges * 100 / total) if total > 0 else 0.0
+
+    @property
+    def backstab_pct(self) -> float:
+        return (self.backstab_successes * 100 / self.backstab_attempts) if self.backstab_attempts > 0 else 0.0
 
     @property
     def avg_damage(self) -> float:
@@ -131,6 +164,11 @@ class GameState:
         self.monster_misses = 0
         self.backstab_attempts = 0
         self.backstab_successes = 0
+        self.sneak_attempts = 0
+        self.sneak_successes = 0
+        self.dodges = 0
+        self.ran_away = 0
+        self.health_low = 0
 
     def enqueue(self, command: str) -> None:
         self._command_queue.append(command)

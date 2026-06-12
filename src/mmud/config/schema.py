@@ -65,7 +65,6 @@ class StealthConfig:
 @dataclass
 class NavigationConfig:
     loop_path: str = ""
-    start_room: str = ""
     auto_start: bool = False
     flee_rooms: int = 3
     can_pick_locks: bool = False
@@ -85,10 +84,8 @@ class ItemsConfig:
     collect_gold: bool = True
     collect_platinum: bool = True
     collect_runic: bool = False
-    runic_name: str = "runic"
     dont_go_heavy: bool = True
     dont_go_medium: bool = False
-    max_coins: int = 0     # drop loose coins above this per denomination (0 = off)
     max_wealth: int = 0    # bank when copper-equiv wealth exceeds (Phase 8 consumes)
     min_wealth: int = 0    # withdraw when below (Phase 8 consumes)
 
@@ -202,7 +199,6 @@ class PlayerRule:
     friend: bool = False
     remote_cmds: list[str] = field(default_factory=list)
     dont_heal: bool = False
-    dont_bless: bool = False
 
 
 @dataclass

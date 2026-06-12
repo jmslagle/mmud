@@ -12,6 +12,8 @@ HEAL_TIMEOUT_S = 5.0
 
 # Reconstructed; live-tune in docs/testing-plan.md.
 _INVITE_RE = re.compile(r"(\w+) has invited you to join", re.IGNORECASE)
+_LEADER_HIT_RE = re.compile(
+    r"\b(?:swings?|attacks?|hits?|strikes?|slashes?|casts?)\b", re.IGNORECASE)
 
 
 class InviteMonitor:
@@ -39,9 +41,26 @@ class PartyDecider:
         self._status_last = float("-inf")
         self._waiting = False
         self._share_queue: list[str] = []
+        self._attack_with_leader = config.attack_with_leader
+        self._leader_engaged = False
+        self._leader_name = ""
+
+    @property
+    def leader_engaged(self) -> bool:
+        return self._leader_engaged
+
+    def on_line(self, line: str) -> None:
+        if not self._leader_name:
+            return
+        if (re.match(rf"{re.escape(self._leader_name)}\b", line, re.IGNORECASE)
+                and _LEADER_HIT_RE.search(line)):
+            self._leader_engaged = True
 
     def decide(self, state: GameState) -> str | None:
         now = self._now()
+        self._leader_name = state.party_leader
+        if not state.monsters_present:
+            self._leader_engaged = False
         # The wait protocol is gated on party automation being IN USE
         # (heal_spell or status_cmd) — wait_cmd/wait_hp_pct have non-empty
         # defaults, and a pure-default config must stay inert.

@@ -183,19 +183,16 @@ def test_phase5_items_config(tmp_path):
     p = tmp_path / "c.toml"
     p.write_text("""
 [items]
-max_coins = 500
 max_wealth = 20000
 min_wealth = 1000
 """)
     cfg = load_config(p)
-    assert cfg.items.max_coins == 500
     assert cfg.items.max_wealth == 20000
     assert cfg.items.min_wealth == 1000
 
 
 def test_phase5_items_defaults():
     cfg = load_config(None)
-    assert cfg.items.max_coins == 0      # 0 = no limit
     assert cfg.items.max_wealth == 0
     assert cfg.items.min_wealth == 0
 
@@ -342,3 +339,48 @@ arg = "say hello||say hi"
 def test_schedule_empty_by_default():
     cfg = load_config(None)
     assert cfg.schedule.events == []
+
+
+def test_deleted_keys_are_ignored(tmp_path):
+    # Old config keys removed during dead-config triage must be silently
+    # ignored (loader uses .get), and the attributes must no longer exist.
+    p = tmp_path / "c.toml"
+    p.write_text("""
+[navigation]
+start_room = "TOWN"
+
+[items]
+runic_name = "runic"
+max_coins = 500
+
+[[players]]
+name = "Krang"
+dont_bless = true
+""")
+    cfg = load_config(p)
+    assert not hasattr(cfg.navigation, "start_room")
+    assert not hasattr(cfg.items, "runic_name")
+    assert not hasattr(cfg.items, "max_coins")
+    assert not hasattr(cfg.players[0], "dont_bless")
+
+
+def test_unpack_dataclass_uses_defaults_and_overrides():
+    from dataclasses import dataclass, field
+    from mmud.config.loader import unpack_dataclass
+    @dataclass
+    class Sample:
+        a: str = "x"
+        b: int = 1
+        c: list = field(default_factory=list)
+    assert unpack_dataclass(Sample, {}) == Sample()
+    assert unpack_dataclass(Sample, {"b": 5, "c": ["k"]}) == Sample(a="x", b=5, c=["k"])
+    assert unpack_dataclass(Sample, {"zzz": 9}) == Sample()   # unknown ignored
+
+
+def test_loader_still_parses_full_config(tmp_path):
+    from mmud.config.loader import load_config
+    p = tmp_path / "c.toml"
+    p.write_text('[server]\nhost="h"\nport=1234\n[combat]\nattack_cmd="slay"\nflee_threshold=0.2\n', encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.server.host == "h" and cfg.server.port == 1234
+    assert cfg.combat.attack_cmd == "slay" and cfg.combat.flee_threshold == 0.2

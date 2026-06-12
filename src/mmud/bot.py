@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import logging
 import pathlib
 import re
 import time
@@ -14,8 +15,8 @@ from mmud.events import (
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
-    PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH, PRIO_COMMERCE,
-    PRIO_PARTY,
+    PRIO_BACKSTAB, PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH,
+    PRIO_COMMERCE, PRIO_PARTY,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -52,8 +53,28 @@ _PLAYER_MISS_RE = re.compile(r"You miss\b", re.IGNORECASE)
 _MONSTER_HIT_RE = re.compile(r"(?:hits?|strikes?|slashes?|bashes?|pierces?) you for (\d+) damage", re.IGNORECASE)
 _BACKSTAB_RE = re.compile(r"You backstab", re.IGNORECASE)
 
+_log = logging.getLogger(__name__)
+
 
 class MudBot:
+    """Top-level bot: reads MUD lines, updates GameState, decides next command.
+
+    Data flow per line: the connection yields a raw line, which _process_line
+    runs through an ordered pipeline of parser/monitor hooks that mutate
+    self._state (and emit events on self._bus). After each line the
+    DecisionEngine (self._engine) is consulted via _next_command() to pick the
+    single next command to send.
+
+    Lifecycle:
+      * __init__ builds the parsers, line-monitors, deciders, and the decision
+        registry (the decider table is assembled in _build_engines()).
+      * run() drives the reconnect/relog loop, calling _run_session() per
+        connection and handling carrier loss / redial / hangup.
+      * _run_session() owns one connection's read -> _process_line -> decide ->
+        send loop, plus a 1Hz background _ticker() (cooldowns, AFK, timeouts,
+        session limits, scheduler).
+    """
+
     def __init__(
         self,
         host: str,
@@ -104,13 +125,11 @@ class MudBot:
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
         self._combat = CombatEngine(
             config=self._config.combat,
-            sneak_cmd=self._config.stealth.sneak_cmd if self._config.stealth.auto_sneak else "",
+            sneak_cmd=self._config.stealth.sneak_cmd if (self._config.stealth.auto_sneak or self._config.stealth.must_sneak) else "",
+            must_sneak=self._config.stealth.must_sneak,
         )
         self._spell_engine = SpellEngine(self._config.spells)
         self._engine = DecisionEngine()
-        self._engine.register("queue", QueueDecider(), PRIO_QUEUE)
-        self._engine.register("spells", self._spell_engine, PRIO_SPELLS)
-        self._engine.register("combat", self._combat, PRIO_COMBAT)
         self._safety = SafetyMonitor(self._config.safety)
         from mmud.session import SessionManager
         self._session = SessionManager(self._config.session)
@@ -128,29 +147,20 @@ class MudBot:
         self._remote = RemoteCommandHandler(self)
         from mmud.combat.pvp import PvpEngine
         self._pvp = PvpEngine(self._config.pvp, self._config.players, self._safety)
-        self._engine.register("cures", CureDecider(self._config.health), PRIO_CURE)
-        from mmud.automation.run_rules import RunDecider
-        self._engine.register("run", RunDecider(self._config.combat,
-                                                self._config.navigation), PRIO_FLEE)
         from mmud.combat.backstab import BackstabEngine
         self._backstab = BackstabEngine(self._config.combat, self._config.stealth)
-        self._engine.register("backstab", self._backstab, PRIO_COMBAT - 1)
         from mmud.parser.inventory_parser import InventoryParser
-        from mmud.state.inventory import RefreshDecider
         self._inv_parser = InventoryParser()
-        self._engine.register("refresh", RefreshDecider(), PRIO_REFRESH)
         from mmud.automation.items import LootMonitor, GetDecider
         self._loot = LootMonitor(
             is_monster=lambda name: self._monster_db.find(name) is not None)
         self._get_decider = GetDecider(
             self._config.items,
             on_mark=(lambda n: self._store.add_mark("ungettable", n)) if self._store else None)
-        self._engine.register("items", self._get_decider, PRIO_ITEMS)
         from mmud.automation.equip import EquipDecider
         self._equip_decider = EquipDecider(
             self._item_db, enabled=self._config.items.auto_get,
             on_mark=(lambda n: self._store.add_mark("no_auto_equip", n)) if self._store else None)
-        self._engine.register("equip", self._equip_decider, PRIO_EQUIP)
         if self._store is not None:
             for n in self._store.marks("ungettable"):
                 self._get_decider.mark_ungettable(n)
@@ -160,12 +170,8 @@ class MudBot:
         from mmud.automation.travel import TravelDecider
         self._travel = TravelDecider(self._config.items, self._config.stealth,
                                      self._bus or GameEventBus())
-        self._engine.register("travel", self._travel, PRIO_TRAVEL)
         from mmud.automation.doors import DoorMonitor
         self._doors = DoorMonitor(self._config.navigation)
-        from mmud.automation.search import SearchDecider
-        self._engine.register("search", SearchDecider(self._config.navigation),
-                              PRIO_SEARCH)
         from mmud.automation.commerce import CommerceEngine
         self._commerce = CommerceEngine(
             self._config.commerce, self._config.items,
@@ -174,14 +180,12 @@ class MudBot:
             loop_running=lambda: bool(self._loop_runner and self._loop_runner.running),
             travel_active=lambda: self._travel.active,
         )
-        self._engine.register("commerce", self._commerce, PRIO_COMMERCE)
         from mmud.parser.party_parser import PartyParser
         from mmud.automation.party import PartyDecider, InviteMonitor
         self._party_parser = PartyParser()
         self._invites = InviteMonitor(self._config.players)
-        self._engine.register("party",
-                              PartyDecider(self._config.party, self._config.players),
-                              PRIO_PARTY)
+        self._party_decider = PartyDecider(self._config.party, self._config.players)
+        self._build_engines()
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
@@ -191,6 +195,39 @@ class MudBot:
         self._last_activity = time.monotonic()
         self._auto_started = False
         self._redial_delay_s = 5.0
+        self._was_low = False   # edge-detect for health_low stat
+
+    def _build_engines(self) -> None:
+        """Register every decider into self._engine in one ordered table.
+
+        All dependencies (self._spell_engine, self._combat, self._backstab,
+        self._get_decider, self._equip_decider, self._travel, self._commerce,
+        self._party_decider) are constructed in __init__ BEFORE this runs.
+        The table is the single source of truth for slot names + priorities;
+        DecisionEngine.register sorts by priority, so list order here is just
+        for readability. Same names/priorities/instances as before => no
+        behavior change.
+        """
+        from mmud.automation.run_rules import RunDecider
+        from mmud.state.inventory import RefreshDecider
+        from mmud.automation.search import SearchDecider
+        registry: list[tuple[str, object, int]] = [
+            ("queue", QueueDecider(), PRIO_QUEUE),
+            ("cures", CureDecider(self._config.health), PRIO_CURE),
+            ("run", RunDecider(self._config.combat, self._config.navigation), PRIO_FLEE),
+            ("backstab", self._backstab, PRIO_BACKSTAB),
+            ("spells", self._spell_engine, PRIO_SPELLS),
+            ("combat", self._combat, PRIO_COMBAT),
+            ("refresh", RefreshDecider(), PRIO_REFRESH),
+            ("equip", self._equip_decider, PRIO_EQUIP),
+            ("items", self._get_decider, PRIO_ITEMS),
+            ("commerce", self._commerce, PRIO_COMMERCE),
+            ("party", self._party_decider, PRIO_PARTY),
+            ("travel", self._travel, PRIO_TRAVEL),
+            ("search", SearchDecider(self._config.navigation), PRIO_SEARCH),
+        ]
+        for name, decider, priority in registry:
+            self._engine.register(name, decider, priority)
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:
@@ -201,8 +238,11 @@ class MudBot:
         while True:
             try:
                 await self._run_session()
-            except (ConnectionError, OSError):
-                pass
+            except (ConnectionError, OSError) as exc:
+                _log.warning("connection lost: %s", exc)
+                self._session.on_carrier_lost()
+                self._emit(SessionStatUpdated(key="carrier_lost",
+                                              value=str(self._session.carrier_lost)))
             if self._relog_pending:
                 # deliberate logout-and-return: one fresh session, not a redial
                 self._relog_pending = False
@@ -210,6 +250,7 @@ class MudBot:
                 self._safety.reset()
                 self._state.abort_task()
                 self._session.reset(time.monotonic())
+                self._was_low = False   # fresh session: re-arm health_low edge-detect
                 continue
             if self._safety.hangup_requested:
                 break   # deliberate disconnect — never auto-reconnect past it
@@ -217,10 +258,16 @@ class MudBot:
                     or redials >= self._config.safety.max_redials):
                 break
             redials += 1
+            self._session.on_dial()
+            self._emit(SessionStatUpdated(key="dialed",
+                                          value=str(self._session.dialed)))
             await asyncio.sleep(self._redial_delay_s)
 
     async def _run_session(self) -> None:
         await self._conn.connect()
+        self._session.on_connect()
+        self._emit(SessionStatUpdated(key="connected",
+                                      value=str(self._session.connected)))
         ticker_task = asyncio.create_task(self._ticker())
         try:
             async for line in self._conn.readlines():
@@ -259,6 +306,35 @@ class MudBot:
             self._last_activity = time.monotonic()  # reset to avoid spam
 
     async def _process_line(self, line: str) -> None:
+        # Hook pipeline, in order. Each step mutates self._state and/or emits
+        # events; ordering matters where a later hook depends on state a prior
+        # hook set. After this method, _next_command() decides what to send.
+        #
+        #  1. session.on_line   raw line captured BEFORE ANSI strip (transcript)
+        #  2. emit LineReceived raw line broadcast to the UI/event bus
+        #     --- ANSI stripped into `clean`; all hooks below see `clean` ---
+        #  3. _parse_vitals     HP/MP -> state, health_low edge, AFK low-HP hangup
+        #  4. inv_parser.feed   inventory snapshot; completes a WAITING task
+        #  5. _parse_conditions condition onset/recovery; aborts/completes tasks
+        #  6. safety.process    panic/hangup triggers on dangerous lines
+        #  7. backstab.on_line  feed stealth/backstab state machine
+        #  8. combat.on_line    feed combat engine (sneak/attack bookkeeping)
+        #  9. commerce.on_line  bank/shop/train dialogue progress
+        # 10. party_parser.feed party roster -> state
+        # 11. party_decider.on_line  party heal/wait/share bookkeeping
+        # 12. invites.check    auto-accept party invites -> enqueue join
+        # 13. loot.process     remember dropped loot for the get decider
+        # 14. _parse_get_results  GETTING/EQUIPPING task success/failure
+        # 15. _parse_room      room detection: resets per-room state, learns exits
+        # 16. _parse_exits     exit list -> travel arrival, completes SEARCHING
+        # 17. _parse_combat_exit  combat end -> clear monsters, mark inv dirty
+        # 18. _parse_combat_stats hit/miss/backstab accounting
+        # 19. _handle_doors    open doors when travelling/looping (needs room/exits)
+        # 20. _parse_nav_failure  "can't go that way" -> travel/loop failure
+        # 21. _parse_conversation tells/says; remote command replies
+        # 22. _handle_login    login state machine; auto_start loop on entry
+        # 23. _parse_who_and_exp  WHO entries, exp/level, kill counting
+        # 24. matcher.match    generic message patterns -> effects / combat flag
         self._session.on_line(line)   # raw capture before ANSI strip
         self._emit(LineReceived(line=line))
         clean = _ANSI_RE.sub("", line).strip()
@@ -271,8 +347,10 @@ class MudBot:
         self._parse_conditions(clean)
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
+        self._combat.on_line(clean)
         self._commerce.on_line(clean)
         self._party_parser.feed(clean, self._state)
+        self._party_decider.on_line(clean)
         if join_cmd := self._invites.check(clean):
             self._state.enqueue(join_cmd)
         self._loot.process_line(clean, self._state)
@@ -303,6 +381,12 @@ class MudBot:
             hp, max_hp = int(m.group(1)), int(m.group(2))
             self._state.set_hp(hp, max_hp)
             self._emit(HpChanged(hp=hp, max_hp=max_hp))
+            is_low = max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold
+            if is_low and not self._was_low:
+                self._state.record_health_low()
+                self._emit(SessionStatUpdated(key="health_low",
+                                              value=str(self._state.health_low)))
+            self._was_low = is_low
             if (self._config.afk.enabled and self._config.afk.hangup_on_low_hp
                     and max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold):
                 self._safety.request_hangup(f"low HP while AFK ({hp}/{max_hp})")
@@ -504,7 +588,13 @@ class MudBot:
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:
-        return self._engine.next_command(self._state)
+        was_running = self._state.task.type is TaskType.RUNNING
+        cmd = self._engine.next_command(self._state)
+        if not was_running and self._state.task.type is TaskType.RUNNING:
+            self._state.record_ran_away()
+            self._emit(SessionStatUpdated(key="ran_away",
+                                          value=str(self._state.ran_away)))
+        return cmd
 
     def _check_task_timeout(self, now: float) -> None:
         if self._state.task.expired(now):

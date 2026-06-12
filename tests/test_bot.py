@@ -263,6 +263,17 @@ from mmud.state.tasks import TaskType
 from mmud.events import TaskChanged
 
 
+def test_must_sneak_wires_sneak_cmd_without_auto_sneak():
+    # Regression: must_sneak=True with auto_sneak=False must still hand the
+    # CombatEngine a non-empty sneak_cmd, else decide() deadlocks on None.
+    from mmud.config.schema import MudConfig, StealthConfig
+    config = MudConfig()
+    config.stealth = StealthConfig(auto_sneak=False, must_sneak=True,
+                                   sneak_cmd="sneak")
+    bot = make_transcript_bot([], config=config)
+    assert bot._combat.sneak_cmd == "sneak"
+
+
 @pytest.mark.asyncio
 async def test_active_task_suppresses_combat_decider(unused_tcp_port):
     # Low HP would normally produce "rest", but an active task at PRIO_COMBAT pins it
@@ -634,6 +645,24 @@ async def test_relog_resets_login_and_safety():
 
 
 @pytest.mark.asyncio
+async def test_relog_rearms_health_low_edge_detect():
+    # Regression: _was_low must reset on relog so the first low-HP dip of the
+    # fresh session is counted. The transcript replays a low-HP line each
+    # session; with _was_low pre-stuck True and no relog reset, the edge would
+    # stay suppressed and health_low would never increment.
+    config = MudConfig()
+    config.combat.flee_threshold = 0.15
+    bot = make_transcript_bot(["[HP=10/100]\n"], config=config)
+    bot._was_low = True            # simulate prior session ending at low HP
+    bot.request_relog("test")
+    await bot.run()
+    # The transcript replays the low-HP line each session. Session 1's dip is
+    # suppressed (carried-over _was_low=True); without the relog reset, session 2
+    # would be suppressed too. The relog re-arm lets session 2 count the dip.
+    assert bot._state.health_low >= 1   # fresh session's first dip was counted
+
+
+@pytest.mark.asyncio
 async def test_session_capture_via_bot(tmp_path):
     config = MudConfig()
     config.session = SessionConfig(capture_file=str(tmp_path / "cap.log"))
@@ -690,3 +719,49 @@ async def test_scheduled_command_fires_via_ticker():
     # drive the scheduler directly (the 1Hz ticker calls this in production)
     bot._scheduler.tick(bot._scheduler._next_fire[0] + 0.1)
     assert bot._state.dequeue() == "look"
+
+
+@pytest.mark.asyncio
+async def test_ran_away_counter_increments_on_flee():
+    config = MudConfig()
+    config.combat.max_monsters = 1   # 3 goblins > 1 -> RunDecider flees
+    bot = make_transcript_bot(["Also here: 3 goblins.\n"], config=config)
+    await bot.run()
+    assert "flee" in bot._conn.sent
+    assert bot._state.ran_away >= 1
+
+
+@pytest.mark.asyncio
+async def test_health_low_counter_increments():
+    config = MudConfig()
+    config.combat.flee_threshold = 0.15
+    bot = make_transcript_bot(["[HP=10/100]\n"], config=config)
+    await bot.run()
+    assert bot._state.health_low >= 1
+
+
+@pytest.mark.asyncio
+async def test_engine_registry_order_and_names():
+    from mmud.config.schema import MudConfig
+    bot = make_transcript_bot([], config=MudConfig())
+    slots = bot._engine._slots          # list[tuple[priority, name, decider]]
+    prios = [s[0] for s in slots]
+    names = [s[1] for s in slots]
+    assert prios == sorted(prios)
+    for expected in ("queue", "cures", "run", "backstab", "spells", "combat",
+                     "refresh", "equip", "items", "commerce", "party", "travel", "search"):
+        assert expected in names
+
+
+@pytest.mark.asyncio
+async def test_connection_loss_is_logged(caplog):
+    import logging
+    from mmud.config.schema import MudConfig
+    bot = make_transcript_bot([], config=MudConfig())
+    async def boom():
+        raise ConnectionError("boom")
+    bot._run_session = boom  # type: ignore[method-assign]
+    with caplog.at_level(logging.WARNING, logger="mmud.bot"):
+        await bot.run()
+    assert any("boom" in r.getMessage() or "connection" in r.getMessage().lower()
+               for r in caplog.records)

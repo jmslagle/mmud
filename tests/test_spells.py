@@ -150,3 +150,35 @@ def test_unlimited_when_zero():
     gs = _combat_state()
     for _ in range(10):
         assert eng.decide(gs) == "cast zap"
+
+
+def test_multi_attack_chains_after_primary_attack():
+    cfg = SpellsConfig(attack="cast zap", multi_attack="cast bolt")
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast bolt"
+    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast bolt"
+
+
+def test_multi_attack_respects_max_cast_count():
+    # primary/multi alternation must honor the cast limit: 3 casts total
+    # (fireball, mm, fireball), then the limit is hit. No melee_weapon_cmd
+    # configured, so the 4th decide returns None (engine yields, no swap).
+    cfg = SpellsConfig(attack="cast fireball", multi_attack="cast mm",
+                       max_cast_count=3)
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    assert eng.decide(gs) == "cast fireball"
+    assert eng.decide(gs) == "cast mm"
+    assert eng.decide(gs) == "cast fireball"
+    assert eng.decide(gs) is None          # limit hit, no melee swap configured
+
+
+def test_multi_attack_inert_when_unset():
+    cfg = SpellsConfig(attack="cast zap")
+    eng = SpellEngine(cfg)
+    gs = _combat_state()
+    for _ in range(5):
+        assert eng.decide(gs) == "cast zap"

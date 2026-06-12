@@ -1,11 +1,15 @@
 from __future__ import annotations
+import re
 from mmud.config.schema import CombatConfig
 from mmud.state.game_state import GameState
+
+_SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
+_SNEAK_FAIL_RE = re.compile(r"fail to sneak|make a noise", re.IGNORECASE)
 
 
 class CombatEngine:
     def __init__(self, config: CombatConfig | None = None,
-                 sneak_cmd: str = "") -> None:
+                 sneak_cmd: str = "", must_sneak: bool = False) -> None:
         cfg = config or CombatConfig()
         self.attack_cmd = cfg.attack_cmd
         self.flee_threshold = cfg.flee_threshold
@@ -15,7 +19,17 @@ class CombatEngine:
         self.polite_attacks = cfg.polite_attacks
         self.monster_priority = [p.lower() for p in cfg.monster_priority]
         self.sneak_cmd = sneak_cmd
+        self.must_sneak = must_sneak
         self._sneaked_this_encounter = False
+        self._sneak_confirmed = False
+
+    def on_line(self, line: str) -> None:
+        if not self.must_sneak:
+            return
+        if _SNEAK_OK_RE.search(line):
+            self._sneak_confirmed = True
+        elif _SNEAK_FAIL_RE.search(line):
+            self._sneaked_this_encounter = False
 
     def decide(self, state: GameState) -> str | None:
         hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
@@ -30,6 +44,8 @@ class CombatEngine:
             if self.sneak_cmd and not self._sneaked_this_encounter:
                 self._sneaked_this_encounter = True
                 return self.sneak_cmd
+            if self.must_sneak and not self._sneak_confirmed:
+                return None
             if self.polite_attacks and state.players_present:
                 return None
             target = self._pick_target(state)
@@ -37,6 +53,7 @@ class CombatEngine:
 
         # Reset sneak flag when not in combat
         self._sneaked_this_encounter = False
+        self._sneak_confirmed = False
 
         if hp_pct < self.rest_threshold:
             return "rest"

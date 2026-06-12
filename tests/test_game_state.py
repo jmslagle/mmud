@@ -77,6 +77,30 @@ def test_combat_stats_reset():
     assert gs.combat_misses == 0
 
 
+def test_sneak_and_dodge_percentages():
+    from mmud.state.game_state import GameState
+    gs = GameState()
+    assert gs.sneak_pct == 0.0
+    assert gs.dodge_pct == 0.0
+    gs.record_sneak(success=True)
+    gs.record_sneak(success=True)
+    gs.record_sneak(success=False)
+    assert gs.sneak_pct == 200.0 / 3
+    gs.record_dodge()
+    gs.record_dodge()
+    gs.record_monster_hit()
+    assert gs.dodge_pct == 200.0 / 3
+
+
+def test_backstab_pct_property():
+    from mmud.state.game_state import GameState
+    gs = GameState()
+    assert gs.backstab_pct == 0.0
+    gs.record_backstab(success=True)
+    gs.record_backstab(success=False)
+    assert gs.backstab_pct == 50.0
+
+
 from mmud.state.tasks import TaskType
 
 
