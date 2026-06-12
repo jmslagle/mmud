@@ -362,3 +362,25 @@ dont_bless = true
     assert not hasattr(cfg.items, "runic_name")
     assert not hasattr(cfg.items, "max_coins")
     assert not hasattr(cfg.players[0], "dont_bless")
+
+
+def test_unpack_dataclass_uses_defaults_and_overrides():
+    from dataclasses import dataclass, field
+    from mmud.config.loader import unpack_dataclass
+    @dataclass
+    class Sample:
+        a: str = "x"
+        b: int = 1
+        c: list = field(default_factory=list)
+    assert unpack_dataclass(Sample, {}) == Sample()
+    assert unpack_dataclass(Sample, {"b": 5, "c": ["k"]}) == Sample(a="x", b=5, c=["k"])
+    assert unpack_dataclass(Sample, {"zzz": 9}) == Sample()   # unknown ignored
+
+
+def test_loader_still_parses_full_config(tmp_path):
+    from mmud.config.loader import load_config
+    p = tmp_path / "c.toml"
+    p.write_text('[server]\nhost="h"\nport=1234\n[combat]\nattack_cmd="slay"\nflee_threshold=0.2\n', encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.server.host == "h" and cfg.server.port == 1234
+    assert cfg.combat.attack_cmd == "slay" and cfg.combat.flee_threshold == 0.2
