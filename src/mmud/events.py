@@ -101,6 +101,13 @@ class TravelEnded:
     reason: str   # "arrived" | "lost" | "blocked" | "stopped"
 
 
+@dataclass
+class ConfigChanged:
+    section: str   # config section name, e.g. "combat"
+    field: str     # field name within the section
+    value: object  # the new value, already type-coerced
+
+
 class GameEventBus:
     def __init__(self) -> None:
         self._subscribers: dict[type, list[Callable]] = {}
