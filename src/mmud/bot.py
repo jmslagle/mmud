@@ -106,6 +106,7 @@ class MudBot:
             bus=self._bus or GameEventBus(),
             path=config_path,
         )
+        self._web_server = None
 
         from mmud.data.monster_db import MonsterDB
         from mmud.data.item_db import ItemDB
@@ -652,6 +653,20 @@ class MudBot:
             return
         self._loop_runner = self._make_loop_runner()
         self._loop_runner.start()
+
+    def maybe_build_web_server(self):
+        """Construct the web control-panel server iff [web] config is enabled.
+
+        Lazy import so the `web` extra (fastapi/uvicorn) is only required when
+        the panel is actually on. Idempotent; returns None when disabled.
+        """
+        if not self._config.web.enabled:
+            return None
+        if self._web_server is not None:
+            return self._web_server
+        from mmud.web.server import WebPanelServer
+        self._web_server = WebPanelServer(self)
+        return self._web_server
 
     def start_loop(self, name: str = "") -> str:
         """Start a named loop path. Returns status message."""
