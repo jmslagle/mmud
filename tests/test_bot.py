@@ -701,3 +701,22 @@ async def test_scheduled_command_fires_via_ticker():
     # drive the scheduler directly (the 1Hz ticker calls this in production)
     bot._scheduler.tick(bot._scheduler._next_fire[0] + 0.1)
     assert bot._state.dequeue() == "look"
+
+
+@pytest.mark.asyncio
+async def test_ran_away_counter_increments_on_flee():
+    config = MudConfig()
+    config.combat.max_monsters = 1   # 3 goblins > 1 -> RunDecider flees
+    bot = make_transcript_bot(["Also here: 3 goblins.\n"], config=config)
+    await bot.run()
+    assert "flee" in bot._conn.sent
+    assert bot._state.ran_away >= 1
+
+
+@pytest.mark.asyncio
+async def test_health_low_counter_increments():
+    config = MudConfig()
+    config.combat.flee_threshold = 0.15
+    bot = make_transcript_bot(["[HP=10/100]\n"], config=config)
+    await bot.run()
+    assert bot._state.health_low >= 1

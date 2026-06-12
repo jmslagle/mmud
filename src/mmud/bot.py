@@ -191,6 +191,7 @@ class MudBot:
         self._last_activity = time.monotonic()
         self._auto_started = False
         self._redial_delay_s = 5.0
+        self._was_low = False   # edge-detect for health_low stat
 
     def _emit(self, event: object) -> None:
         if self._bus is not None:
@@ -202,7 +203,9 @@ class MudBot:
             try:
                 await self._run_session()
             except (ConnectionError, OSError):
-                pass
+                self._session.on_carrier_lost()
+                self._emit(SessionStatUpdated(key="carrier_lost",
+                                              value=str(self._session.carrier_lost)))
             if self._relog_pending:
                 # deliberate logout-and-return: one fresh session, not a redial
                 self._relog_pending = False
@@ -217,10 +220,16 @@ class MudBot:
                     or redials >= self._config.safety.max_redials):
                 break
             redials += 1
+            self._session.on_dial()
+            self._emit(SessionStatUpdated(key="dialed",
+                                          value=str(self._session.dialed)))
             await asyncio.sleep(self._redial_delay_s)
 
     async def _run_session(self) -> None:
         await self._conn.connect()
+        self._session.on_connect()
+        self._emit(SessionStatUpdated(key="connected",
+                                      value=str(self._session.connected)))
         ticker_task = asyncio.create_task(self._ticker())
         try:
             async for line in self._conn.readlines():
@@ -305,6 +314,12 @@ class MudBot:
             hp, max_hp = int(m.group(1)), int(m.group(2))
             self._state.set_hp(hp, max_hp)
             self._emit(HpChanged(hp=hp, max_hp=max_hp))
+            is_low = max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold
+            if is_low and not self._was_low:
+                self._state.record_health_low()
+                self._emit(SessionStatUpdated(key="health_low",
+                                              value=str(self._state.health_low)))
+            self._was_low = is_low
             if (self._config.afk.enabled and self._config.afk.hangup_on_low_hp
                     and max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold):
                 self._safety.request_hangup(f"low HP while AFK ({hp}/{max_hp})")
@@ -506,7 +521,13 @@ class MudBot:
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:
-        return self._engine.next_command(self._state)
+        was_running = self._state.task.type is TaskType.RUNNING
+        cmd = self._engine.next_command(self._state)
+        if not was_running and self._state.task.type is TaskType.RUNNING:
+            self._state.record_ran_away()
+            self._emit(SessionStatUpdated(key="ran_away",
+                                          value=str(self._state.ran_away)))
+        return cmd
 
     def _check_task_timeout(self, now: float) -> None:
         if self._state.task.expired(now):
