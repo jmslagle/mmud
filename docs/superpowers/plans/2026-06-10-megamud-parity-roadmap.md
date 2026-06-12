@@ -121,3 +121,13 @@ The port has **no room exit data** — the graph must be stitched from the 1198-
 - Full suite green after every task: `pytest -q` (139 passing as of commit 37b69ea must stay green; Phase 1 changes no behavior).
 - Live smoke test after Phases 2, 3, 4, and 6 against the real MajorMUD server (user-driven, per `docs/testing-plan.md` — record actual condition/cure/door message formats there and tune the regexes).
 - Parity acceptance reference: the Ghidra feature catalog (gap summary above) — each numbered gap maps to a phase.
+
+---
+
+## Post-roadmap hardening (pre-user-testing pass, 2026-06-11)
+
+All 11 phases are complete and merged (415 tests green). Before live user testing, a review pass produced three follow-up plans. These are **not new parity phases** — they close deferred gaps, harden the code, and add the in-app config + web UI the original had. Execute in order (Docs 2 and 3 reuse Doc 1's loader introspection / new stats):
+
+1. **[Hardening & Gap-Closure](2026-06-11-hardening-and-gap-closure.md)** — dead-config triage (wire `spells.multi_attack`, `stealth.must_sneak`, `party.attack_with_leader`; delete truly-unread fields), missing stat tracking (sneak/dodge/backstab%, comms counters, ran-away/health-low, XP rate + time-to-level) matching the original's model, a live-tune regex harness (`docs/testing-plan.md`), maintainability refactors (table-driven engine registry + loader introspection, `_process_line` hook-order docs, `PRIO_BACKSTAB` constant, reconnect logging), and tests for the untested `navigator.py`/`connection.py`.
+2. **[In-App Configuration](2026-06-11-in-app-configuration.md)** — `tomlkit` round-trip `config/writer.py`, a `ConfigService` single-mutation-path emitting a new `ConfigChanged` event, a Textual settings screen (MegaMud Options property-sheet style), and `@set`/`@save` remote verbs. No more hand-editing TOML.
+3. **[Web Control Panel](2026-06-11-web-control-panel.md)** — FastAPI + WebSocket backend (just another `GameEventBus` subscriber) + React/Vite SPA replicating MegaMud's layout: terminal, Conversations, Online Players, Session/Player Statistics (Combat Accuracy R:/A: columns), and a Quick Tools compass. Optional, inert without a `[web]` config section.
