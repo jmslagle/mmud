@@ -102,3 +102,68 @@ def test_decider_setting_own_task_is_not_self_aborted():
 def test_prio_backstab_sits_just_above_combat():
     from mmud.automation.decision import PRIO_BACKSTAB, PRIO_COMBAT
     assert PRIO_BACKSTAB == PRIO_COMBAT - 1
+
+
+def test_equal_priority_decider_does_not_preempt_its_own_active_task():
+    # A slot at the SAME priority as the active task is pinned (priority >= task
+    # priority), so it must not run and must not abort the task — even though it
+    # would otherwise return a command.
+    engine = DecisionEngine()
+    same = StubDecider("would-fire")
+    engine.register("same", same, priority=PRIO_COMBAT)
+    gs = GameState()
+    gs.begin_task(TaskType.RESTING, priority=PRIO_COMBAT)
+    assert engine.next_command(gs) is None
+    assert same.calls == 0
+    assert gs.task.is_active
+    assert gs.task.type is TaskType.RESTING
+
+
+def test_self_starting_task_command_is_not_aborted_by_its_own_slot():
+    # A decider that begins its OWN task at its own priority and returns a command
+    # in the same call must keep that task (engine only aborts strictly-lower tasks).
+    engine = DecisionEngine()
+    engine.register("self", TaskBeginningDecider("cast bless", PRIO_SPELLS), PRIO_SPELLS)
+    gs = GameState()
+    assert engine.next_command(gs) == "cast bless"
+    assert gs.task.is_active
+    assert gs.task.type is TaskType.CASTING
+    assert gs.task.priority == PRIO_SPELLS
+
+
+def test_lower_number_slot_preempts_and_aborts_higher_number_task():
+    # PRIO_CURE (10) < PRIO_TRAVEL (110): the cure slot preempts a travel task.
+    engine = DecisionEngine()
+    cure = StubDecider("cure cmd")
+    engine.register("cure", cure, priority=PRIO_CURE)
+    gs = GameState()
+    gs.begin_task(TaskType.RUNNING, priority=PRIO_TRAVEL)
+    assert engine.next_command(gs) == "cure cmd"
+    assert cure.calls == 1
+    assert not gs.task.is_active  # the higher-number task was aborted
+
+
+def test_pinned_task_blocks_lower_priority_but_higher_priority_still_runs():
+    # Task owns PRIO_COMBAT. A lower-priority (higher-number) slot below it is
+    # pinned/skipped, but a higher-priority (lower-number) slot above it preempts.
+    engine = DecisionEngine()
+    above = StubDecider("above-cmd")   # PRIO_CURE  (10) — runs/preempts
+    below = StubDecider("below-cmd")   # PRIO_TRAVEL(110) — pinned, never reached
+    engine.register("above", above, priority=PRIO_CURE)
+    engine.register("below", below, priority=PRIO_TRAVEL)
+    gs = GameState()
+    gs.begin_task(TaskType.RESTING, priority=PRIO_COMBAT)
+    assert engine.next_command(gs) == "above-cmd"
+    assert above.calls == 1
+    assert below.calls == 0
+    assert not gs.task.is_active
+
+    # Now with no higher slot: the same pinned task blocks the lower slot entirely.
+    engine2 = DecisionEngine()
+    below2 = StubDecider("below-cmd")
+    engine2.register("below", below2, priority=PRIO_TRAVEL)
+    gs2 = GameState()
+    gs2.begin_task(TaskType.RESTING, priority=PRIO_COMBAT)
+    assert engine2.next_command(gs2) is None
+    assert below2.calls == 0
+    assert gs2.task.is_active
