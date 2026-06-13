@@ -10,14 +10,14 @@ from textual.widgets import Input
 from mmud.bot import MudBot
 from mmud.config.schema import MudConfig
 from mmud.events import (
-    GameEventBus, LineReceived, HpChanged, MpChanged,
-    ConversationReceived, PlayerSeen, SessionStatUpdated,
+    GameEventBus, HpChanged, MpChanged,
+    ConversationReceived, PlayerSeen, SessionStatUpdated, ScreenUpdated,
 )
 from mmud.tui.widgets.conversations import ConversationsPane
-from mmud.tui.widgets.game_output import GameOutput
 from mmud.tui.widgets.players import PlayersPane
 from mmud.tui.widgets.right_panel import RightPanel
 from mmud.tui.widgets.stats_bar import StatsBar
+from mmud.tui.widgets.terminal_view import TerminalView
 from mmud.tui.settings_screen import SettingsScreen
 
 
@@ -64,7 +64,7 @@ class MegaMudApp(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-area"):
-            yield GameOutput(id="game-output", highlight=True, markup=True)
+            yield TerminalView(id="game-output")
             yield RightPanel(
                 default_tab=self._config.ui.default_tab,
                 id="right-panel",
@@ -82,26 +82,17 @@ class MegaMudApp(App):
         # Focus the command input immediately so typing works like a telnet client
         self.query_one("#command-input", Input).focus()
 
-    def on_game_output_raw_input(self, message: GameOutput.RawInput) -> None:
-        """Character mode: a keystroke captured by the focused GameOutput is
+    def on_terminal_view_raw_input(self, message: TerminalView.RawInput) -> None:
+        """Character mode: a keystroke captured by the focused TerminalView is
         forwarded raw to the server (no newline) for the in-game editor."""
         if self._bot is not None:
             self.run_worker(self._bot._conn.send_raw(message.data))
 
     def on_key(self, event: Key) -> None:
         """Route all keystrokes to the command input (telnet-like behavior)."""
-        # In character mode the focused GameOutput already claimed the key
-        # (GameOutput.on_key stops it); nothing to do here.
-        if self.query_one(GameOutput).has_focus:
-            return
-        # PageUp/PageDown scroll the game output without breaking input focus
-        if event.key in ("pageup", "page_up"):
-            self.query_one(GameOutput).scroll_page_up()
-            event.prevent_default()
-            return
-        if event.key in ("pagedown", "page_down"):
-            self.query_one(GameOutput).scroll_page_down()
-            event.prevent_default()
+        # In character mode the focused TerminalView already claimed the key
+        # (TerminalView.on_key stops it); nothing to do here.
+        if self.query_one(TerminalView).has_focus:
             return
 
         # Numpad macros (MACROS.MD) — fire as movement hotkeys. The kp_* key
@@ -127,12 +118,15 @@ class MegaMudApp(App):
             event.prevent_default()
 
     def _wire_bus(self) -> None:
-        game_out = self.query_one(GameOutput)
+        term = self.query_one(TerminalView)
         stats = self.query_one("#stats-bar", StatsBar)
 
+        # DISPLAY: the bot's TerminalEmulator drives the screen. Re-render on
+        # each ScreenUpdated. (LineReceived still fires for SEMANTICS consumers,
+        # but the terminal no longer renders from it.)
         self._bus.subscribe(
-            LineReceived,
-            lambda e: game_out.post_message(GameOutput.NewLine(line=e.line)),
+            ScreenUpdated,
+            lambda e: term.refresh_screen(),
         )
         self._bus.subscribe(
             HpChanged,
@@ -171,19 +165,24 @@ class MegaMudApp(App):
         elif self._bot is not None:
             await self._bot._conn.send(cmd)
 
+    def _echo(self, text: str) -> None:
+        """Write a local bot-feedback line into the terminal emulator + redraw."""
+        view = self.query_one(TerminalView)
+        view._emulator.feed("\r\n" + text)
+        view.refresh_screen()
+
     async def _handle_bot_command(self, cmd: str) -> None:
         """Handle :command bot commands without sending to server."""
         parts = cmd.strip().split(None, 1)
         verb = parts[0].lower() if parts else ""
         arg = parts[1] if len(parts) > 1 else ""
-        out = self.query_one(GameOutput)
 
         if verb in ("loop", "l"):
             if self._bot is None:
-                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                self._echo("[bot] Not connected")
                 return
             msg = self._bot.start_loop(arg)
-            out.post_message(GameOutput.NewLine(f"[bot] {msg}"))
+            self._echo(f"[bot] {msg}")
             running = self._bot._loop_runner and self._bot._loop_runner.running
             self.sub_title = (
                 f"{self._host}:{self._port} [looping]" if running
@@ -193,34 +192,34 @@ class MegaMudApp(App):
         elif verb in ("stop", "s"):
             if self._bot:
                 msg = self._bot.stop_all()
-                out.post_message(GameOutput.NewLine(f"[bot] {msg}"))
+                self._echo(f"[bot] {msg}")
                 self.sub_title = f"{self._host}:{self._port} [connected]"
 
         elif verb in ("goto", "go", "g"):
             if not arg:
-                out.post_message(GameOutput.NewLine("[bot] Usage: :goto ROOM_CODE"))
+                self._echo("[bot] Usage: :goto ROOM_CODE")
                 return
             if self._bot is None:
-                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                self._echo("[bot] Not connected")
                 return
             msg = self._bot.navigate_to_room(arg)
-            out.post_message(GameOutput.NewLine(f"[bot] {msg}"))
+            self._echo(f"[bot] {msg}")
 
         elif verb in ("paths", "p"):
             if self._bot is None:
-                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                self._echo("[bot] Not connected")
                 return
             paths = self._bot.list_paths()
             if not paths:
-                out.post_message(GameOutput.NewLine("[bot] No loop paths loaded"))
+                self._echo("[bot] No loop paths loaded")
             else:
-                out.post_message(GameOutput.NewLine(f"[bot] {len(paths)} loop paths: {', '.join(paths[:20])}"))
+                self._echo(f"[bot] {len(paths)} loop paths: {', '.join(paths[:20])}")
 
         elif verb in ("status", "st"):
             if self._bot is None:
-                out.post_message(GameOutput.NewLine("[bot] Not connected"))
+                self._echo("[bot] Not connected")
                 return
-            out.post_message(GameOutput.NewLine(f"[bot] {self._bot.status_text()}"))
+            self._echo(f"[bot] {self._bot.status_text()}")
 
         elif verb in ("connect", "c"):
             await self.action_toggle_connect()
@@ -243,10 +242,10 @@ class MegaMudApp(App):
                 "  :disconnect    — disconnect",
             ]
             for line in help_lines:
-                out.post_message(GameOutput.NewLine(line))
+                self._echo(line)
 
         else:
-            out.post_message(GameOutput.NewLine(f"[bot] Unknown command: {verb}. Try :help"))
+            self._echo(f"[bot] Unknown command: {verb}. Try :help")
 
     def action_toggle_right_panel(self) -> None:
         panel = self.query_one("#right-panel")
@@ -279,6 +278,7 @@ class MegaMudApp(App):
                 config_service=self._config_service,
             )
             self._bot_task = asyncio.create_task(self._bot.run())
+            self.query_one(TerminalView).attach_emulator(self._bot._terminal)
             server = self._bot.maybe_build_web_server()
             if server is not None:
                 self._web_task = asyncio.create_task(server.serve())
