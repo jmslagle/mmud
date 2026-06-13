@@ -4,7 +4,7 @@ import pathlib
 import tomllib
 from typing import TypeVar
 from mmud.config.schema import (
-    MudConfig, ServerConfig, LoginConfig, CombatConfig,
+    MudConfig, ServerConfig, LoginConfig, LoginStep, CombatConfig,
     BlessSpell, SpellsConfig, StealthConfig, NavigationConfig,
     ItemsConfig, PartyConfig, PartyBless, AfkConfig, PlayerRule, UiConfig,
     HealthConfig, SafetyConfig, RemoteConfig, PvpConfig, LearningConfig,
@@ -36,7 +36,11 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
     if s := data.get("server"):
         cfg.server = unpack_dataclass(ServerConfig, s)
     if l := data.get("login"):
-        cfg.login = unpack_dataclass(LoginConfig, l)
+        cfg.login = unpack_dataclass(LoginConfig, l, skip={"script"})
+        cfg.login.script = [
+            LoginStep(prompt=s.get("prompt", ""), reply=s.get("reply", ""))
+            for s in l.get("script", [])
+        ]
     if c := data.get("combat"):
         cfg.combat = unpack_dataclass(CombatConfig, c)
     if st := data.get("stealth"):

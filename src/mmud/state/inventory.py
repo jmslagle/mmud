@@ -30,13 +30,17 @@ class Inventory:
 
 
 class RefreshDecider:
-    """PRIO_REFRESH slot: issue `inv` when the inventory snapshot is stale.
+    """PRIO_REFRESH slot: issue the inventory command when the snapshot is stale.
 
     Begins a WAITING task so the chain below is pinned until the parsed
-    response arrives (bot completes the task) or the timeout aborts it.
+    response arrives (bot completes the task) or the timeout aborts it. The
+    command is configurable (`items.inventory_cmd`) — some servers reject "inv"
+    and want "i" or "inventory".
     """
 
-    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, inventory_cmd: str = "inv",
+                 now: Callable[[], float] = time.monotonic) -> None:
+        self._cmd = inventory_cmd or "inv"
         self._now = now
 
     def decide(self, state) -> str | None:
@@ -46,4 +50,4 @@ class RefreshDecider:
             return None
         state.begin_task(TaskType.WAITING, priority=PRIO_REFRESH,
                          timeout_s=REFRESH_TIMEOUT_S, now=self._now())
-        return "inv"
+        return self._cmd

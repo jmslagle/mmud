@@ -180,3 +180,89 @@ def test_tui_entry_point_help():
     assert "--host" in result.stdout
     assert "--port" in result.stdout
     assert "--char" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_typing_printable_key_routes_to_input():
+    """A printable keypress while the command input is unfocused inserts into it
+    (regresses the Input.insert API drift that crashed on_key)."""
+    from textual.events import Key
+    config = MudConfig()
+    app = MegaMudApp(config=config, host="localhost", port=4000)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#command-input", Input)
+        inp.blur()
+        await pilot.pause()
+        app.on_key(Key(key="r", character="r"))  # must not raise TypeError
+        await pilot.pause()
+        assert inp.value == "r"
+
+
+def _key(k, character=None):
+    from textual.events import Key
+    return Key(key=k, character=character)
+
+
+def test_game_output_raw_for_key_translation():
+    """Character-mode key -> raw byte mapping (pure, no event pump)."""
+    go = GameOutput()
+    # printable chars (incl. the letter 'f' and space) pass through verbatim
+    assert go.raw_for_key(_key("a", "a")) == "a"
+    assert go.raw_for_key(_key("f", "f")) == "f"
+    assert go.raw_for_key(_key("space", " ")) == " "
+    # special editor keys map to raw sequences
+    assert go.raw_for_key(_key("enter")) == "\r"
+    assert go.raw_for_key(_key("backspace")) == "\x08"
+    assert go.raw_for_key(_key("up")) == "\x1b[A"
+    assert go.raw_for_key(_key("left")) == "\x1b[D"
+    assert go.raw_for_key(_key("escape")) == "\x1b"
+    # reserved keys are NOT forwarded
+    assert go.raw_for_key(_key("shift+tab")) is None     # leaves char mode
+    assert go.raw_for_key(_key("ctrl+k")) is None        # app binding
+    assert go.raw_for_key(_key("f1")) is None            # function key
+    assert go.raw_for_key(_key("nope")) is None          # unknown non-printable
+
+
+@pytest.mark.asyncio
+async def test_char_mode_sends_raw_when_game_output_focused():
+    """Tab into the main window, type, and keystrokes go raw to the server
+    instead of into the command-line input."""
+    from textual.widgets import Input as _Input
+
+    class _StubConn:
+        def __init__(self):
+            self.raw = []
+        async def send_raw(self, data):
+            self.raw.append(data)
+
+    class _StubBot:
+        def __init__(self):
+            self._conn = _StubConn()
+
+    config = MudConfig()
+    app = MegaMudApp(config=config, host="localhost", port=4000)
+    async with app.run_test() as pilot:
+        app._bot = _StubBot()
+        go = app.query_one(GameOutput)
+        go.focus()
+        await pilot.pause()
+        assert go.has_focus
+        await pilot.press("a", "enter", "up")
+        await pilot.pause()
+        # keystrokes were sent raw, NOT routed into the command input
+        assert app._bot._conn.raw == ["a", "\r", "\x1b[A"]
+        assert app.query_one("#command-input", _Input).value == ""
+
+
+@pytest.mark.asyncio
+async def test_tab_from_command_line_focuses_main_window():
+    """One Tab from the command input lands on the main GameOutput window
+    (character mode); the window is focusable for that purpose."""
+    config = MudConfig()
+    app = MegaMudApp(config=config, host="localhost", port=4000)
+    async with app.run_test() as pilot:
+        app.query_one("#command-input", Input).focus()
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        assert app.query_one(GameOutput).has_focus

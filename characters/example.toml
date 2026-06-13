@@ -13,6 +13,29 @@ username   = "your_bbs_login"
 password   = "your_password"
 character  = "Your Character Name"
 auto_login = false   # set to true to enable automatic login on connect
+# Defaults detect Worldgroup/Galacticomm ("...have a User-ID...") and common
+# MUD prompts. Override with a regex (case-insensitive) if your BBS differs:
+# username_prompt = "user-id|type it in and press"
+# password_prompt = "password\\s*:"
+#
+# Scripted login — how the original MegaMud did it (LogonPrompt/LogonReply).
+# When you add [[login.script]] steps they DRIVE login in order (the built-in
+# detection above becomes the fallback). reply expands {userid}/{pswd}/
+# {character}; an empty reply just presses Enter. menu_prompt marks "in game".
+# Example for a Galacticomm Worldgroup BBS hosting MajorMud:
+#   menu_prompt = "MAJORMUD|Already playing"
+#   [[login.script]]
+#   prompt = "User-ID|type it in and press"
+#   reply  = "{userid}"
+#   [[login.script]]
+#   prompt = "[Pp]assword"
+#   reply  = "{pswd}"
+#   [[login.script]]
+#   prompt = "\\(N\\)onstop"
+#   reply  = "N"
+#   [[login.script]]
+#   prompt = "Enter your selection"   # the BBS main menu
+#   reply  = "D"                       # the key that launches MajorMud
 
 # ── Combat ───────────────────────────────────────────────────────────────────
 [combat]
@@ -77,6 +100,7 @@ bash_doors       = false   # bash closed/locked doors when open/pick fails
 [items]
 auto_get         = false
 auto_cash        = true
+inventory_cmd    = "inv"   # command that lists inventory; use "i"/"inventory" if your server rejects "inv"
 collect_copper   = true
 collect_silver   = true
 collect_gold     = true

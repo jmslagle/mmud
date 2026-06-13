@@ -13,6 +13,12 @@ Screen {
     border-right: solid $panel;
 }
 
+/* Character mode: when the main window has focus, every keystroke goes raw
+   to the server (for the in-game editor). Highlight it so the mode is obvious. */
+#game-output:focus {
+    border: round $accent;
+}
+
 #right-panel {
     width: 35%;
 }

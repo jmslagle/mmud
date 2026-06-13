@@ -28,15 +28,24 @@ from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
 from mmud.parser.matcher import PatternMatcher
 from mmud.parser.room_parser import RoomParser
+from mmud.parser.ansi import render_line, visible_text
 from mmud.state.game_state import GameState, MonsterSighting
 from mmud.navigation.navigator import Navigator
 from mmud.combat.combat import CombatEngine
 from mmud.automation.login import LoginHandler
 from mmud.automation.spells import SpellEngine
 
-_HP_RE = re.compile(r"\[HP=(\d+)/(\d+)\]")
-_MP_RE = re.compile(r"\[MP=(\d+)/(\d+)\]")
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+# Prompt vitals. MajorMud prompts vary by player config: "[HP=141/216]",
+# "[HP=49 /MA=20 ]" (current-only, mana as MA), "[HP=49/216 MA=20/45]", etc.
+# Capture current and an OPTIONAL max for each; mana is MA or MP.
+_HP_RE = re.compile(r"\bHP=(\d+)(?:/(\d+))?")
+_MP_RE = re.compile(r"\b(?:MA|MP)=(\d+)(?:/(\d+))?")
+# The `stat`/`health` command reports current AND max — learn the max here so a
+# minimal prompt (current-only) still drives flee/rest thresholds. RECONSTRUCTED
+# wording; tune against the live server (docs/testing-plan.md).
+_STAT_HITS_RE = re.compile(r"\b(?:Hits|Hit Points|HP):\s*(\d+)/(\d+)")
+_STAT_MANA_RE = re.compile(r"\bMana:\s*(\d+)/(\d+)")
+# Line rendering (cursor replay + colour) lives in mmud.parser.ansi.
 _COMBAT_EXIT_RE = re.compile(
     r"breaks off combat|Combat Engaged:\s*Off|"
     r"You have (?:slain|killed)|falls? to the ground|"
@@ -228,7 +237,7 @@ class MudBot:
             ("backstab", self._backstab, PRIO_BACKSTAB),
             ("spells", self._spell_engine, PRIO_SPELLS),
             ("combat", self._combat, PRIO_COMBAT),
-            ("refresh", RefreshDecider(), PRIO_REFRESH),
+            ("refresh", RefreshDecider(self._config.items.inventory_cmd), PRIO_REFRESH),
             ("equip", self._equip_decider, PRIO_EQUIP),
             ("items", self._get_decider, PRIO_ITEMS),
             ("commerce", self._commerce, PRIO_COMMERCE),
@@ -345,9 +354,11 @@ class MudBot:
         # 22. _handle_login    login state machine; auto_start loop on entry
         # 23. _parse_who_and_exp  WHO entries, exp/level, kill counting
         # 24. matcher.match    generic message patterns -> effects / combat flag
-        self._session.on_line(line)   # raw capture before ANSI strip
-        self._emit(LineReceived(line=line))
-        clean = _ANSI_RE.sub("", line).strip()
+        self._session.on_line(line)   # raw capture before any rendering
+        # Replay MajorMud's in-line cursor moves so hotkey/redraw artefacts
+        # ("nNorth") resolve. Display keeps colour; parsing uses plain text.
+        self._emit(LineReceived(line=render_line(line, color=True)))
+        clean = visible_text(line).strip()
         self._parse_vitals(clean)
         if inv := self._inv_parser.feed(clean):
             self._state.inventory = inv
@@ -388,7 +399,10 @@ class MudBot:
 
     def _parse_vitals(self, line: str) -> None:
         if m := _HP_RE.search(line):
-            hp, max_hp = int(m.group(1)), int(m.group(2))
+            hp = int(m.group(1))
+            # Prompts without a max (e.g. "[HP=49 /MA=20 ]") keep the last known
+            # max — learned from a previous full prompt or the `stat` line.
+            max_hp = int(m.group(2)) if m.group(2) else self._state.max_hp
             self._state.set_hp(hp, max_hp)
             self._emit(HpChanged(hp=hp, max_hp=max_hp))
             is_low = max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold
@@ -401,6 +415,16 @@ class MudBot:
                     and max_hp > 0 and hp / max_hp <= self._config.combat.flee_threshold):
                 self._safety.request_hangup(f"low HP while AFK ({hp}/{max_hp})")
         if m := _MP_RE.search(line):
+            mp = int(m.group(1))
+            max_mp = int(m.group(2)) if m.group(2) else self._state.max_mana
+            self._state.set_mana(mp, max_mp)
+            self._emit(MpChanged(mp=mp, max_mp=max_mp))
+        # `stat` output carries the maxes a current-only prompt omits.
+        if m := _STAT_HITS_RE.search(line):
+            hp, max_hp = int(m.group(1)), int(m.group(2))
+            self._state.set_hp(hp, max_hp)
+            self._emit(HpChanged(hp=hp, max_hp=max_hp))
+        if m := _STAT_MANA_RE.search(line):
             mp, max_mp = int(m.group(1)), int(m.group(2))
             self._state.set_mana(mp, max_mp)
             self._emit(MpChanged(mp=mp, max_mp=max_mp))
