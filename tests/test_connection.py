@@ -151,3 +151,32 @@ def test_send_raw_writes_verbatim_no_newline():
 def test_send_raw_without_writer_is_noop():
     c = _conn(writer=None)
     asyncio.run(c.send_raw("x"))   # must not raise
+
+
+def test_prompt_partial_flushes_on_timeout():
+    # A prompt (ends with ':') with no newline flushes on the idle timeout.
+    import asyncio as _a
+    class SlowReader:
+        def __init__(self): self._n = 0
+        async def read(self, _n):
+            self._n += 1
+            if self._n == 1:
+                return b"[HP=46/MA=12]:"
+            await _a.sleep(10)        # never returns more -> forces timeout
+            return b""
+    c = _conn(reader=SlowReader(), writer=FakeWriter())
+    async def run():
+        async for line in c.readlines():
+            return line
+    assert _a.run(_a.wait_for(run(), timeout=2.0)) == "[HP=46/MA=12]:"
+
+
+def test_prompt_tail_regex_distinguishes_prompts_from_typing():
+    # The timeout-flush gate: prompts (and continue/pager prompts) flush; bare
+    # echoed typing characters do NOT (so char-mode echo isn't split per key).
+    from mmud.net.connection import _PROMPT_TAIL_RE
+    for prompt in ("[HP=46/MA=12]:", "(N)onstop, (Q)uit, or (C)ontinue?",
+                   "Otherwise type \"new\":", "> ", "[HP=46/MA=12]:\x1b[0m"):
+        assert _PROMPT_TAIL_RE.search(prompt), prompt
+    for typed in ("l", "lo", "look", "wear padded", "You are carrying club"):
+        assert not _PROMPT_TAIL_RE.search(typed), typed

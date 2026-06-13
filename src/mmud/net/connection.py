@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import re
 from typing import AsyncIterator
 
 # Telnet control bytes (RFC 854)
@@ -20,6 +21,12 @@ _TERMINAL_TYPE = b"xterm"
 
 # Emit a partial line (prompt) if no new data arrives within this window
 _PROMPT_TIMEOUT = 0.08   # 80ms — fast enough to feel live, slow enough to batch lines
+# A buffered partial is flushed on timeout only if it looks like a prompt (ends
+# with a prompt terminator, allowing trailing ANSI). Otherwise it waits for a
+# newline — so per-character echo (character-mode typing) isn't split into one
+# line per keystroke. A longer idle still flushes anything (no indefinite hang).
+_PROMPT_TAIL_RE = re.compile(r"[:>?#]\s*(?:\x1b\[[0-9;?]*[A-Za-z]\s*)*$")
+_IDLE_FLUSH_TICKS = 12   # ~1s at 80ms — flush non-prompt partials eventually
 
 
 class MudConnection:
@@ -59,18 +66,26 @@ class MudConnection:
         """
         assert self._reader
         buf = b""
+        idle = 0
         while True:
             try:
                 chunk = await asyncio.wait_for(
                     self._reader.read(4096), timeout=_PROMPT_TIMEOUT
                 )
             except asyncio.TimeoutError:
-                # Nothing new arrived — emit any buffered partial line (prompt)
+                # Nothing new arrived. Flush a buffered partial only if it looks
+                # like a prompt, or after a longer idle — otherwise per-character
+                # echo (character mode) becomes one line per keystroke.
+                idle += 1
                 if buf.strip():
-                    yield self._strip_iac(buf)
-                    buf = b""
+                    text = self._strip_iac(buf)
+                    if _PROMPT_TAIL_RE.search(text) or idle >= _IDLE_FLUSH_TICKS:
+                        yield text
+                        buf = b""
+                        idle = 0
                 continue
 
+            idle = 0
             if not chunk:
                 # Server closed the connection
                 if buf:
