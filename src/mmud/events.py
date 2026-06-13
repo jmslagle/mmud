@@ -108,6 +108,16 @@ class ConfigChanged:
     value: object  # the new value, already type-coerced
 
 
+@dataclass
+class RawOutput:
+    data: str   # raw IAC-stripped server text (ANSI intact) for the terminal emulator
+
+
+@dataclass
+class ScreenUpdated:
+    pass        # signal: the terminal emulator's screen changed; re-render
+
+
 class GameEventBus:
     def __init__(self) -> None:
         self._subscribers: dict[type, list[Callable]] = {}
