@@ -42,3 +42,19 @@ def test_refresh_decider_quiet_in_combat():
     gs.inventory_dirty = True
     gs.set_combat(True)
     assert RefreshDecider(now=lambda: 10.0).decide(gs) is None
+
+
+def test_refresh_decider_uses_configured_command():
+    from mmud.state.inventory import RefreshDecider
+    from mmud.state.game_state import GameState
+    gs = GameState()
+    gs.inventory_dirty = True
+    assert RefreshDecider("i").decide(gs) == "i"
+
+
+def test_refresh_decider_defaults_to_inv():
+    from mmud.state.inventory import RefreshDecider
+    from mmud.state.game_state import GameState
+    gs = GameState()
+    gs.inventory_dirty = True
+    assert RefreshDecider().decide(gs) == "inv"

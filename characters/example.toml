@@ -100,6 +100,7 @@ bash_doors       = false   # bash closed/locked doors when open/pick fails
 [items]
 auto_get         = false
 auto_cash        = true
+inventory_cmd    = "inv"   # command that lists inventory; use "i"/"inventory" if your server rejects "inv"
 collect_copper   = true
 collect_silver   = true
 collect_gold     = true

@@ -237,7 +237,7 @@ class MudBot:
             ("backstab", self._backstab, PRIO_BACKSTAB),
             ("spells", self._spell_engine, PRIO_SPELLS),
             ("combat", self._combat, PRIO_COMBAT),
-            ("refresh", RefreshDecider(), PRIO_REFRESH),
+            ("refresh", RefreshDecider(self._config.items.inventory_cmd), PRIO_REFRESH),
             ("equip", self._equip_decider, PRIO_EQUIP),
             ("items", self._get_decider, PRIO_ITEMS),
             ("commerce", self._commerce, PRIO_COMMERCE),

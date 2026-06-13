@@ -101,6 +101,7 @@ class NavigationConfig:
 class ItemsConfig:
     auto_get: bool = False
     auto_cash: bool = True
+    inventory_cmd: str = "inv"   # command that lists inventory ("i"/"inventory" on some servers)
     collect_copper: bool = True
     collect_silver: bool = True
     collect_gold: bool = True
