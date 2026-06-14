@@ -104,3 +104,13 @@ def test_ws_broadcasts_posted_event(client, fake_bot):
         fake_bot._bus.post(HpChanged(hp=5, max_hp=40))
         msg = ws.receive_json()
         assert msg == {"type": "HpChanged", "hp": 5, "max_hp": 40}
+
+
+def test_ws_broadcasts_raw_output(client, fake_bot):
+    from mmud.events import RawOutput
+
+    with client.websocket_connect("/ws") as ws:
+        assert ws.receive_json()["type"] == "Snapshot"
+        fake_bot._bus.post(RawOutput(data="\x1b[2J"))
+        msg = ws.receive_json()
+        assert msg == {"type": "RawOutput", "data": "\x1b[2J"}

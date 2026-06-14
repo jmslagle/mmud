@@ -17,7 +17,9 @@ _EVENT_TYPES: tuple[type, ...] = (
     ev.ConversationReceived, ev.PlayerSeen, ev.PathStarted, ev.PathStepped,
     ev.SessionStatUpdated, ev.MonstersSeen, ev.TaskChanged,
     ev.ConditionChanged, ev.HangupTriggered, ev.DbImported, ev.DbCollision,
-    ev.TravelResynced, ev.TravelEnded,
+    ev.TravelResynced, ev.TravelEnded, ev.RawOutput,
+    # ScreenUpdated is intentionally NOT broadcast — it's a TUI re-render signal;
+    # the web frontend redraws from the RawOutput byte stream via xterm.js.
 )
 
 _QUICKTOOL: dict[str, str] = {
