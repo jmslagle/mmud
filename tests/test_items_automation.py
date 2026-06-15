@@ -72,3 +72,35 @@ def test_ungettable_marking():
     d.mark_ungettable("fountain")
     gs.ground_items.append("fountain")
     assert d.decide(gs) is None
+
+
+def test_loot_monitor_strips_leading_count():
+    from mmud.automation.items import LootMonitor
+    gs = GameState()
+    LootMonitor().process_line("You notice 2 log raft here.", gs)
+    assert gs.ground_items == ["log raft"]      # count stripped, not "2 log raft"
+
+
+def test_loot_monitor_strips_count_and_article():
+    from mmud.automation.items import LootMonitor
+    gs = GameState()
+    LootMonitor().process_line("You notice a rusty sword here.", gs)
+    assert gs.ground_items == ["rusty sword"]
+
+
+def test_get_fail_re_matches_server_syntax_error():
+    from mmud.automation.items import _GET_FAIL_RE
+    assert _GET_FAIL_RE.search("Syntax: GET {Amount} {Currency}")
+    assert _GET_FAIL_RE.search("Syntax: GET 2 {Currency}")
+    assert _GET_FAIL_RE.search("You can't get that.")
+    assert _GET_FAIL_RE.search("You don't see that here.")
+    assert not _GET_FAIL_RE.search("You get a rusty sword.")
+
+
+def test_begin_does_not_set_inventory_dirty():
+    # so RefreshDecider can't preempt the GETTING task before the get resolves
+    gs = GameState()
+    gs.ground_items.append("rusty sword")
+    GetDecider(ItemsConfig(auto_get=True), now=lambda: 5.0).decide(gs)
+    assert gs.inventory_dirty is False
+    assert gs.task.type is TaskType.GETTING

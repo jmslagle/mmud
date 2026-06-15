@@ -786,3 +786,23 @@ def test_bot_feeds_terminal_emulator_and_emits_raw():
     assert len(screen_events) == 1
     # The emulator received the bytes (cursor-home + text shows on row 0).
     assert bot._terminal.display()[0].startswith("ello")
+
+
+@pytest.mark.asyncio
+async def test_autoget_strips_count_and_marks_scenery_ungettable():
+    """Count-prefixed scenery: bot sends 'get log raft' (not 'get 2 log raft'),
+    and the server's currency-syntax rejection marks it ungettable so it never
+    retries even when the room re-displays it."""
+    from mmud.config.schema import MudConfig
+    config = MudConfig()
+    config.items.auto_get = True
+    bot = make_transcript_bot(
+        ["You notice 2 log raft here.\n",
+         "Syntax: GET 2 {Currency}\n",
+         "You notice 2 log raft here.\n",
+         "[HP=46/MA=12]:\n"],
+        config=config)
+    await bot.run()
+    gets = [c for c in bot._conn.sent if c.startswith("get ")]
+    assert gets == ["get log raft"]          # count stripped; tried exactly once
+    assert "get 2 log raft" not in bot._conn.sent

@@ -15,7 +15,24 @@ _NOTICE_RE = re.compile(r"^You notice (.+?) here\.?$", re.IGNORECASE)
 _COIN_RE = re.compile(
     r"^(\d+)\s+(copper|silver|gold|platinum|runic)\b", re.IGNORECASE)
 _ARTICLE_RE = re.compile(r"^(?:a|an|the|some)\s+", re.IGNORECASE)
+# A leading quantity ("2 log raft", "3 arrows") is a COUNT, not part of the
+# name — strip it so GET sends "get log raft", not "get 2 log raft" (which the
+# server mis-reads as a currency amount: "Syntax: GET 2 {Currency}").
+_COUNT_RE = re.compile(r"^\d+\s+")
+# GET failures: the item can't be taken (scenery, fixtures). Includes this
+# server's currency-only syntax error for "get <non-item>". Tune live.
 _CANT_GET_RE = re.compile(r"you can'?t (?:get|take|pick up)", re.IGNORECASE)
+_GET_FAIL_RE = re.compile(
+    r"you can'?t (?:get|take|pick up)|"
+    r"you (?:don'?t|do not) see\b|"
+    r"(?:isn'?t|is not|aren'?t) here\b|"
+    r"\bno .* here\b|"
+    r"\bSyntax:\s*GET\b",
+    re.IGNORECASE)
+# GET success — broadened beyond "you took/get".
+_GOT_RE = re.compile(
+    r"^you (?:get|got|take|took|pick up|picked up|grab|now have)\b",
+    re.IGNORECASE)
 
 
 class LootMonitor:
@@ -39,7 +56,7 @@ class LootMonitor:
             if cm := _COIN_RE.match(raw):
                 state.ground_coins[cm.group(2).lower()] = int(cm.group(1))
                 continue
-            name = _ARTICLE_RE.sub("", raw).lower()
+            name = _ARTICLE_RE.sub("", _COUNT_RE.sub("", raw)).lower()
             if name and not self._is_monster(name):
                 state.ground_items.append(name)
 
@@ -80,7 +97,10 @@ class GetDecider:
         return None
 
     def _begin(self, state: GameState, name: str) -> None:
+        # NOTE: do NOT set inventory_dirty here — that lets the higher-priority
+        # RefreshDecider preempt the GETTING task and fire "inv" before the
+        # get's success/failure reply arrives (so the item is never marked
+        # ungettable). The bot sets inventory_dirty on a SUCCESSFUL get instead.
         state.begin_task(TaskType.GETTING, priority=PRIO_ITEMS,
                          timeout_s=GET_TIMEOUT_S, payload={"item": name},
                          now=self._now())
-        state.inventory_dirty = True
