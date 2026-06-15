@@ -175,3 +175,13 @@ def test_polite_attacks_allows_when_alone():
     gs = GameState(); gs.set_hp(100, 100); gs.set_combat(True)
     _sightings(gs, "rat")
     assert CombatEngine(cfg).decide(gs) == "kill rat"
+
+
+def test_initiates_attack_when_monster_present_not_yet_in_combat():
+    from mmud.combat.combat import CombatEngine
+    from mmud.config.schema import CombatConfig
+    from mmud.state.game_state import GameState, MonsterSighting
+    gs = GameState(); gs.set_hp(100, 100); gs.set_combat(False)
+    gs.monsters_present = [MonsterSighting(name="fat giant rat")]
+    ce = CombatEngine(CombatConfig(attack_cmd="kill"))
+    assert ce.decide(gs) == "kill fat giant rat"   # initiate, even out of combat

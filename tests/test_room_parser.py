@@ -26,12 +26,11 @@ def test_unknown_line_returns_none():
     assert parser.detect_room("Obvious exits: north, east") is None
     assert parser.detect_room("") is None
 
-def test_extract_monsters_you_notice():
+def test_you_notice_is_loot_not_monsters():
+    # "You notice X here." is ground loot (items.LootMonitor), NOT monsters.
     parser = RoomParser({})
-    monsters = parser.extract_monsters("You notice 2 orc warriors and 1 goblin scout here.")
-    assert len(monsters) >= 1
-    combined = " ".join(monsters)
-    assert "orc" in combined or "goblin" in combined
+    assert parser.extract_monsters("You notice 2 log raft here.") == []
+    assert parser.extract_monsters("You notice a rusty sword here.") == []
 
 def test_extract_monsters_is_here():
     parser = RoomParser({})
@@ -94,3 +93,34 @@ def test_extract_players_capitalized_names():
 def test_extract_players_none():
     p = RoomParser({})
     assert p.extract_players("Also here: a dark elf, 2 orc warriors.") == []
+
+
+def test_also_here_bare_lowercase_is_monster():
+    # MegaMud takes every entry as an entity; bare "fat giant rat" is a monster.
+    p = RoomParser({})
+    assert p.extract_sightings("Also here: fat giant rat.") == [("fat giant rat", 1)]
+    assert p.extract_players("Also here: fat giant rat.") == []
+
+
+def test_also_here_capitalized_is_player():
+    p = RoomParser({})
+    assert p.extract_players("Also here: Betram.") == ["Betram"]
+    assert p.extract_sightings("Also here: Betram.") == []
+
+
+def test_also_here_strips_parenthetical():
+    p = RoomParser({})
+    assert p.extract_sightings("Also here: fat giant rat (Charmed).") == [("fat giant rat", 1)]
+
+
+def test_also_here_mixed_monster_and_player():
+    p = RoomParser({})
+    line = "Also here: fat giant rat, Betram, a dark elf, 2 orcs."
+    assert p.extract_sightings(line) == [("fat giant rat", 1), ("dark elf", 1), ("orcs", 2)]
+    assert p.extract_players(line) == ["Betram"]
+
+
+def test_monster_arrival_line():
+    p = RoomParser({})
+    assert p.extract_sightings(
+        "A fat giant rat creeps into the room from nowhere.") == [("fat giant rat", 1)]

@@ -26,9 +26,9 @@ class SpellEngine:
         hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
         mp_pct = state.mana / state.max_mana if state.max_mana > 0 else 1.0
 
-        # Encounter ended: reset the cast counter, optionally swap back to the
-        # casting weapon once.
-        if not state.in_combat:
+        # Encounter ended (truly idle: not fighting AND no monster present):
+        # reset the cast counter, optionally swap back to the casting weapon.
+        if not state.in_combat and not state.monsters_present:
             if self._swapped_to_melee:
                 self._swapped_to_melee = False
                 self._attack_casts = 0
@@ -50,8 +50,9 @@ class SpellEngine:
                 and not state.in_combat):
             return self._cfg.heal
 
-        # Attack spell (in combat, takes priority over bless) — with cast limit
-        if state.in_combat and self._cfg.attack and state.monsters_present:
+        # Attack spell — cast when a monster is present (initiating combat or
+        # continuing it); takes priority over bless. Bounded by max_cast_count.
+        if self._cfg.attack and state.monsters_present:
             limit = self._cfg.max_cast_count
             if limit <= 0 or self._attack_casts < limit:
                 self._attack_casts += 1
