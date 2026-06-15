@@ -6,7 +6,15 @@ _NOTICE_RE = re.compile(r"You notice\s+(.*?)\s+here\.", re.IGNORECASE)
 _IS_HERE_RE = re.compile(
     r"^(?:A|An|The)\s+(.+?)\s+(?:is|are|stands?|guard\w*)\s+here", re.IGNORECASE
 )
+# A monster wandering in: "A fat giant rat creeps into the room from nowhere."
+# Article-prefixed (players arrive without an article), so this is a monster.
+_ARRIVES_RE = re.compile(
+    r"^(?:A|An|The)\s+(.+?)\s+(?:creeps?|walks?|wanders?|lumbers?|slithers?|"
+    r"crawls?|strides?|stumbles?|saunters?|sneaks?|charges?|rushes?|shuffles?|"
+    r"flies|floats?|arrives?|enters?|appears?|steps?)\b", re.IGNORECASE)
 _ALSO_HERE_RE = re.compile(r"^Also here:\s+(.+)\.", re.IGNORECASE)
+# Trailing parenthetical on an entity, e.g. "goblin (Charmed)" — MegaMud strips it.
+_PAREN_SUFFIX_RE = re.compile(r"\s*\(.*\)\s*$")
 _AND_RE = re.compile(r"\s+and\s+|\s*,\s*", re.IGNORECASE)
 _COUNT_PREFIX_RE = re.compile(r"^(\d+)\s+(.+)$")
 _ARTICLE_PREFIX_RE = re.compile(r"^(?:a|an|the)\s+(.+)$", re.IGNORECASE)
@@ -43,13 +51,15 @@ class RoomParser:
             if name and not _NON_MONSTER.search(name):
                 return [(name, 1)]
             return []
-        if m := _NOTICE_RE.search(line):
-            out: list[tuple[str, int]] = []
-            for part in _AND_RE.split(m.group(1)):
-                sighting = self._classify_monster(part)
-                if sighting:
-                    out.append(sighting)
-            return out
+        if m := _ARRIVES_RE.match(line):
+            name = _PAREN_SUFFIX_RE.sub("", m.group(1)).strip().lower()
+            if name and not _NON_MONSTER.search(name):
+                return [(name, 1)]
+            return []
+        # NOTE: "You notice X here." is GROUND LOOT (handled by items.LootMonitor),
+        # NOT monsters — e.g. "You notice 2 log raft here." Treating it as a
+        # monster made the bot try to attack scenery. Monsters appear in
+        # "Also here:" / "A X is here." / arrival lines only.
         return []
 
     def extract_players(self, line: str) -> list[str]:
@@ -59,18 +69,32 @@ class RoomParser:
         return []
 
     def _classify_also_here(self, raw: str) -> tuple[list[tuple[str, int]], list[str]]:
-        """Split "Also here:" content into (monster sightings, player names)."""
+        """Split "Also here:" content into (monster sightings, player names).
+
+        Per MegaMud's room_also_here_parse, EVERY comma-separated entry is an
+        entity (no article/count required); trailing "(...)" is stripped. The
+        original keys monster-vs-player off the name's ANSI colour; lacking that
+        here we use the observed convention: a bare Capitalized proper name is a
+        player/NPC (e.g. "Betram", "Krang Moan"); everything else is a monster.
+        """
         monsters: list[tuple[str, int]] = []
         players: list[str] = []
         for entry in _AND_RE.split(raw.rstrip(".")):
-            entry = entry.strip()
+            entry = _PAREN_SUFFIX_RE.sub("", entry.strip()).strip()
             if not entry:
                 continue
-            sighting = self._classify_monster(entry)
-            if sighting:
-                monsters.append(sighting)
-            elif _PLAYER_NAME_RE.match(entry):
+            count = 1
+            if cm := _COUNT_PREFIX_RE.match(entry):
+                count, entry = int(cm.group(1)), cm.group(2).strip()
+            had_article = bool(_ARTICLE_PREFIX_RE.match(entry))
+            if had_article:
+                entry = _ARTICLE_PREFIX_RE.match(entry).group(1).strip()
+            if not entry or _NON_MONSTER.search(entry.lower()):
+                continue
+            if count == 1 and not had_article and _PLAYER_NAME_RE.match(entry):
                 players.append(entry)
+            else:
+                monsters.append((entry.lower(), count))
         return monsters, players
 
     @staticmethod

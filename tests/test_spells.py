@@ -182,3 +182,13 @@ def test_multi_attack_inert_when_unset():
     gs = _combat_state()
     for _ in range(5):
         assert eng.decide(gs) == "cast zap"
+
+
+def test_attack_spell_initiates_when_monster_present_out_of_combat():
+    from mmud.automation.spells import SpellEngine
+    from mmud.config.schema import SpellsConfig
+    from mmud.state.game_state import GameState, MonsterSighting
+    eng = SpellEngine(SpellsConfig(attack="mmis"))
+    gs = GameState(); gs.set_hp(100, 100); gs.set_mana(100, 100); gs.set_combat(False)
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    assert eng.decide(gs) == "mmis"     # casts to open the fight

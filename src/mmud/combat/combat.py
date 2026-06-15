@@ -35,8 +35,9 @@ class CombatEngine:
         hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
         mp_pct = state.mana / state.max_mana if state.max_mana > 0 else 1.0
 
-        if state.in_combat:
-            if hp_pct <= self.flee_threshold:
+        # Engage if already fighting OR a monster is in the room (initiate).
+        if state.in_combat or state.monsters_present:
+            if state.in_combat and hp_pct <= self.flee_threshold:
                 return "flee"
             if state.max_mana > 0 and mp_pct < self.mana_attack_pct:
                 return None
@@ -51,7 +52,7 @@ class CombatEngine:
             target = self._pick_target(state)
             return f"{self.attack_cmd} {target}".strip()
 
-        # Reset sneak flag when not in combat
+        # Not engaged: reset sneak flags for the next encounter
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
 
