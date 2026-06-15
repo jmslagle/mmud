@@ -732,12 +732,29 @@ class MudBot:
             pass
         return "Stopped."
 
-    def navigate_to_room(self, to_code: str) -> str:
-        """Multi-hop navigate to a 4-letter room code via the room graph."""
+    def _resolve_rooms(self, target: str) -> list[str]:
+        """Resolve a goto target to room code(s): an exact 4-letter code, else a
+        case-insensitive substring match on room names."""
+        t = target.strip()
+        if t.upper() in self._rooms:
+            return [t.upper()]
+        tl = t.lower()
+        return [c for c, r in self._rooms.items() if tl and tl in r.name.lower()]
+
+    def navigate_to_room(self, target: str) -> str:
+        """Multi-hop navigate to a room by 4-letter code OR name substring."""
         from mmud.navigation.graph import NavStatus
-        dest = self._rooms.get(to_code.upper())
+        codes = self._resolve_rooms(target)
+        if not codes:
+            return f"Unknown room: {target}"
+        if len(codes) > 1:
+            shown = ", ".join(f"{c} ({self._rooms[c].name})" for c in codes[:6])
+            more = " …" if len(codes) > 6 else ""
+            return f"Ambiguous '{target}' — matches {len(codes)}: {shown}{more}"
+        to_code = codes[0]
+        dest = self._rooms.get(to_code)
         if dest is None or not dest.hex_id:
-            return f"Unknown destination room: {to_code.upper()}"
+            return f"Unknown destination room: {to_code}"
         src_hex = self._state.current_hex
         if not src_hex and self._state.current_room:
             room = self._rooms.get(self._state.current_room)

@@ -263,3 +263,42 @@ async def test_tab_from_command_line_focuses_terminal_view():
         await pilot.press("tab")
         await pilot.pause()
         assert app.query_one(TerminalView).has_focus
+
+
+@pytest.mark.asyncio
+async def test_ctrl_g_opens_menu_and_escape_closes():
+    from mmud.tui.help_screen import HelpScreen
+    app = MegaMudApp(config=MudConfig(), host="h", port=23)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+g")
+        await pilot.pause()
+        assert isinstance(app.screen, HelpScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, HelpScreen)   # closed
+
+
+@pytest.mark.asyncio
+async def test_escape_closes_settings_screen():
+    from mmud.tui.settings_screen import SettingsScreen
+    app = MegaMudApp(config=MudConfig(), host="h", port=23)
+    async with app.run_test() as pilot:
+        app.action_open_settings()
+        await pilot.pause()
+        assert isinstance(app.screen, SettingsScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, SettingsScreen)   # closed
+
+
+@pytest.mark.asyncio
+async def test_escape_still_clears_input_on_main_screen():
+    app = MegaMudApp(config=MudConfig(), host="h", port=23)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#command-input", Input)
+        inp.focus()
+        inp.value = "garbage"
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert inp.value == ""
