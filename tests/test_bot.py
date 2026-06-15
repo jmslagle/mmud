@@ -829,3 +829,22 @@ def test_navigate_to_room_ambiguous_lists_matches():
     msg = bot.navigate_to_room("room")
     assert "ambiguous" in msg.lower()
     assert "HOME" in msg and "FARR" in msg
+
+
+def test_find_rooms_by_name_and_code():
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    # name substring matches both rooms, sorted by name
+    names = [r.name for r in bot.find_rooms("room")]
+    assert names == ["The Far Room", "The Home Room"]
+    # exact code match
+    by_code = bot.find_rooms("FARR")
+    assert [r.code for r in by_code] == ["FARR"]
+    # no match
+    assert bot.find_rooms("zzznope") == []
+    # blank query is empty (not "everything")
+    assert bot.find_rooms("  ") == []
+
+
+def test_find_rooms_respects_limit():
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    assert len(bot.find_rooms("room", limit=1)) == 1

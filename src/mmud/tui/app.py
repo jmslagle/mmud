@@ -210,6 +210,22 @@ class MegaMudApp(App):
             msg = self._bot.navigate_to_room(arg)
             self._echo(f"[bot] {msg}")
 
+        elif verb in ("find", "f", "rooms"):
+            if not arg:
+                self._echo("[bot] Usage: :find <name or code>")
+                return
+            if self._bot is None:
+                self._echo("[bot] Not connected")
+                return
+            matches = self._bot.find_rooms(arg)
+            if not matches:
+                self._echo(f"[bot] No rooms matching '{arg}'")
+                return
+            self._echo(f"[bot] {len(matches)} room(s) matching '{arg}':")
+            for r in matches:
+                region = f"  [{r.region}]" if r.region else ""
+                self._echo(f"  {r.code}  {r.name}{region}")
+
         elif verb in ("paths", "p"):
             if self._bot is None:
                 self._echo("[bot] Not connected")
@@ -240,6 +256,7 @@ class MegaMudApp(App):
                 "[bot] Bot commands (prefix with :):",
                 "  :loop [NAME]   — start loop path (optional name override)",
                 "  :stop          — stop loop, clear queue",
+                "  :find QUERY    — search rooms by name/code (shows codes for :goto)",
                 "  :goto TARGET   — navigate to a room by 4-letter code or name",
                 "  :paths         — list available loop paths",
                 "  :status        — show HP/MP/room/loop status",
