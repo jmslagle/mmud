@@ -46,8 +46,27 @@ def test_get_decider_collects_configured_coins():
     gs = GameState()
     gs.ground_coins["copper"] = 23
     d = GetDecider(ItemsConfig(auto_cash=True, collect_copper=True), now=lambda: 5.0)
-    assert d.decide(gs) == "get copper"
+    assert d.decide(gs) == "get 23 copper"   # amount included (server GET syntax)
     assert "copper" not in gs.ground_coins
+    assert gs.task.payload.get("coin") is True   # tagged so failure won't blacklist
+
+
+def test_cash_cmd_is_configurable():
+    gs = GameState()
+    gs.ground_coins["silver"] = 13
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_silver=True,
+                               cash_cmd="get all {denom}"), now=lambda: 5.0)
+    assert d.decide(gs) == "get all silver"
+
+
+def test_coin_get_is_tagged_coin_not_blacklistable():
+    # Coin pickups are tagged coin=True so a transient "you don't see" failure
+    # never blacklists the denomination (coins reappear; items don't).
+    gs = GameState()
+    gs.ground_coins["silver"] = 13
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_silver=True), now=lambda: 5.0)
+    d.decide(gs)
+    assert gs.task.payload == {"item": "silver", "coin": True}
 
 
 def test_get_decider_skips_unwanted_denomination():

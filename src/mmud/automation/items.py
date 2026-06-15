@@ -83,9 +83,10 @@ class GetDecider:
         if self._cfg.auto_cash:
             for denom in list(state.ground_coins):
                 if getattr(self._cfg, f"collect_{denom}", False):
+                    amount = state.ground_coins[denom]
                     del state.ground_coins[denom]
-                    self._begin(state, denom)
-                    return f"get {denom}"
+                    self._begin(state, denom, coin=True)
+                    return self._cfg.cash_cmd.format(amount=amount, denom=denom)
                 del state.ground_coins[denom]   # unwanted: forget it
         if self._cfg.auto_get:
             while state.ground_items:
@@ -96,11 +97,13 @@ class GetDecider:
                 return f"get {name}"
         return None
 
-    def _begin(self, state: GameState, name: str) -> None:
+    def _begin(self, state: GameState, name: str, coin: bool = False) -> None:
         # NOTE: do NOT set inventory_dirty here — that lets the higher-priority
         # RefreshDecider preempt the GETTING task and fire "inv" before the
         # get's success/failure reply arrives (so the item is never marked
         # ungettable). The bot sets inventory_dirty on a SUCCESSFUL get instead.
+        # `coin` marks a currency pickup so a transient failure never blacklists
+        # the denomination (coins re-appear; only real items are ungettable).
         state.begin_task(TaskType.GETTING, priority=PRIO_ITEMS,
-                         timeout_s=GET_TIMEOUT_S, payload={"item": name},
+                         timeout_s=GET_TIMEOUT_S, payload={"item": name, "coin": coin},
                          now=self._now())

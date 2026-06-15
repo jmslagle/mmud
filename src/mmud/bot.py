@@ -614,8 +614,10 @@ class MudBot:
         if task is TaskType.GETTING:
             if _GET_FAIL_RE.search(line):
                 # Scenery / non-gettable (signs, rafts, "Syntax: GET ...") —
-                # remember it so we never retry this item.
-                if last := self._state.task.payload.get("item"):
+                # remember it so we never retry. Coins are transient: a failed
+                # coin grab must NOT blacklist the denomination.
+                last = self._state.task.payload.get("item")
+                if last and not self._state.task.payload.get("coin"):
                     self._get_decider.mark_ungettable(last)
                 self._state.abort_task()
             elif _GOT_RE.search(line):
