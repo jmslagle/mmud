@@ -26,6 +26,8 @@ _MENU = """\
 [b]Bot commands[/b]  (type in the command bar, prefixed with ':')
   :loop [NAME]    start a loop path (optional name override)
   :stop           stop the loop, clear the queue
+  :find QUERY     search rooms by name/code (lists codes to feed :goto)
+                    e.g.  :find arena
   :goto TARGET    travel to a room by 4-letter code OR name
                     e.g.  :goto CLKR   or   :goto newhaven arena
   :paths          list available loop paths

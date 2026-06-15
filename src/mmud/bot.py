@@ -732,6 +732,17 @@ class MudBot:
             pass
         return "Stopped."
 
+    def find_rooms(self, query: str, limit: int = 25) -> list[Room]:
+        """Search loaded rooms by exact 4-letter code or name substring
+        (case-insensitive), sorted by name. For discovering codes to :goto."""
+        q = query.strip().lower()
+        if not q:
+            return []
+        matches = [r for code, r in self._rooms.items()
+                   if q == code.lower() or q in r.name.lower()]
+        matches.sort(key=lambda r: r.name.lower())
+        return matches[:limit]
+
     def _resolve_rooms(self, target: str) -> list[str]:
         """Resolve a goto target to room code(s): an exact 4-letter code, else a
         case-insensitive substring match on room names."""
