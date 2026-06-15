@@ -180,3 +180,68 @@ def test_prompt_tail_regex_distinguishes_prompts_from_typing():
         assert _PROMPT_TAIL_RE.search(prompt), prompt
     for typed in ("l", "lo", "look", "wear padded", "You are carrying club"):
         assert not _PROMPT_TAIL_RE.search(typed), typed
+
+
+def test_strip_iac_returns_pending_tail_for_split_sequence():
+    # A bare trailing IAC byte (incomplete command) is held, not emitted.
+    c = _conn()
+    text, pending = c._strip_iac_stream(b"abc" + bytes([IAC]))
+    assert text == "abc"
+    assert pending == bytes([IAC])
+
+
+def test_strip_iac_stream_resumes_split_sequence():
+    c = _conn(writer=FakeWriter())
+    text1, pending = c._strip_iac_stream(b"x" + bytes([IAC, DO]))
+    assert text1 == "x"
+    assert pending == bytes([IAC, DO])
+    # The remainder (the option byte) completes the DO TERM_TYPE negotiation.
+    text2, pending2 = c._strip_iac_stream(pending + bytes([OPT_TERM_TYPE]) + b"y")
+    assert text2 == "y"
+    assert pending2 == b""
+
+
+def test_strip_iac_stream_holds_incomplete_subnegotiation():
+    c = _conn(writer=FakeWriter())
+    # SB started but no IAC SE yet -> hold the whole thing as pending.
+    chunk = b"a" + bytes([IAC, SB, OPT_TERM_TYPE, 0x01])
+    text, pending = c._strip_iac_stream(chunk)
+    assert text == "a"
+    assert pending == bytes([IAC, SB, OPT_TERM_TYPE, 0x01])
+
+
+def test_readlines_calls_on_raw_with_escape_sequences():
+    # The raw tap sees the FULL stream incl. ANSI escapes; line-framing unchanged.
+    reader = FakeReader([b"\x1b[1;1Hhi\nbye\n"])
+    c = _conn(reader=reader, writer=FakeWriter())
+    raw_chunks: list[str] = []
+    c.on_raw = raw_chunks.append
+
+    async def run():
+        out = []
+        async for line in c.readlines():
+            out.append(line)
+            if len(out) >= 2:
+                break
+        return out
+
+    lines = asyncio.run(run())
+    assert lines == ["\x1b[1;1Hhi\n", "bye\n"]
+    assert "".join(raw_chunks) == "\x1b[1;1Hhi\nbye\n"
+
+
+def test_readlines_raw_tap_handles_iac_split_across_chunks():
+    # IAC WILL ECHO split across two reads: stripped from BOTH lines and raw.
+    reader = FakeReader([b"hi" + bytes([IAC, WILL]), bytes([OPT_ECHO]) + b"there\n"])
+    c = _conn(reader=reader, writer=FakeWriter())
+    raw_chunks: list[str] = []
+    c.on_raw = raw_chunks.append
+
+    async def run():
+        async for line in c.readlines():
+            return line
+
+    assert asyncio.run(run()) == "hithere\n"
+    # on_raw receives each stripped chunk verbatim, incl. the newline the
+    # emulator needs — so the raw stream is the line text, not the framed line.
+    assert "".join(raw_chunks) == "hithere\n"

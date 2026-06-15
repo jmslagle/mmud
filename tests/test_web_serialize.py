@@ -27,6 +27,11 @@ CASES = [
     # ConfigChanged is serializable too (general serializer); it is intentionally
     # NOT in the web server's broadcast list (_EVENT_TYPES) — config edits aren't game state.
     (ev.ConfigChanged("combat", "attack_cmd", "bash"), {"type": "ConfigChanged", "section": "combat", "field": "attack_cmd", "value": "bash"}),
+    # Terminal-emulator events are serializable too (RawOutput carries the raw
+    # chunk; ScreenUpdated is a no-field signal). Whether they're broadcast by
+    # the web server is decided in Task 5.
+    (ev.RawOutput("\x1b[1;1Hx"), {"type": "RawOutput", "data": "\x1b[1;1Hx"}),
+    (ev.ScreenUpdated(), {"type": "ScreenUpdated"}),
 ]
 
 

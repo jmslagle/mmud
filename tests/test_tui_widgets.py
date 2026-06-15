@@ -1,23 +1,6 @@
 # tests/test_tui_widgets.py
 import pytest
 from textual.app import App, ComposeResult
-from mmud.tui.widgets.game_output import GameOutput
-
-
-class _GameApp(App):
-    def compose(self) -> ComposeResult:
-        yield GameOutput()
-
-
-@pytest.mark.asyncio
-async def test_game_output_displays_line():
-    app = _GameApp()
-    async with app.run_test() as pilot:
-        widget = app.query_one(GameOutput)
-        widget.post_message(GameOutput.NewLine(line="Hello MUD!\r\n"))
-        await pilot.pause(0.1)
-        text = widget.renderable_lines_text()
-        assert "Hello MUD!" in text
 
 
 from mmud.tui.widgets.conversations import ConversationsPane
@@ -147,7 +130,7 @@ async def test_app_composes():
     config = MudConfig()
     app = MegaMudApp(config=config, host="localhost", port=4000)
     async with app.run_test() as pilot:
-        assert app.query_one(GameOutput) is not None
+        assert app.query_one(TerminalView) is not None
         assert app.query_one(RightPanel) is not None
         assert app.query_one(StatsBar) is not None
         assert app.query_one(Input) is not None
@@ -203,61 +186,75 @@ def _key(k, character=None):
     return Key(key=k, character=character)
 
 
-def test_game_output_raw_for_key_translation():
-    """Character-mode key -> raw byte mapping (pure, no event pump)."""
-    go = GameOutput()
-    # printable chars (incl. the letter 'f' and space) pass through verbatim
-    assert go.raw_for_key(_key("a", "a")) == "a"
-    assert go.raw_for_key(_key("f", "f")) == "f"
-    assert go.raw_for_key(_key("space", " ")) == " "
-    # special editor keys map to raw sequences
-    assert go.raw_for_key(_key("enter")) == "\r"
-    assert go.raw_for_key(_key("backspace")) == "\x08"
-    assert go.raw_for_key(_key("up")) == "\x1b[A"
-    assert go.raw_for_key(_key("left")) == "\x1b[D"
-    assert go.raw_for_key(_key("escape")) == "\x1b"
-    # reserved keys are NOT forwarded
-    assert go.raw_for_key(_key("shift+tab")) is None     # leaves char mode
-    assert go.raw_for_key(_key("ctrl+k")) is None        # app binding
-    assert go.raw_for_key(_key("f1")) is None            # function key
-    assert go.raw_for_key(_key("nope")) is None          # unknown non-printable
+from mmud.tui.widgets.terminal_view import TerminalView
+from mmud.terminal import TerminalEmulator
+
+
+class _TermApp(App):
+    def compose(self) -> ComposeResult:
+        yield TerminalView()
 
 
 @pytest.mark.asyncio
-async def test_char_mode_sends_raw_when_game_output_focused():
-    """Tab into the main window, type, and keystrokes go raw to the server
-    instead of into the command-line input."""
-    from textual.widgets import Input as _Input
+async def test_terminal_view_renders_emulator_screen():
+    app = _TermApp()
+    async with app.run_test() as pilot:
+        view = app.query_one(TerminalView)
+        view.attach_emulator(TerminalEmulator())
+        view._emulator.feed("Hello MUD!")
+        view.refresh_screen()
+        await pilot.pause(0.1)
+        assert "Hello MUD!" in view.screen_text()
 
+
+def test_terminal_view_raw_for_key_matches_game_output():
+    # Char-mode key mapping is identical to the old GameOutput contract.
+    view = TerminalView()
+    assert view.raw_for_key(_key("a", "a")) == "a"
+    assert view.raw_for_key(_key("enter")) == "\r"
+    assert view.raw_for_key(_key("up")) == "\x1b[A"
+    assert view.raw_for_key(_key("shift+tab")) is None
+    assert view.raw_for_key(_key("ctrl+k")) is None
+    assert view.raw_for_key(_key("f1")) is None
+
+
+@pytest.mark.asyncio
+async def test_terminal_view_char_mode_sends_raw():
     class _StubConn:
-        def __init__(self):
-            self.raw = []
-        async def send_raw(self, data):
-            self.raw.append(data)
+        def __init__(self): self.raw = []
+        async def send_raw(self, data): self.raw.append(data)
 
     class _StubBot:
-        def __init__(self):
-            self._conn = _StubConn()
+        def __init__(self): self._conn = _StubConn()
 
     config = MudConfig()
     app = MegaMudApp(config=config, host="localhost", port=4000)
     async with app.run_test() as pilot:
         app._bot = _StubBot()
-        go = app.query_one(GameOutput)
-        go.focus()
+        view = app.query_one(TerminalView)
+        view.focus()
         await pilot.pause()
-        assert go.has_focus
+        assert view.has_focus
         await pilot.press("a", "enter", "up")
         await pilot.pause()
-        # keystrokes were sent raw, NOT routed into the command input
         assert app._bot._conn.raw == ["a", "\r", "\x1b[A"]
-        assert app.query_one("#command-input", _Input).value == ""
+        assert app.query_one("#command-input", Input).value == ""
 
 
 @pytest.mark.asyncio
-async def test_tab_from_command_line_focuses_main_window():
-    """One Tab from the command input lands on the main GameOutput window
-    (character mode); the window is focusable for that purpose."""
+async def test_app_screen_updated_rerenders_terminal():
+    config = MudConfig()
+    app = MegaMudApp(config=config, host="localhost", port=4000)
+    async with app.run_test() as pilot:
+        view = app.query_one(TerminalView)
+        view._emulator.feed("ALIVE")
+        app._bus.post(__import__("mmud.events", fromlist=["ScreenUpdated"]).ScreenUpdated())
+        await pilot.pause(0.1)
+        assert "ALIVE" in view.screen_text()
+
+
+@pytest.mark.asyncio
+async def test_tab_from_command_line_focuses_terminal_view():
     config = MudConfig()
     app = MegaMudApp(config=config, host="localhost", port=4000)
     async with app.run_test() as pilot:
@@ -265,4 +262,4 @@ async def test_tab_from_command_line_focuses_main_window():
         await pilot.pause()
         await pilot.press("tab")
         await pilot.pause()
-        assert app.query_one(GameOutput).has_focus
+        assert app.query_one(TerminalView).has_focus

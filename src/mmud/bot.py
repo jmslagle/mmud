@@ -12,6 +12,7 @@ from mmud.events import (
     EffectApplied, EffectRemoved, CombatChanged, RoomChanged, MonstersSeen,
     ConversationReceived, PlayerSeen, SessionStatUpdated, TaskChanged,
     ConditionChanged, HangupTriggered, DbImported, DbCollision,
+    RawOutput, ScreenUpdated,
 )
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
@@ -26,6 +27,7 @@ from mmud.state.conditions import scan_onset, scan_recovery
 from mmud.parser.who_parser import WhoParser
 from mmud.parser.conversation_parser import ConversationParser
 from mmud.net.connection import MudConnection
+from mmud.terminal import TerminalEmulator
 from mmud.parser.matcher import PatternMatcher
 from mmud.parser.room_parser import RoomParser
 from mmud.parser.ansi import render_line, visible_text
@@ -97,6 +99,8 @@ class MudBot:
         config_service=None,
     ) -> None:
         self._conn = MudConnection(host, port)
+        self._terminal = TerminalEmulator()
+        self._conn.on_raw = self._feed_raw
         self._config = config or MudConfig()
 
         if patterns is None and data_dir is not None:
@@ -251,6 +255,15 @@ class MudBot:
     def _emit(self, event: object) -> None:
         if self._bus is not None:
             self._bus.post(event)
+
+    def _feed_raw(self, data: str) -> None:
+        """Connection raw-stream tap: drive the terminal emulator (DISPLAY) and
+        broadcast the raw chunk to xterm.js. Independent of _process_line, which
+        keeps driving SEMANTICS (events/stats/automation) from framed lines.
+        """
+        self._terminal.feed(data)
+        self._emit(RawOutput(data=data))
+        self._emit(ScreenUpdated())
 
     async def run(self) -> None:
         redials = 0

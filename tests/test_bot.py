@@ -765,3 +765,24 @@ async def test_connection_loss_is_logged(caplog):
         await bot.run()
     assert any("boom" in r.getMessage() or "connection" in r.getMessage().lower()
                for r in caplog.records)
+
+
+def test_bot_feeds_terminal_emulator_and_emits_raw():
+    from conftest import make_transcript_bot
+    from mmud.events import GameEventBus, RawOutput, ScreenUpdated
+
+    bus = GameEventBus()
+    raw_events: list[str] = []
+    screen_events: list[object] = []
+    bus.subscribe(RawOutput, lambda e: raw_events.append(e.data))
+    bus.subscribe(ScreenUpdated, screen_events.append)
+
+    bot = make_transcript_bot([], event_bus=bus)
+    # The FakeConnection has no on_raw plumbing; drive the bot's hook directly,
+    # exactly as the real readlines() loop would per chunk.
+    bot._feed_raw("\x1b[1;1Hello")
+
+    assert raw_events == ["\x1b[1;1Hello"]
+    assert len(screen_events) == 1
+    # The emulator received the bytes (cursor-home + text shows on row 0).
+    assert bot._terminal.display()[0].startswith("ello")

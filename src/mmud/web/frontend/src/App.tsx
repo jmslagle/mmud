@@ -10,7 +10,7 @@ import { QuickTools } from "./components/QuickTools";
 import { Settings } from "./components/Settings";
 
 export function App() {
-  const state = useWebSocket();
+  const { state, rawSinkRef } = useWebSocket();
   const [cmd, setCmd] = useState("");
   const [showSettings, setShowSettings] = useState(false);
 
@@ -32,7 +32,7 @@ export function App() {
       ) : (
         <div className="grid">
           <div className="main-col">
-            <Terminal state={state} />
+            <Terminal state={state} rawSinkRef={rawSinkRef} />
             <form className="command-bar" onSubmit={submit}>
               <input
                 value={cmd}

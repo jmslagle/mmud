@@ -58,3 +58,28 @@ def test_task_changed_constructible():
     e = TaskChanged(task_type="RESTING", status="timeout")
     assert e.task_type == "RESTING"
     assert e.status == "timeout"
+
+
+def test_raw_output_event_fields():
+    from mmud.events import RawOutput
+    e = RawOutput(data="\x1b[1;1Hhi")
+    assert e.data == "\x1b[1;1Hhi"
+
+
+def test_screen_updated_event_constructs():
+    from mmud.events import ScreenUpdated
+    e = ScreenUpdated()
+    assert isinstance(e, ScreenUpdated)
+
+
+def test_raw_output_and_screen_updated_dispatch_on_bus():
+    from mmud.events import GameEventBus, RawOutput, ScreenUpdated
+    bus = GameEventBus()
+    seen: list[object] = []
+    bus.subscribe(RawOutput, seen.append)
+    bus.subscribe(ScreenUpdated, seen.append)
+    bus.post(RawOutput(data="x"))
+    bus.post(ScreenUpdated())
+    assert len(seen) == 2
+    assert isinstance(seen[0], RawOutput)
+    assert isinstance(seen[1], ScreenUpdated)

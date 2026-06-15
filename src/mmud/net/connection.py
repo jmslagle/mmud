@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 import re
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable
 
 # Telnet control bytes (RFC 854)
 IAC  = 0xFF
@@ -35,6 +35,8 @@ class MudConnection:
         self.port = port
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
+        self.on_raw: Callable[[str], None] | None = None
+        self._iac_pending = b""   # incomplete IAC sequence carried across chunks
 
     async def connect(self) -> None:
         self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
@@ -60,12 +62,14 @@ class MudConnection:
         """
         Async generator yielding MUD output lines.
 
-        Emits complete lines immediately on \\n. If no \\n arrives within
-        _PROMPT_TIMEOUT seconds, emits whatever partial data is buffered —
-        this catches prompts like "[HP=141/216]:" that never end with \\n.
+        Each read chunk is IAC-stripped (sequences spanning chunks are carried
+        in self._iac_pending), pushed verbatim to the raw display tap
+        (self.on_raw) BEFORE line framing, then framed on \\n. If no \\n arrives
+        within _PROMPT_TIMEOUT, a buffered partial flushes if it looks like a
+        prompt, or after a longer idle (so per-char echo isn't split per key).
         """
         assert self._reader
-        buf = b""
+        buf = ""          # decoded text awaiting a newline
         idle = 0
         while True:
             try:
@@ -75,29 +79,34 @@ class MudConnection:
             except asyncio.TimeoutError:
                 # Nothing new arrived. Flush a buffered partial only if it looks
                 # like a prompt, or after a longer idle — otherwise per-character
-                # echo (character mode) becomes one line per keystroke.
+                # echo (character mode) becomes one line per keystroke. on_raw is
+                # NOT called here: these flushes re-emit already-tapped text.
                 idle += 1
                 if buf.strip():
-                    text = self._strip_iac(buf)
-                    if _PROMPT_TAIL_RE.search(text) or idle >= _IDLE_FLUSH_TICKS:
-                        yield text
-                        buf = b""
+                    if _PROMPT_TAIL_RE.search(buf) or idle >= _IDLE_FLUSH_TICKS:
+                        yield buf
+                        buf = ""
                         idle = 0
                 continue
 
             idle = 0
             if not chunk:
                 # Server closed the connection
+                if self._iac_pending:
+                    self._iac_pending = b""   # drop a dangling partial on close
                 if buf:
-                    yield self._strip_iac(buf)
+                    yield buf
                 break
 
-            buf += chunk
+            text, self._iac_pending = self._strip_iac_stream(self._iac_pending + chunk)
+            if text and self.on_raw is not None:
+                self.on_raw(text)
+            buf += text
 
             # Emit all complete lines
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
-                yield self._strip_iac(line + b"\n")
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                yield line + "\n"
 
     # Keep readline() for tests that use it directly
     async def readline(self) -> str:
@@ -135,6 +144,41 @@ class MudConnection:
             else:
                 i += 2
         return out.decode("latin-1", errors="replace")
+
+    def _strip_iac_stream(self, data: bytes) -> tuple[str, bytes]:
+        """Like _strip_iac, but returns any trailing INCOMPLETE IAC sequence as
+        `pending` bytes instead of dropping it, so a sequence split across read
+        chunks survives. Caller must prepend `pending` to the next chunk.
+        """
+        out = bytearray()
+        i = 0
+        n = len(data)
+        while i < n:
+            b = data[i]
+            if b != IAC:
+                out.append(b)
+                i += 1
+                continue
+            if i + 1 >= n:                       # lone trailing IAC
+                return out.decode("latin-1", errors="replace"), data[i:]
+            cmd = data[i + 1]
+            if cmd == IAC:
+                out.append(IAC)
+                i += 2
+            elif cmd in (WILL, WONT, DO, DONT):
+                if i + 2 >= n:                   # missing option byte
+                    return out.decode("latin-1", errors="replace"), data[i:]
+                self._handle_negotiation(cmd, data[i + 2])
+                i += 3
+            elif cmd == SB:
+                end = data.find(bytes([IAC, SE]), i + 2)
+                if end < 0:                      # SE not arrived yet
+                    return out.decode("latin-1", errors="replace"), data[i:]
+                self._handle_subneg(data[i + 2:end])
+                i = end + 2
+            else:
+                i += 2
+        return out.decode("latin-1", errors="replace"), b""
 
     def _handle_negotiation(self, cmd: int, opt: int) -> None:
         if self._writer is None:
