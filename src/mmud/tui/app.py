@@ -19,6 +19,7 @@ from mmud.tui.widgets.right_panel import RightPanel
 from mmud.tui.widgets.stats_bar import StatsBar
 from mmud.tui.widgets.terminal_view import TerminalView
 from mmud.tui.settings_screen import SettingsScreen
+from mmud.tui.help_screen import HelpScreen
 
 
 class MegaMudApp(App):
@@ -34,7 +35,11 @@ class MegaMudApp(App):
         Binding("ctrl+k", "toggle_connect", "Connect", show=False, priority=True),
         Binding("ctrl+l", "toggle_loop", "Loop", show=False, priority=True),
         Binding("ctrl+o", "open_settings", "Settings", show=False, priority=True),
-        Binding("escape", "clear_input", "Clear", show=False, priority=True),
+        Binding("ctrl+g", "menu", "Menu", show=False, priority=True),
+        # NOT priority: a priority escape here steals Esc from modal screens
+        # (Settings/Help), so they couldn't be closed. On the main screen Esc
+        # still bubbles from the input to this binding.
+        Binding("escape", "clear_input", "Clear", show=False),
     ]
 
     def __init__(self, config: MudConfig, host: str, port: int, config_path: pathlib.Path | None = None) -> None:
@@ -197,7 +202,7 @@ class MegaMudApp(App):
 
         elif verb in ("goto", "go", "g"):
             if not arg:
-                self._echo("[bot] Usage: :goto ROOM_CODE")
+                self._echo("[bot] Usage: :goto CODE | name   (e.g. :goto CLKR or :goto arena)")
                 return
             if self._bot is None:
                 self._echo("[bot] Not connected")
@@ -235,7 +240,7 @@ class MegaMudApp(App):
                 "[bot] Bot commands (prefix with :):",
                 "  :loop [NAME]   — start loop path (optional name override)",
                 "  :stop          — stop loop, clear queue",
-                "  :goto CODE     — navigate to room by 4-letter code",
+                "  :goto TARGET   — navigate to a room by 4-letter code or name",
                 "  :paths         — list available loop paths",
                 "  :status        — show HP/MP/room/loop status",
                 "  :connect       — connect to server",
@@ -307,6 +312,9 @@ class MegaMudApp(App):
 
     def action_open_settings(self) -> None:
         self.push_screen(SettingsScreen(self._config_service))
+
+    def action_menu(self) -> None:
+        self.push_screen(HelpScreen())
 
     def action_clear_input(self) -> None:
         self.query_one("#command-input", Input).clear()

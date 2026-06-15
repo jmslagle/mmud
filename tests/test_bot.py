@@ -806,3 +806,26 @@ async def test_autoget_strips_count_and_marks_scenery_ungettable():
     gets = [c for c in bot._conn.sent if c.startswith("get ")]
     assert gets == ["get log raft"]          # count stripped; tried exactly once
     assert "get 2 log raft" not in bot._conn.sent
+
+
+def test_navigate_to_room_by_name(monkeypatch):
+    # "far" uniquely matches "The Far Room" (FARR) -> resolves + routes.
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    bot._navigator._paths[("HOME", "FARR")] = _NAV_PATH
+    bot._state.set_room("HOME")
+    bot._state.current_hex = "AAAA0001"
+    msg = bot.navigate_to_room("far")
+    assert "2 steps" in msg          # name resolved to FARR and routed
+
+
+def test_navigate_to_room_unknown_name():
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    assert "unknown" in bot.navigate_to_room("zzznosuchroomzzz").lower()
+
+
+def test_navigate_to_room_ambiguous_lists_matches():
+    # "room" matches BOTH "The Home Room" and "The Far Room".
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    msg = bot.navigate_to_room("room")
+    assert "ambiguous" in msg.lower()
+    assert "HOME" in msg and "FARR" in msg
