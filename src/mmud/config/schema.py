@@ -102,6 +102,10 @@ class ItemsConfig:
     auto_get: bool = False
     auto_cash: bool = True
     inventory_cmd: str = "inv"   # command that lists inventory ("i"/"inventory" on some servers)
+    # Coin pickup template; {amount} = count seen, {denom} = denomination.
+    # MajorMud GET-for-currency syntax is "GET {Amount} {Currency}", so the
+    # amount is required ("get silver" alone is rejected).
+    cash_cmd: str = "get {amount} {denom}"
     collect_copper: bool = True
     collect_silver: bool = True
     collect_gold: bool = True

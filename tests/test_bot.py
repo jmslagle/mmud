@@ -504,7 +504,7 @@ async def test_auto_cash_gets_ground_coins():
     bot = make_transcript_bot(
         ["You notice 23 copper farthings here.\n"], config=config)
     await bot.run()
-    assert "get copper" in bot._conn.sent
+    assert "get 23 copper" in bot._conn.sent   # amount included per server syntax
 
 
 @pytest.mark.asyncio
