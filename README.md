@@ -167,6 +167,43 @@ character.
 
 ---
 
+## Terminal emulation
+
+MajorMUD/Worldgroup is a full-screen ANSI BBS app: the in-game editor, menus,
+and scroll displays position the cursor to arbitrary row/col and redraw in
+place. An append-only log cannot show these cross-line redraws, so both
+frontends run a real screen-buffer terminal emulator over the connection's RAW
+byte stream (post-telnet-IAC, pre-line-framing):
+
+- **TUI:** `src/mmud/terminal.py` (`TerminalEmulator`, a pyte `HistoryScreen`)
+  drives `TerminalView` — a live 80×24 screen with colour from pyte's per-cell
+  buffer and PageUp/PageDown scrollback. Character mode (Tab to focus, raw
+  keystrokes for the in-game editor) is preserved.
+- **Web:** the raw stream is broadcast as `RawOutput` events and written
+  straight into an `@xterm/xterm` terminal, which owns its own buffer.
+
+### Display / semantics split
+
+This is the key architecture. Raw bytes drive the terminal **DISPLAY** (pyte /
+xterm.js). The existing line parser keeps driving **SEMANTICS** independently:
+`MudBot._process_line` still runs the full parser pipeline and emits
+`LineReceived`, `HpChanged`, `RoomChanged`, `ConversationReceived`, etc., which
+feed the stats/conversations/players panels and all automation. The terminal
+display and the event-driven semantics are two parallel consumers of the same
+connection.
+
+### Phase 2 (future, NOT implemented)
+
+Today the parsers read framed lines (cursor moves replayed per-line by
+`src/mmud/parser/ansi.py`). A future phase can migrate the line parsers to read
+the emulator's `screen.display` rows instead — cursor-proof parsing of
+full-screen redraws (room panes, the editor, scroll output) — and then retire
+`parser/ansi.py`. This is intentionally deferred: it touches every parser and
+the whole semantics test surface, and the current per-line parsing already
+passes the suite.
+
+---
+
 ## Bot Commands
 
 Type `:command` in the command input to control the bot without sending to the server.
