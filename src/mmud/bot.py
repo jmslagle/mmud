@@ -608,16 +608,19 @@ class MudBot:
             self._state.record_monster_hit()
 
     def _parse_get_results(self, line: str) -> None:
-        from mmud.automation.items import _CANT_GET_RE
+        from mmud.automation.items import _GET_FAIL_RE, _GOT_RE
         task = self._state.task.type
         low = line.lower()
         if task is TaskType.GETTING:
-            if _CANT_GET_RE.search(line):
+            if _GET_FAIL_RE.search(line):
+                # Scenery / non-gettable (signs, rafts, "Syntax: GET ...") —
+                # remember it so we never retry this item.
                 if last := self._state.task.payload.get("item"):
                     self._get_decider.mark_ungettable(last)
                 self._state.abort_task()
-            elif low.startswith("you took") or low.startswith("you get"):
+            elif _GOT_RE.search(line):
                 self._state.complete_task()
+                self._state.inventory_dirty = True   # inventory changed -> refresh
         elif task is TaskType.EQUIPPING:
             if low.startswith("you are now wearing") or low.startswith("you are now wielding") \
                     or low.startswith("you are now holding"):
