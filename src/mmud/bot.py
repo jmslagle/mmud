@@ -148,7 +148,7 @@ class MudBot:
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
         self._combat = CombatEngine(
             config=self._config.combat,
-            sneak_cmd=self._config.stealth.sneak_cmd if (self._config.stealth.auto_sneak or self._config.stealth.must_sneak) else "",
+            sneak_cmd="sneak" if (self._config.stealth.auto_sneak or self._config.stealth.must_sneak) else "",
             must_sneak=self._config.stealth.must_sneak,
         )
         self._spell_engine = SpellEngine(self._config.spells)

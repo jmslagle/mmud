@@ -77,11 +77,11 @@ class SpellsConfig:
 
 @dataclass
 class StealthConfig:
+    # MegaMud hardcodes the sneak/hide verbs in automation (literals "sneak"/
+    # "hide" — see docs/megamud-commands-reference.md §3); only the enable toggle
+    # is configurable, mirroring MegaMud's AutoSneak key.
     auto_sneak: bool = False
-    sneak_cmd: str = "sneak"
     must_sneak: bool = False
-    auto_hide: bool = False
-    hide_cmd: str = "hide"
 
 
 @dataclass
@@ -102,10 +102,6 @@ class ItemsConfig:
     auto_get: bool = False
     auto_cash: bool = True
     inventory_cmd: str = "inv"   # command that lists inventory ("i"/"inventory" on some servers)
-    # Coin pickup template; {amount} = count seen, {denom} = denomination.
-    # MajorMud GET-for-currency syntax is "GET {Amount} {Currency}", so the
-    # amount is required ("get silver" alone is rejected).
-    cash_cmd: str = "get {amount} {denom}"
     collect_copper: bool = True
     collect_silver: bool = True
     collect_gold: bool = True

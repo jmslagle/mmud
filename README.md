@@ -261,7 +261,6 @@ strangers. A known player who lacks a verb gets a `permission denied` reply.
 | `@hangup` | Disconnect immediately |
 | `@panic!` | Send the configured `[safety] panic_cmd`, then disconnect |
 | `@auto-sneak [on\|off]` | Toggle `[stealth] auto_sneak` (no arg = flip) |
-| `@auto-hide [on\|off]` | Toggle `[stealth] auto_hide` |
 | `@auto-get [on\|off]` | Toggle `[items] auto_get` |
 | `@auto-cash [on\|off]` | Toggle `[items] auto_cash` |
 | `@set SECTION.FIELD VALUE` | Edit any scalar config field live (e.g. `@set combat.flee_threshold 0.25`); type-checked |
@@ -478,10 +477,8 @@ mana_pct = 0.75
 
 [stealth]
 auto_sneak  = false            # sneak before each loop step and before attacking
-sneak_cmd   = "sneak"
+                               # (MegaMud hardcodes the "sneak"/"hide" verbs)
 must_sneak  = false            # halt movement if sneak fails (not yet implemented)
-auto_hide   = false
-hide_cmd    = "hide"
 
 [navigation]
 loop_path        = ""          # 4-letter room code (loop paths: from==to) or 8-char stem

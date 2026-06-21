@@ -34,8 +34,10 @@ class BackstabEngine:
     def __init__(self, combat: CombatConfig, stealth: StealthConfig) -> None:
         self._enabled = combat.backstab
         self._run_if_fails = combat.run_if_bs_fails
-        self._hide_cmd = stealth.hide_cmd
-        self._sneak_cmd = stealth.sneak_cmd
+        # MegaMud hardcodes these verbs (literals "hide"/"sneak"/"bs" — see
+        # docs/megamud-commands-reference.md §3); they are not configurable.
+        self._hide_cmd = "hide"
+        self._sneak_cmd = "sneak"
         self._stage = _Stage.IDLE
         self._hide_tries = 0
 
@@ -75,7 +77,7 @@ class BackstabEngine:
             return self._sneak_cmd
         if self._stage is _Stage.SNUCK:
             self._stage = _Stage.STABBING
-            return f"backstab {state.monster_names()[0]}"
+            return f"bs {state.monster_names()[0]}"
         if self._stage is _Stage.RUN:
             self._stage = _Stage.DONE
             state.begin_task(TaskType.RUNNING, priority=PRIO_FLEE, timeout_s=15.0)
