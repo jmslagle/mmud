@@ -68,7 +68,7 @@ class TravelDecider:
         step = self._steps[self._cursor]
         cmds = expand_annotated(step.command)
         if self._stealth.auto_sneak:
-            cmds = [self._stealth.sneak_cmd] + cmds
+            cmds = ["sneak"] + cmds   # MegaMud hardcodes the sneak verb (ref §3)
         for extra in cmds[1:]:
             state.enqueue(extra)
         self._in_flight = True

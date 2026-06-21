@@ -51,12 +51,13 @@ def test_get_decider_collects_configured_coins():
     assert gs.task.payload.get("coin") is True   # tagged so failure won't blacklist
 
 
-def test_cash_cmd_is_configurable():
+def test_cash_cmd_is_fixed_get_amount_denom():
+    # MegaMud hardcodes the get-currency verb (ref §3): always "get {amount} {denom}",
+    # not a user-editable template.
     gs = GameState()
     gs.ground_coins["silver"] = 13
-    d = GetDecider(ItemsConfig(auto_cash=True, collect_silver=True,
-                               cash_cmd="get all {denom}"), now=lambda: 5.0)
-    assert d.decide(gs) == "get all silver"
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_silver=True), now=lambda: 5.0)
+    assert d.decide(gs) == "get 13 silver"
 
 
 def test_coin_get_is_tagged_coin_not_blacklistable():

@@ -86,7 +86,9 @@ class GetDecider:
                     amount = state.ground_coins[denom]
                     del state.ground_coins[denom]
                     self._begin(state, denom, coin=True)
-                    return self._cfg.cash_cmd.format(amount=amount, denom=denom)
+                    # MegaMud hardcodes the get-currency verb; MajorMUD GET syntax
+                    # is "GET {Amount} {Currency}" (amount required). Ref §3.
+                    return f"get {amount} {denom}"
                 del state.ground_coins[denom]   # unwanted: forget it
         if self._cfg.auto_get:
             while state.ground_items:

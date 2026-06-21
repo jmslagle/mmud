@@ -43,7 +43,7 @@ def test_annotation_queues_move_after_search():
 
 
 def test_sneak_prefix():
-    d = TravelDecider(ItemsConfig(), StealthConfig(auto_sneak=True, sneak_cmd="sneak"),
+    d = TravelDecider(ItemsConfig(), StealthConfig(auto_sneak=True),
                       GameEventBus())
     gs = GameState()
     d.set_route([_step("n", "BBBB0002")])

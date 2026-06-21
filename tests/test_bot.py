@@ -268,10 +268,9 @@ def test_must_sneak_wires_sneak_cmd_without_auto_sneak():
     # CombatEngine a non-empty sneak_cmd, else decide() deadlocks on None.
     from mmud.config.schema import MudConfig, StealthConfig
     config = MudConfig()
-    config.stealth = StealthConfig(auto_sneak=False, must_sneak=True,
-                                   sneak_cmd="sneak")
+    config.stealth = StealthConfig(auto_sneak=False, must_sneak=True)
     bot = make_transcript_bot([], config=config)
-    assert bot._combat.sneak_cmd == "sneak"
+    assert bot._combat.sneak_cmd == "sneak"   # hardcoded literal wired by the bot
 
 
 @pytest.mark.asyncio

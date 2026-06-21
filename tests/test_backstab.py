@@ -7,7 +7,7 @@ from mmud.state.tasks import TaskType
 def _engine(**combat):
     return BackstabEngine(
         CombatConfig(backstab=True, **combat),
-        StealthConfig(hide_cmd="hide", sneak_cmd="sneak"),
+        StealthConfig(),
     )
 
 
@@ -26,7 +26,7 @@ def test_full_sequence():
     eng.on_line("You slip into the shadows.")
     assert eng.decide(gs) == "sneak"
     eng.on_line("You move silently.")
-    assert eng.decide(gs) == "backstab orc"
+    assert eng.decide(gs) == "bs orc"
     eng.on_line("You plant your weapon in the orc's back!")
     assert eng.decide(gs) is None            # done; melee takes over
 
@@ -58,7 +58,7 @@ def test_bs_failure_runs_if_configured():
     gs = _state_with_target()
     eng.decide(gs); eng.on_line("You slip into the shadows.")
     eng.decide(gs); eng.on_line("You move silently.")
-    assert eng.decide(gs) == "backstab orc"
+    assert eng.decide(gs) == "bs orc"
     eng.on_line("Your backstab attempt fails!")
     assert eng.decide(gs) == "flee"
     assert gs.task.type is TaskType.RUNNING

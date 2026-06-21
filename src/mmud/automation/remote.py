@@ -90,7 +90,6 @@ class RemoteCommandHandler:
         self.register("panic!", self._panic)
         # Toggle existing config flags, after the original's @auto-* verbs
         self.register("auto-sneak", self._toggle("stealth", "auto_sneak"))
-        self.register("auto-hide", self._toggle("stealth", "auto_hide"))
         self.register("auto-get", self._toggle("items", "auto_get"))
         self.register("auto-cash", self._toggle("items", "auto_cash"))
         self.register("set", self._set_config)
