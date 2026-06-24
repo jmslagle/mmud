@@ -34,6 +34,7 @@ class TravelDecider:
         self._in_flight = False
         self._retries = 0
         self._loop = False
+        self._loop_from = 0
         self.lap = 0
 
     # ---- route control ------------------------------------------------------
@@ -42,12 +43,16 @@ class TravelDecider:
     def active(self) -> bool:
         return bool(self._steps)
 
-    def set_route(self, steps: list[RouteStep], loop: bool = False) -> None:
+    def set_route(self, steps: list[RouteStep], loop: bool = False,
+                  loop_from: int = 0) -> None:
+        """Arm a route. When `loop`, a completed lap restarts at `loop_from`
+        (not 0) — so a one-time approach prefix [0:loop_from] isn't replayed."""
         self._steps = list(steps)
         self._cursor = 0
         self._in_flight = False
         self._retries = 0
         self._loop = loop
+        self._loop_from = loop_from
         self.lap = 0
 
     def clear(self, reason: str = "stopped") -> None:
@@ -117,7 +122,7 @@ class TravelDecider:
         if self._cursor < len(self._steps):
             return
         if self._loop:
-            self._cursor = 0
+            self._cursor = self._loop_from
             self.lap += 1
         else:
             self._bus.post(TravelEnded(reason="arrived"))

@@ -1,9 +1,10 @@
 from __future__ import annotations
+from typing import Callable
 from mmud.automation.travel import TravelDecider
 from mmud.config.schema import NavigationConfig
 from mmud.data.paths import GamePath
 from mmud.data.rooms import Room
-from mmud.navigation.graph import RouteStep
+from mmud.navigation.graph import NavResult, NavStatus, RouteStep
 
 
 def route_for_path(path: GamePath, rooms: dict[str, Room]) -> list[RouteStep]:
@@ -26,12 +27,17 @@ class LoopRunner:
     """Thin adapter: arms a looping route on the shared TravelDecider."""
 
     def __init__(self, nav_config: NavigationConfig, paths: list[GamePath],
-                 rooms: dict[str, Room], travel: TravelDecider) -> None:
+                 rooms: dict[str, Room], travel: TravelDecider,
+                 find_path: Callable[[str, str], NavResult] | None = None,
+                 current_hex: str = "") -> None:
         self._nav = nav_config
         self._rooms = rooms
         self._travel = travel
         self._running = False
         self._path = self._find_path(paths)
+        # When the bot isn't standing on the loop's first room, path there first.
+        self._route_find = find_path          # RoomGraph.find_path (hex -> hex)
+        self._current_hex = current_hex.upper()
 
     def _find_path(self, paths: list[GamePath]) -> GamePath | None:
         name = self._nav.loop_path.upper()
@@ -47,11 +53,31 @@ class LoopRunner:
                     return p
         return None
 
-    def start(self) -> None:
+    def start(self) -> str:
+        """Arm the loop. If we're not at the loop's start room, prepend a one-time
+        route from the current room to it (MegaMud-style), then loop the body.
+        Returns a status message."""
         if self._path is None:
-            return
-        self._travel.set_route(route_for_path(self._path, self._rooms), loop=True)
+            return f"Loop path '{self._nav.loop_path}' not found in loaded paths"
+        loop_steps = route_for_path(self._path, self._rooms)
+        if not loop_steps:
+            return f"Loop path '{self._nav.loop_path}' has no steps"
+        loop_start = self._path.steps[0].hex_id.upper()
+        approach: list[RouteStep] = []
+        if (self._current_hex and self._current_hex != loop_start
+                and self._route_find is not None):
+            res = self._route_find(self._current_hex, loop_start)
+            if res.status is not NavStatus.OK:
+                return (f"No route from {self._current_hex} to loop start "
+                        f"{loop_start} ({res.status.name})")
+            approach = res.steps
+        self._travel.set_route(approach + loop_steps, loop=True,
+                               loop_from=len(approach))
         self._running = True
+        if approach:
+            return (f"Navigating {len(approach)} steps to {self._nav.loop_path} "
+                    f"start, then looping")
+        return f"Loop started: {self._nav.loop_path}"
 
     def stop(self) -> None:
         self._running = False
