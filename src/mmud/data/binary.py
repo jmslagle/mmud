@@ -248,32 +248,32 @@ class Spell:
 
 
 def load_spells(path: pathlib.Path) -> list[Spell]:
-    """Parse SPELLS.MD and return ALL spell records (no flag filtering).
+    """Parse SPELLS.MD records.
 
-    Spell records do not carry the monsters/items active/deleted flag dword.
-    Payload offsets (true MDB2 walk; stats provisional until a consumer
-    validates them against in-game values):
-      +0x00: u16 record_id
-      +0x02: char[31] full spell name
-      +0x21: char[~10] short name / incantation (NUL-terminated)
-      +0x5a: u16 (provisional: mana/kai cost)
-      +0x5c: u16 (provisional: level requirement)
+    On-disk layout derived from `spells_md_save` (megamud.exe 0x0047cfc0) and
+    verified against the real file (record 1 'magic missile': short 'mmis',
+    flags 0x40000064, level_req 1):
+      +0x00 u16 record_id        +0x02 char[30] full_name   +0x20 char[7] short_name
+      +0x27 u32 flags (0x40000000=active, 0x1000=known)
+      +0x2b char[41] description (empty in the shipped file)
+      +0x54 u8 level_req   +0x56 u16 duration   +0x63 u8 kai_cost
+    No active filter (file holds live records; save writes active-only).
     """
     out: list[Spell] = []
     for entry in walk_entries(path):
         p = entry.payload
-        full_name = _cstr(p, 0x02, 31)
+        full_name = _cstr(p, 0x02, 30)
         if not full_name:
             continue
         out.append(Spell(
             record_id=struct.unpack_from("<H", p, 0x00)[0],
-            short_name=_cstr(p, 0x21, 10),
             full_name=full_name,
-            description="",
-            kai_cost=struct.unpack_from("<H", p, 0x5A)[0],
-            level_req=struct.unpack_from("<H", p, 0x5C)[0],
-            duration=0,
-            flags=0,
+            short_name=_cstr(p, 0x20, 7),
+            description=_cstr(p, 0x2B, 41),
+            flags=struct.unpack_from("<I", p, 0x27)[0],
+            level_req=p[0x54],
+            duration=struct.unpack_from("<H", p, 0x56)[0],
+            kai_cost=p[0x63],
         ))
     return out
 

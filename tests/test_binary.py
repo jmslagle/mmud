@@ -184,6 +184,10 @@ def test_monsters_recovered_by_true_walk(data_dir):
         assert missed in names
     assert "giant rat" in names
     assert all(m.is_active for m in monsters)
+    # Verified field values (confirmed against monsters_md_save 0x00453e50 + file).
+    rat = next(m for m in monsters if m.record_id == 1)
+    assert rat.name == "giant rat" and rat.level == 1 and rat.exp_value == 12
+    assert rat.hp_estimate == 20 and rat.flags & 0x40000000
 
 
 def test_items_recovered_by_true_walk(data_dir):
@@ -206,9 +210,14 @@ def test_items_recovered_by_true_walk(data_dir):
 def test_spells_all_entries_loaded(data_dir):
     spells = load_spells(data_dir / "SPELLS.MD")
     assert len(spells) == 936
-    names = {s.full_name.lower() for s in spells}
-    assert "major healing" in names
-    # SPELLS.MD has duplicate records (no active/deleted flag to filter on);
-    # assert on a specific record id so the short-name parse is deterministic.
-    by_id = {s.record_id: s for s in spells if s.full_name.lower() == "major healing"}
-    assert by_id[220].short_name == "han"
+    assert len({s.record_id for s in spells}) == 936   # ids are distinct
+    by_id = {s.record_id: s for s in spells}
+    # Verified vs spells_md_save (0x0047cfc0) + file.
+    mm = by_id[1]
+    assert mm.full_name == "magic missile" and mm.short_name == "mmis"
+    assert mm.level_req == 1 and mm.kai_cost == 4 and mm.is_active
+    # Real "major healing" is record 17 (short "mahe", level 8); id 220 is an
+    # empty placeholder duplicate. (The old test asserted "han" — garbage from a
+    # wrong short-name offset.)
+    assert by_id[17].full_name == "major healing"
+    assert by_id[17].short_name == "mahe" and by_id[17].level_req == 8
