@@ -46,7 +46,7 @@ _MP_RE = re.compile(r"\b(?:MA|MP)=(\d+)(?:/(\d+))?")
 # minimal prompt (current-only) still drives flee/rest thresholds. RECONSTRUCTED
 # wording; tune against the live server (docs/testing-plan.md).
 _STAT_HITS_RE = re.compile(r"\b(?:Hits|Hit Points|HP):\s*(\d+)/(\d+)")
-_STAT_MANA_RE = re.compile(r"\bMana:\s*(\d+)/(\d+)")
+_STAT_MANA_RE = re.compile(r"\bMana(?:/Kai)?:\s*(\d+)/(\d+)")
 # Line rendering (cursor replay + colour) lives in mmud.parser.ansi.
 # Authoritative combat-state markers (megamud.exe: *Combat Engaged* 0x4b78ac,
 # *Combat Off* 0x4b789c, " breaks off combat" 0x4b77f4). *Combat Off* fires
@@ -524,6 +524,13 @@ class MudBot:
     def _parse_vitals(self, line: str) -> None:
         if m := _HP_RE.search(line):
             hp = int(m.group(1))
+            # The in-game "[HP=...]" prompt is the reliable "we're in the game"
+            # signal (the BBS who-list/pager never shows it). Learn max HP/MA by
+            # sending `stat` once here — gating on the login flag sent it too early
+            # (during the pager), so max stayed 0 and thresholds never fired.
+            if not self._stat_requested:
+                self._stat_requested = True
+                self._state.enqueue("stat")
             # Prompts without a max (e.g. "[HP=49 /MA=20 ]") keep the last known
             # max — learned from a previous full prompt or the `stat` line.
             max_hp = int(m.group(2)) if m.group(2) else self._state.max_hp
@@ -686,12 +693,8 @@ class MudBot:
 
     def _handle_login(self, line: str) -> None:
         if self._login_handler.in_game:
-            # Learn max HP/MA once on entry: the live prompt is current-only
-            # ("[HP=46/MA=12]"), so without a `stat` read max stays 0 and the
-            # flee/rest/mana-gate thresholds never fire (they divide by max).
-            if not self._stat_requested:
-                self._stat_requested = True
-                self._state.enqueue("stat")
+            # (max HP/MA is learned via `stat`, triggered on the first in-game
+            # "[HP=...]" prompt in _parse_vitals — not here, which fires too early.)
             # Check auto_start on first game entry
             if (not self._auto_started
                     and self._config.navigation.auto_start):
@@ -747,6 +750,8 @@ class MudBot:
             self._state.set_exp(exp)
             self._emit(SessionStatUpdated(key="exp", value=str(exp)))
         if (lvl := self._who_parser.parse_level_line(line)) is not None:
+            if lvl > self._state.level:
+                self._stat_requested = False   # leveled up -> re-stat to learn new max
             self._state.set_level(lvl)
 
     def _room_graph(self):

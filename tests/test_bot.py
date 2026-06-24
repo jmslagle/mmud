@@ -240,17 +240,19 @@ from conftest import make_transcript_bot
 
 @pytest.mark.asyncio
 async def test_transcript_bot_rests_on_low_hp():
-    # HP 10/100 out of combat -> CombatEngine rest_threshold (0.40) says "rest"
-    bot = make_transcript_bot(["[HP=10/100]:\n"])
+    # HP 10/100 out of combat -> CombatEngine rest_threshold (0.40) says "rest".
+    # First prompt sends the one-time `stat`; the action follows on the next.
+    bot = make_transcript_bot(["[HP=10/100]:\n", "[HP=10/100]:\n"])
     await bot.run()
     assert "rest" in bot._conn.sent
 
 
 @pytest.mark.asyncio
 async def test_transcript_bot_sends_nothing_when_healthy():
-    bot = make_transcript_bot(["[HP=100/100]:\n"])
+    # Healthy: only the one-time `stat` (to learn max HP/MA), no action commands.
+    bot = make_transcript_bot(["[HP=100/100]:\n", "[HP=100/100]:\n"])
     await bot.run()
-    assert bot._conn.sent == []
+    assert bot._conn.sent == ["stat"]
 
 
 from mmud.automation.decision import PRIO_COMBAT
@@ -352,15 +354,40 @@ def test_combat_stats_parsing_by_type():
     assert bot._state.backstab_successes == 1
 
 
-def test_stat_sent_once_on_game_entry():
-    # Learn max HP/MA on entry so flee/rest/mana thresholds can fire.
+def test_stat_sent_once_on_first_ingame_prompt():
+    # Learn max HP/MA: `stat` fires on the first in-game "[HP=...]" prompt (the
+    # reliable in-game signal — the BBS pager never shows it), not on the login
+    # flag (which fired too early, during the pager).
     bot = make_transcript_bot([])
-    bot._login_handler.in_game = True
-    bot._handle_login("[HP=46/MA=12]:")
+    bot._parse_vitals("[HP=46/MA=12]:")
     assert bot._state.dequeue() == "stat"
-    # Idempotent: not re-sent on every subsequent in-game line.
-    bot._handle_login("[HP=46/MA=12]:")
+    # Idempotent: not re-sent on every subsequent prompt.
+    bot._parse_vitals("[HP=46/MA=12]:")
     assert bot._state.dequeue() is None
+
+
+def test_stat_sheet_sets_max_hp():
+    # MajorMUD stat sheet: "Hits: 46/46   AC: 5/10" -> learn max HP (46).
+    bot = make_transcript_bot([])
+    bot._parse_vitals("Hits: 46/46              AC: 5/10")
+    assert bot._state.hp == 46 and bot._state.max_hp == 46
+
+
+def test_stat_not_sent_for_bbs_pager_lines():
+    # The BBS who-list/pager has no "[HP=...]" -> no premature stat.
+    bot = make_transcript_bot([])
+    bot._parse_vitals("(N)onstop, (Q)uit, or (C)ontinue?")
+    assert bot._state.dequeue() is None
+
+
+def test_levelup_triggers_restat():
+    bot = make_transcript_bot([])
+    bot._parse_vitals("[HP=46/MA=12]:")
+    assert bot._state.dequeue() == "stat"        # initial
+    bot._state.set_level(5)
+    bot._parse_who_and_exp("Level: 6")           # leveled up
+    bot._parse_vitals("[HP=60/MA=20]:")          # next prompt re-stats
+    assert bot._state.dequeue() == "stat"
 
 
 def test_combat_markers_toggle_in_combat():
@@ -795,7 +822,8 @@ async def test_party_heal_e2e():
     bot = make_transcript_bot(
         ["The following people are in your party:\n",
          "Beeze          [Cleric]    [ 40] [100]\n",   # 40: heal yes, wait no
-         "[HP=100/100]:\n"],          # ends the list; decider fires
+         "[HP=100/100]:\n",           # first prompt: one-time `stat`
+         "[HP=100/100]:\n"],          # next prompt: heal decider fires
         config=config)
     await bot.run()
     assert "cast heal Beeze" in bot._conn.sent
