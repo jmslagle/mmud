@@ -184,6 +184,10 @@ def test_monsters_recovered_by_true_walk(data_dir):
         assert missed in names
     assert "giant rat" in names
     assert all(m.is_active for m in monsters)
+    # Verified field values (confirmed against monsters_md_save 0x00453e50 + file).
+    rat = next(m for m in monsters if m.record_id == 1)
+    assert rat.name == "giant rat" and rat.level == 1 and rat.exp_value == 12
+    assert rat.hp_estimate == 20 and rat.flags & 0x40000000
 
 
 def test_items_recovered_by_true_walk(data_dir):
@@ -206,9 +210,71 @@ def test_items_recovered_by_true_walk(data_dir):
 def test_spells_all_entries_loaded(data_dir):
     spells = load_spells(data_dir / "SPELLS.MD")
     assert len(spells) == 936
-    names = {s.full_name.lower() for s in spells}
-    assert "major healing" in names
-    # SPELLS.MD has duplicate records (no active/deleted flag to filter on);
-    # assert on a specific record id so the short-name parse is deterministic.
-    by_id = {s.record_id: s for s in spells if s.full_name.lower() == "major healing"}
-    assert by_id[220].short_name == "han"
+    assert len({s.record_id for s in spells}) == 936   # ids are distinct
+    by_id = {s.record_id: s for s in spells}
+    # Verified vs spells_md_save (0x0047cfc0) + file.
+    mm = by_id[1]
+    assert mm.full_name == "magic missile" and mm.short_name == "mmis"
+    assert mm.level_req == 1 and mm.kai_cost == 4 and mm.is_active
+    # Real "major healing" is record 17 (short "mahe", level 8); id 220 is an
+    # empty placeholder duplicate. (The old test asserted "han" — garbage from a
+    # wrong short-name offset.)
+    assert by_id[17].full_name == "major healing"
+    assert by_id[17].short_name == "mahe" and by_id[17].level_req == 8
+
+
+def test_load_classes_and_races(data_dir):
+    from mmud.data.binary import load_classes, load_races
+    classes = {c.record_id: c.name for c in load_classes(data_dir / "CLASSES.MD")}
+    races = {r.record_id: r.name for r in load_races(data_dir / "RACES.MD")}
+    # Verified vs classes_md_save/races_md_save + file.
+    assert classes[1] == "Warrior" and classes[10] == "Gypsy" and classes[12] == "Mage"
+    assert races[1] == "Human" and races[7] == "Dark-Elf"
+    assert len(classes) == 15 and len(races) == 13
+
+
+def test_classrace_db_lookup(data_dir):
+    from mmud.data.classes_races import ClassRaceDB
+    db = ClassRaceDB.from_dir(data_dir)
+    assert db.class_name(10) == "Gypsy"     # Horis's class
+    assert db.race_name(7) == "Dark-Elf"    # Horis's race
+    assert db.class_name(999) == "" and db.race_name(999) == ""
+
+
+def test_player_record_synthetic_roundtrip():
+    # PLAYERS.MD isn't shipped; build a 248B record per players_md_save_one_record
+    # (0x0046c719) and confirm the parse. Keyed by name (no record_id at 0x00).
+    import struct
+    from mmud.data.binary import parse_player_record
+    p = bytearray(0xF8)
+    def put(off, s): p[off:off+len(s)] = s.encode("latin-1")
+    put(0x00, "Horis\x00")
+    put(0x0b, "the Bold\x00")
+    put(0x1e, "Nazi Criminals\x00")
+    put(0x3d, "Newhaven\x00")
+    struct.pack_into("<I", p, 0x52, 0x4000)   # friend
+    struct.pack_into("<h", p, 0x56, 21)       # level
+    struct.pack_into("<h", p, 0x5a, -3)       # alignment
+    struct.pack_into("<h", p, 0x5c, 10)       # class_id (Gypsy)
+    struct.pack_into("<h", p, 0x5e, 7)        # race_id (Dark-Elf)
+    struct.pack_into("<h", p, 0x76, 2)        # reputation
+    struct.pack_into("<i", p, 0x7c, 555)      # last_seen
+    struct.pack_into("<i", p, 0x80, 111)      # first_seen
+    rec = parse_player_record(bytes(p))
+    assert rec.name == "Horis" and rec.title == "the Bold"
+    assert rec.guild == "Nazi Criminals" and rec.location == "Newhaven"
+    assert rec.level == 21 and rec.alignment == -3
+    assert rec.class_id == 10 and rec.race_id == 7 and rec.reputation == 2
+    assert rec.first_seen == 111 and rec.last_seen == 555
+    assert rec.is_friend and not rec.is_enemy
+
+
+def test_load_paths_index(data_dir):
+    from mmud.data.binary import load_paths_index
+    idx = load_paths_index(data_dir / "PATHS.MD")
+    assert len(idx) > 0
+    # Verified vs paths_md_save (0x00465860) + file: first record indexes the
+    # Ancient Ruin Dark Alley path to its .MP file.
+    first = idx[0]
+    assert first.from_desc.startswith("AALY") and first.mp_file.lower().endswith(".mp")
+    assert all(x.from_desc for x in idx)
