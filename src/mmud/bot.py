@@ -151,7 +151,11 @@ class MudBot:
             sneak_cmd="sneak" if (self._config.stealth.auto_sneak or self._config.stealth.must_sneak) else "",
             must_sneak=self._config.stealth.must_sneak,
         )
-        self._spell_engine = SpellEngine(self._config.spells)
+        self._spell_engine = SpellEngine(
+            self._config.spells,
+            monster_priority=self._config.combat.monster_priority,
+            attack_order=self._config.combat.attack_order,
+        )
         self._engine = DecisionEngine()
         self._safety = SafetyMonitor(self._config.safety)
         from mmud.session import SessionManager

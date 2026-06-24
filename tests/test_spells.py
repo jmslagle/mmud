@@ -64,15 +64,16 @@ def test_no_heal_when_hp_sufficient():
 
 
 def test_attack_spell_in_combat():
+    from mmud.state.game_state import MonsterSighting
     cfg = SpellsConfig(attack="magic missile")
     gs = GameState()
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(80, 100)
-    gs.monsters_present = ["orc"]
+    gs.monsters_present = [MonsterSighting(name="orc")]
     engine = SpellEngine(cfg)
     cmd = engine.decide(gs)
-    assert cmd == "magic missile"
+    assert cmd == "magic missile orc"
 
 
 def test_mana_heal_when_mana_low():
@@ -126,8 +127,8 @@ def test_cast_count_limit_then_weapon_swap():
                        melee_weapon_cmd="arm warhammer")
     eng = SpellEngine(cfg)
     gs = _combat_state()
-    assert eng.decide(gs) == "cast zap"
-    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast zap orc"
+    assert eng.decide(gs) == "cast zap orc"
     assert eng.decide(gs) == "arm warhammer"
     assert eng.decide(gs) is None          # melee decider's turn now
 
@@ -137,7 +138,7 @@ def test_counter_resets_and_swaps_back_after_combat():
                        cast_weapon_cmd="arm staff", melee_weapon_cmd="arm warhammer")
     eng = SpellEngine(cfg)
     gs = _combat_state()
-    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast zap orc"
     assert eng.decide(gs) == "arm warhammer"
     gs.set_combat(False); gs.monsters_present.clear()
     assert eng.decide(gs) == "arm staff"   # swap back once, out of combat
@@ -149,16 +150,16 @@ def test_unlimited_when_zero():
     eng = SpellEngine(cfg)
     gs = _combat_state()
     for _ in range(10):
-        assert eng.decide(gs) == "cast zap"
+        assert eng.decide(gs) == "cast zap orc"
 
 
 def test_multi_attack_chains_after_primary_attack():
     cfg = SpellsConfig(attack="cast zap", multi_attack="cast bolt")
     eng = SpellEngine(cfg)
     gs = _combat_state()
-    assert eng.decide(gs) == "cast zap"
-    assert eng.decide(gs) == "cast bolt"
-    assert eng.decide(gs) == "cast zap"
+    assert eng.decide(gs) == "cast zap orc"     # primary: targeted
+    assert eng.decide(gs) == "cast bolt"        # multi/AoE: bare
+    assert eng.decide(gs) == "cast zap orc"
     assert eng.decide(gs) == "cast bolt"
 
 
@@ -170,9 +171,9 @@ def test_multi_attack_respects_max_cast_count():
                        max_cast_count=3)
     eng = SpellEngine(cfg)
     gs = _combat_state()
-    assert eng.decide(gs) == "cast fireball"
-    assert eng.decide(gs) == "cast mm"
-    assert eng.decide(gs) == "cast fireball"
+    assert eng.decide(gs) == "cast fireball orc"   # primary: targeted
+    assert eng.decide(gs) == "cast mm"             # multi/AoE: bare
+    assert eng.decide(gs) == "cast fireball orc"
     assert eng.decide(gs) is None          # limit hit, no melee swap configured
 
 
@@ -181,7 +182,7 @@ def test_multi_attack_inert_when_unset():
     eng = SpellEngine(cfg)
     gs = _combat_state()
     for _ in range(5):
-        assert eng.decide(gs) == "cast zap"
+        assert eng.decide(gs) == "cast zap orc"
 
 
 def test_attack_spell_initiates_when_monster_present_out_of_combat():
@@ -191,4 +192,31 @@ def test_attack_spell_initiates_when_monster_present_out_of_combat():
     eng = SpellEngine(SpellsConfig(attack="mmis"))
     gs = GameState(); gs.set_hp(100, 100); gs.set_mana(100, 100); gs.set_combat(False)
     gs.monsters_present = [MonsterSighting(name="orc")]
-    assert eng.decide(gs) == "mmis"     # casts to open the fight
+    assert eng.decide(gs) == "mmis orc"     # casts to open the fight, ON the target
+
+
+def test_attack_spell_appends_target():
+    # Regression: a single-target offensive spell (mmis) MUST include the target,
+    # else the server replies "You must specify a target for that spell!" and the
+    # bot loops forever. MegaMud's combat_spell_cast sends "{spell} {target}".
+    eng = SpellEngine(SpellsConfig(attack="mmis"))
+    gs = _combat_state()                     # one "orc" present, in combat
+    assert eng.decide(gs) == "mmis orc"
+
+
+def test_attack_spell_uses_monster_priority_target():
+    # The nuke targets the same monster melee would: priority wins over order.
+    eng = SpellEngine(SpellsConfig(attack="mmis"),
+                      monster_priority=["goblin"], attack_order="first")
+    gs = GameState(); gs.set_hp(100, 100); gs.set_mana(100, 100); gs.set_combat(True)
+    gs.monsters_present = [MonsterSighting(name="orc"), MonsterSighting(name="goblin")]
+    assert eng.decide(gs) == "mmis goblin"
+
+
+def test_multi_attack_aoe_is_cast_bare():
+    # AoE / multi-attack spells take no target (MegaMud casts them bare); only the
+    # primary single-target attack gets the target appended.
+    eng = SpellEngine(SpellsConfig(attack="mmis", multi_attack="cast fireball"))
+    gs = _combat_state()
+    assert eng.decide(gs) == "mmis orc"      # primary: targeted
+    assert eng.decide(gs) == "cast fireball" # AoE: bare

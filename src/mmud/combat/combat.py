@@ -7,6 +7,24 @@ _SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
 _SNEAK_FAIL_RE = re.compile(r"fail to sneak|make a noise", re.IGNORECASE)
 
 
+def select_target(names: list[str], priority: list[str], attack_order: str) -> str:
+    """Pick the monster to act on: configured priority first, else by attack_order.
+    `priority` is expected pre-lowercased. Returns "" when no monster is present.
+    Shared by melee (CombatEngine) and spell (SpellEngine) so the nuke and the
+    swing land on the same target."""
+    if not names:
+        return ""
+    for wanted in priority:
+        for name in names:
+            if wanted in name.lower():
+                return name
+    if attack_order == "last":
+        return names[-1]
+    if attack_order == "reverse":
+        return names[::-1][0]
+    return names[0]
+
+
 class CombatEngine:
     def __init__(self, config: CombatConfig | None = None,
                  sneak_cmd: str = "", must_sneak: bool = False) -> None:
@@ -61,15 +79,5 @@ class CombatEngine:
         return None
 
     def _pick_target(self, state: GameState) -> str:
-        names = state.monster_names()
-        if not names:
-            return ""
-        for wanted in self.monster_priority:
-            for name in names:
-                if wanted in name.lower():
-                    return name
-        if self.attack_order == "last":
-            return names[-1]
-        if self.attack_order == "reverse":
-            return names[::-1][0]
-        return names[0]
+        return select_target(state.monster_names(), self.monster_priority,
+                             self.attack_order)

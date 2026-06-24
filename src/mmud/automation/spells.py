@@ -1,4 +1,5 @@
 from __future__ import annotations
+from mmud.combat.combat import select_target
 from mmud.config.schema import SpellsConfig
 from mmud.state.game_state import GameState
 
@@ -8,8 +9,12 @@ BLESS_COOLDOWN_TICKS = 600
 class SpellEngine:
     """Decides which spell to cast based on SpellsConfig and current GameState."""
 
-    def __init__(self, config: SpellsConfig) -> None:
+    def __init__(self, config: SpellsConfig, monster_priority: list[str] | None = None,
+                 attack_order: str = "first") -> None:
         self._cfg = config
+        # Target selection mirrors melee so the nuke and the swing share a target.
+        self._monster_priority = [p.lower() for p in (monster_priority or [])]
+        self._attack_order = attack_order
         # Initialize to -BLESS_COOLDOWN_TICKS so the first cast is always allowed
         self._bless_cooldowns: list[int] = [-BLESS_COOLDOWN_TICKS] * len(config.bless)
         self._ticks = 0
@@ -20,6 +25,14 @@ class SpellEngine:
     def tick(self) -> None:
         """Advance one game tick (call once per ~1Hz timer)."""
         self._ticks += 1
+
+    def _attack_on_target(self, state: GameState) -> str:
+        """The primary attack spell is single-target offensive: MegaMud sends
+        "{spell} {target}" (combat_spell_cast @ 0x00407b7d). Without the target
+        the server rejects it ("You must specify a target for that spell!")."""
+        target = select_target(state.monster_names(), self._monster_priority,
+                               self._attack_order)
+        return f"{self._cfg.attack} {target}".strip()
 
     def decide(self, state: GameState) -> str | None:
         """Return the spell command to cast, or None."""
@@ -59,10 +72,10 @@ class SpellEngine:
                 if self._cfg.multi_attack:
                     if self._cast_primary_next:
                         self._cast_primary_next = False
-                        return self._cfg.attack
+                        return self._attack_on_target(state)
                     self._cast_primary_next = True
-                    return self._cfg.multi_attack
-                return self._cfg.attack
+                    return self._cfg.multi_attack   # AoE: cast bare (no target)
+                return self._attack_on_target(state)
             if not self._swapped_to_melee and self._cfg.melee_weapon_cmd:
                 self._swapped_to_melee = True
                 return self._cfg.melee_weapon_cmd
