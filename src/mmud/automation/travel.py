@@ -35,6 +35,7 @@ class TravelDecider:
         self._retries = 0
         self._loop = False
         self._loop_from = 0
+        self._from_hex = ""   # hex we issued the in-flight move FROM
         self.lap = 0
 
     # ---- route control ------------------------------------------------------
@@ -76,6 +77,7 @@ class TravelDecider:
             cmds = ["sneak"] + cmds   # MegaMud hardcodes the sneak verb (ref §3)
         for extra in cmds[1:]:
             state.enqueue(extra)
+        self._from_hex = (state.current_hex or "").upper()
         self._in_flight = True
         return cmds[0]
 
@@ -84,10 +86,15 @@ class TravelDecider:
     def on_arrival(self, state: GameState, seen_hex: str = "") -> None:
         if not self._steps or not self._in_flight:
             return
+        seen = seen_hex.upper()
+        if seen and seen == self._from_hex:
+            # Re-display of the room we're leaving (e.g. an idle refresh that raced
+            # the move we just sent). The move hasn't resolved — keep waiting so we
+            # don't mistake the departure room for an off-route arrival ("lost").
+            return
         self._in_flight = False
         self._retries = 0
         step = self._steps[self._cursor]
-        seen = seen_hex.upper()
         if seen and seen not in step.expect:
             # reality disagrees: resync against the whole route
             for idx, other in enumerate(self._steps):
