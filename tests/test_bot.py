@@ -273,6 +273,19 @@ def test_must_sneak_wires_sneak_cmd_without_auto_sneak():
     assert bot._combat.sneak_cmd == "sneak"   # hardcoded literal wired by the bot
 
 
+def test_combat_exit_clears_casting_task():
+    # The attack-spell pace token (CASTING task) must be released the instant
+    # combat ends, so loot/movement isn't blocked for a full round after a kill.
+    from mmud.state.tasks import TaskType
+    from mmud.automation.decision import PRIO_SPELLS
+    bot = make_transcript_bot([])
+    bot._state.set_combat(True)
+    bot._state.begin_task(TaskType.CASTING, priority=PRIO_SPELLS, timeout_s=4.0)
+    bot._parse_combat_exit("You have slain the filthbug!")
+    assert bot._state.in_combat is False
+    assert bot._state.task.type is TaskType.IDLE
+
+
 @pytest.mark.asyncio
 async def test_active_task_suppresses_combat_decider(unused_tcp_port):
     # Low HP would normally produce "rest", but an active task at PRIO_COMBAT pins it

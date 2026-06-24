@@ -641,6 +641,10 @@ class MudBot:
             self._state.set_combat(False)
             self._state.monsters_present.clear()
             self._state.inventory_dirty = True   # loot may have dropped
+            # Release the attack-spell pace token: the cast round is moot now that
+            # combat is over, so loot/movement isn't blocked until it times out.
+            if self._state.task.type is TaskType.CASTING:
+                self._state.abort_task()
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:

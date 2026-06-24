@@ -220,3 +220,40 @@ def test_multi_attack_aoe_is_cast_bare():
     gs = _combat_state()
     assert eng.decide(gs) == "mmis orc"      # primary: targeted
     assert eng.decide(gs) == "cast fireball" # AoE: bare
+
+
+def test_attack_cast_begins_casting_task_to_pace():
+    # Regression (spam): each attack cast begins a CASTING task so the decision
+    # engine holds the spell+melee slots for a combat round, instead of recasting
+    # on every server line. Mirrors MegaMud combat_spell_cast (task 0x11 + 4s).
+    from mmud.state.tasks import TaskType
+    from mmud.automation.decision import PRIO_SPELLS
+    eng = SpellEngine(SpellsConfig(attack="mmis"), now=lambda: 100.0)
+    gs = _combat_state()
+    assert eng.decide(gs) == "mmis orc"
+    assert gs.task.type is TaskType.CASTING
+    assert gs.task.priority == PRIO_SPELLS
+    assert gs.task.deadline > 100.0          # timed, so the 1Hz ticker clears it
+
+
+def test_caster_does_not_spam_or_melee_during_cast_cooldown():
+    # End-to-end via the DecisionEngine: after one cast the bot must NOT recast
+    # NOR fall through to melee (lower priority) until the round elapses.
+    from mmud.automation.decision import DecisionEngine, PRIO_SPELLS, PRIO_COMBAT
+    from mmud.combat.combat import CombatEngine
+    from mmud.config.schema import CombatConfig
+    clock = [100.0]
+    engine = DecisionEngine()
+    engine.register("spells",
+                    SpellEngine(SpellsConfig(attack="mmis"), now=lambda: clock[0]),
+                    PRIO_SPELLS)
+    engine.register("combat", CombatEngine(CombatConfig(attack_cmd="kill")),
+                    PRIO_COMBAT)
+    gs = _combat_state()
+    assert engine.next_command(gs) == "mmis orc"   # cast once
+    assert engine.next_command(gs) is None         # paced: no recast, no melee
+    # round elapses; the ticker's timeout check clears the expired CASTING task
+    clock[0] += 5.0
+    if gs.task.expired(clock[0]):
+        gs.abort_task()
+    assert engine.next_command(gs) == "mmis orc"   # casts again next round

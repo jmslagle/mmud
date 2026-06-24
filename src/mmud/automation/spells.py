@@ -1,20 +1,30 @@
 from __future__ import annotations
+import time
+from typing import Callable
+from mmud.automation.decision import PRIO_SPELLS
 from mmud.combat.combat import select_target
 from mmud.config.schema import SpellsConfig
 from mmud.state.game_state import GameState
+from mmud.state.tasks import TaskType
 
 BLESS_COOLDOWN_TICKS = 600
+# Pace attack casts to one combat round. MegaMud's combat_spell_cast (0x00407b7d)
+# enforces a 4-second cooldown on (non-area) casts; without pacing the bot recast
+# on every server line and spammed the spell.
+CAST_ROUND_S = 4.0
 
 
 class SpellEngine:
     """Decides which spell to cast based on SpellsConfig and current GameState."""
 
     def __init__(self, config: SpellsConfig, monster_priority: list[str] | None = None,
-                 attack_order: str = "first") -> None:
+                 attack_order: str = "first",
+                 now: Callable[[], float] = time.monotonic) -> None:
         self._cfg = config
         # Target selection mirrors melee so the nuke and the swing share a target.
         self._monster_priority = [p.lower() for p in (monster_priority or [])]
         self._attack_order = attack_order
+        self._now = now
         # Initialize to -BLESS_COOLDOWN_TICKS so the first cast is always allowed
         self._bless_cooldowns: list[int] = [-BLESS_COOLDOWN_TICKS] * len(config.bless)
         self._ticks = 0
@@ -33,6 +43,14 @@ class SpellEngine:
         target = select_target(state.monster_names(), self._monster_priority,
                                self._attack_order)
         return f"{self._cfg.attack} {target}".strip()
+
+    def _begin_cast(self, state: GameState, command: str) -> str:
+        """Pace casts: hold the spell slot (and melee below it) for one combat
+        round so the bot doesn't recast on every server line. A higher-priority
+        decider (flee/cure) can still preempt; the 1Hz ticker clears the timeout."""
+        state.begin_task(TaskType.CASTING, priority=PRIO_SPELLS,
+                         timeout_s=CAST_ROUND_S, now=self._now())
+        return command
 
     def decide(self, state: GameState) -> str | None:
         """Return the spell command to cast, or None."""
@@ -72,10 +90,11 @@ class SpellEngine:
                 if self._cfg.multi_attack:
                     if self._cast_primary_next:
                         self._cast_primary_next = False
-                        return self._attack_on_target(state)
+                        return self._begin_cast(state, self._attack_on_target(state))
                     self._cast_primary_next = True
-                    return self._cfg.multi_attack   # AoE: cast bare (no target)
-                return self._attack_on_target(state)
+                    # AoE: cast bare (no target), still paced as a round
+                    return self._begin_cast(state, self._cfg.multi_attack)
+                return self._begin_cast(state, self._attack_on_target(state))
             if not self._swapped_to_melee and self._cfg.melee_weapon_cmd:
                 self._swapped_to_melee = True
                 return self._cfg.melee_weapon_cmd
