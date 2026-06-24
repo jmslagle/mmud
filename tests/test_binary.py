@@ -221,3 +221,21 @@ def test_spells_all_entries_loaded(data_dir):
     # wrong short-name offset.)
     assert by_id[17].full_name == "major healing"
     assert by_id[17].short_name == "mahe" and by_id[17].level_req == 8
+
+
+def test_load_classes_and_races(data_dir):
+    from mmud.data.binary import load_classes, load_races
+    classes = {c.record_id: c.name for c in load_classes(data_dir / "CLASSES.MD")}
+    races = {r.record_id: r.name for r in load_races(data_dir / "RACES.MD")}
+    # Verified vs classes_md_save/races_md_save + file.
+    assert classes[1] == "Warrior" and classes[10] == "Gypsy" and classes[12] == "Mage"
+    assert races[1] == "Human" and races[7] == "Dark-Elf"
+    assert len(classes) == 15 and len(races) == 13
+
+
+def test_classrace_db_lookup(data_dir):
+    from mmud.data.classes_races import ClassRaceDB
+    db = ClassRaceDB.from_dir(data_dir)
+    assert db.class_name(10) == "Gypsy"     # Horis's class
+    assert db.race_name(7) == "Dark-Elf"    # Horis's race
+    assert db.class_name(999) == "" and db.race_name(999) == ""

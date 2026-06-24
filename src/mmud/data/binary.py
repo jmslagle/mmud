@@ -278,6 +278,44 @@ def load_spells(path: pathlib.Path) -> list[Spell]:
     return out
 
 
+# ── Class / Race (id → name) ─────────────────────────────────────────────────
+
+@dataclass
+class ClassDef:
+    record_id: int
+    name: str
+
+
+@dataclass
+class Race:
+    record_id: int
+    name: str
+
+
+def _load_id_name(path: pathlib.Path, cls):
+    """CLASSES.MD / RACES.MD share a layout (confirmed via classes_md_save
+    0x004153e0 / races_md_save 0x0046ff20): on-disk record is
+      +0x00 i16 record_id   +0x02 char[30] name   (+ stat-mod bytes after).
+    Both filter only on the deleted bit (no active flag); the file holds live
+    records, so load all."""
+    out = []
+    for entry in walk_entries(path):
+        p = entry.payload
+        name = _cstr(p, 0x02, 30)
+        if not name:
+            continue
+        out.append(cls(record_id=struct.unpack_from("<h", p, 0x00)[0], name=name))
+    return out
+
+
+def load_classes(path: pathlib.Path) -> list[ClassDef]:
+    return _load_id_name(path, ClassDef)
+
+
+def load_races(path: pathlib.Path) -> list[Race]:
+    return _load_id_name(path, Race)
+
+
 # ── Player ───────────────────────────────────────────────────────────────────
 
 @dataclass
