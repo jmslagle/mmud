@@ -20,6 +20,20 @@ def test_expand_annotated():
     assert expand_annotated("go path") == ["go path"]
 
 
+def test_loop_from_resets_to_offset_not_zero():
+    # 1 approach step ("e") + 2 loop steps ("n","s"); loop_from=1 means a completed
+    # lap restarts at the loop body, never replaying the approach.
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("e", "B"), _step("n", "C"), _step("s", "B")],
+                loop=True, loop_from=1)
+    assert d.decide(gs) == "e"; d.on_arrival(gs, "B")
+    assert d.decide(gs) == "n"; d.on_arrival(gs, "C")
+    assert d.decide(gs) == "s"; d.on_arrival(gs, "B")
+    assert d.lap == 1
+    assert d.decide(gs) == "n"   # back to loop body (idx 1), not "e"
+
+
 def test_one_step_per_arrival():
     d = _decider()
     gs = GameState()

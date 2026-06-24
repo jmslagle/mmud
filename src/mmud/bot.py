@@ -943,7 +943,18 @@ class MudBot:
     def _make_loop_runner(self):
         from mmud.automation.loop_runner import LoopRunner
         paths = list(self._navigator._paths.values())
-        return LoopRunner(self._config.navigation, paths, self._rooms, self._travel)
+        return LoopRunner(self._config.navigation, paths, self._rooms, self._travel,
+                          find_path=self._room_graph().find_path,
+                          current_hex=self._resolved_current_hex())
+
+    def _resolved_current_hex(self) -> str:
+        """Best-effort current hex: live position, else the current room's ROOMS.MD
+        hex. Empty when position is unknown."""
+        h = self._state.current_hex
+        if not h and self._state.current_room:
+            room = self._rooms.get(self._state.current_room)
+            h = room.hex_id.upper() if room and room.hex_id else ""
+        return h
 
     def toggle_loop(self) -> None:
         if self._loop_runner and self._loop_runner.running:
@@ -976,10 +987,7 @@ class MudBot:
         if self._loop_runner and self._loop_runner.running:
             self._loop_runner.stop()
         self._loop_runner = self._make_loop_runner()
-        if self._loop_runner._path is None:
-            return f"Loop path '{loop_name}' not found in loaded paths"
-        self._loop_runner.start()
-        return f"Loop started: {loop_name}"
+        return self._loop_runner.start()
 
     def stop_all(self) -> str:
         """Stop loop/travel and clear command queue."""
