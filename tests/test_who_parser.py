@@ -30,3 +30,13 @@ def test_level_line_detection():
     parser = WhoParser()
     level = parser.parse_level_line("Level: 21")
     assert level == 21
+
+def test_combined_exp_command_line():
+    # The in-game `exp` command prints exp, level, and needed on ONE line; all
+    # three must be extractable (absolute exp not swallowed by "Exp needed").
+    parser = WhoParser()
+    line = "Exp: 11801 Level: 4 Exp needed for next level: 6349 (18150) [65%]"
+    assert parser.parse_exp_line(line) == 11801
+    assert parser.parse_level_line(line) == 4
+    assert parser.parse_exp_needed_line(line) == 6349
+    assert parser.parse_exp_line("Exp needed for next level: 6349") is None
