@@ -302,3 +302,25 @@ async def test_escape_still_clears_input_on_main_screen():
         await pilot.press("escape")
         await pilot.pause()
         assert inp.value == ""
+
+
+from mmud.tui.widgets.stats_pane import StatsPane
+
+
+class _StatsPaneApp(App):
+    def compose(self) -> ComposeResult:
+        yield StatsPane(id="stats-pane")
+
+
+@pytest.mark.asyncio
+async def test_stats_pane_renders_without_error():
+    # Regression: StatsPane must not override Textual's internal _render(); mount +
+    # update + render (via pilot.pause) would crash on the name collision.
+    app = _StatsPaneApp()
+    async with app.run_test() as pilot:
+        pane = app.query_one(StatsPane)
+        pane.post_message(StatsBar.SessionUpdate(key="hit_pct", value="38%"))
+        pane.post_message(StatsBar.HpUpdate(hp=46, max_hp=46))
+        await pilot.pause(0.1)
+        assert "Combat Accuracy" in pane.last_text
+        assert "46/46" in pane.last_text

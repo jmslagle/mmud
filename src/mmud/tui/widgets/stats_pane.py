@@ -13,23 +13,24 @@ class StatsPane(Static):
         self._s: dict[str, str] = {}
         self._hp = (0, 0)
         self._mp = (0, 0)
+        self.last_text = ""   # last rendered block (for tests/inspection)
 
     def on_mount(self) -> None:
-        self._render()
+        self._rebuild()
 
     def on_stats_bar_hp_update(self, m: StatsBar.HpUpdate) -> None:
         self._hp = (m.hp, m.max_hp)
-        self._render()
+        self._rebuild()
 
     def on_stats_bar_mp_update(self, m: StatsBar.MpUpdate) -> None:
         self._mp = (m.mp, m.max_mp)
-        self._render()
+        self._rebuild()
 
     def on_stats_bar_session_update(self, m: StatsBar.SessionUpdate) -> None:
         self._s[m.key] = m.value
-        self._render()
+        self._rebuild()
 
-    def _render(self) -> None:
+    def _rebuild(self) -> None:
         g = self._s.get
 
         def acc(label: str, pct: str, rng: str = "", avg: str = "") -> str:
@@ -60,4 +61,5 @@ class StatsPane(Static):
             f"  Ran away {g('had_to_run', '0')}   Health low {g('health_low', '0')}",
             f"  Comms: dial {g('dialed', '0')}  conn {g('connected', '0')}  lost {g('lost_carrier', '0')}",
         ]
-        self.update("\n".join(lines))
+        self.last_text = "\n".join(lines)
+        self.update(self.last_text)
