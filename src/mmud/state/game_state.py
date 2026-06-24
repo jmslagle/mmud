@@ -17,6 +17,8 @@ class MonsterSighting:
     count: int = 1
     exp_each: int = 0       # from MonsterDB; 0 if unknown
     record_id: int = -1     # MONSTERS.MD record id; -1 if unknown
+    kill_type: int = 0      # MONSTERS.MD kill-type tier (disk 0x25): 2=good NPC,
+                            # 3=neutral, 4=hostile, 5=special; 0=unknown/learned
 
 
 @dataclass

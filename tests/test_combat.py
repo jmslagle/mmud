@@ -207,6 +207,61 @@ def test_initiates_attack_when_monster_present_not_yet_in_combat():
     from mmud.config.schema import CombatConfig
     from mmud.state.game_state import GameState, MonsterSighting
     gs = GameState(); gs.set_hp(100, 100); gs.set_combat(False)
-    gs.monsters_present = [MonsterSighting(name="fat giant rat")]
+    # kill_type 4 = hostile -> initiated on sight (MegaMud attack gate)
+    gs.monsters_present = [MonsterSighting(name="fat giant rat", kill_type=4)]
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
     assert ce.decide(gs) == "kill fat giant rat"   # initiate, even out of combat
+
+
+# ---- kill-type targeting (MegaMud: attack tier 4; tier 3 only if AttackNeutral;
+#      never tier 2/5). Mirrors combat_flee_or_hide_decide's `tier != 4` gate. ----
+
+def _gs_room(*sightings):
+    from mmud.state.game_state import GameState
+    gs = GameState(); gs.set_hp(100, 100); gs.set_mana(100, 100)
+    gs.set_combat(False)
+    gs.monsters_present = list(sightings)
+    return gs
+
+
+def test_never_initiates_on_good_npc_kill_type_2():
+    # shopkeeper / healer / woodelf guard are kill-type 2 -> never auto-attacked
+    gs = _gs_room(MonsterSighting(name="shopkeeper", kill_type=2))
+    assert CombatEngine(CombatConfig()).decide(gs) is None
+
+
+def test_does_not_initiate_on_neutral_when_attack_neutral_off():
+    # giant rat / guardsman are kill-type 3; default attack_neutral=False -> skip
+    gs = _gs_room(MonsterSighting(name="guardsman", kill_type=3))
+    assert CombatEngine(CombatConfig()).decide(gs) is None
+
+
+def test_initiates_on_neutral_when_attack_neutral_on():
+    gs = _gs_room(MonsterSighting(name="giant rat", kill_type=3))
+    cfg = CombatConfig(attack_neutral=True)
+    assert CombatEngine(cfg).decide(gs) == "kill giant rat"
+
+
+def test_initiates_on_hostile_kill_type_4():
+    gs = _gs_room(MonsterSighting(name="kobold thief", kill_type=4))
+    assert CombatEngine(CombatConfig()).decide(gs) == "kill kobold thief"
+
+
+def test_targets_hostile_and_skips_npc_in_same_room():
+    gs = _gs_room(MonsterSighting(name="shopkeeper", kill_type=2),
+                  MonsterSighting(name="kobold thief", kill_type=4))
+    assert CombatEngine(CombatConfig()).decide(gs) == "kill kobold thief"
+
+
+def test_initiates_on_unknown_monster_not_in_db():
+    # kill_type 0 = not catalogued -> attackable (DB protects known NPCs only)
+    gs = _gs_room(MonsterSighting(name="weird beast", kill_type=0))
+    assert CombatEngine(CombatConfig()).decide(gs) == "kill weird beast"
+
+
+def test_fights_back_when_already_in_combat_regardless_of_kill_type():
+    # Once engaged (a guard attacked us), fight back even though it's not a
+    # type we would have initiated on.
+    gs = _gs_room(MonsterSighting(name="guardsman", kill_type=3))
+    gs.set_combat(True)
+    assert CombatEngine(CombatConfig()).decide(gs) == "kill guardsman"

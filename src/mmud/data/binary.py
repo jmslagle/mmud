@@ -108,7 +108,9 @@ class Monster:
     name: str
     level: int
     exp_value: int
-    combat_rating: int
+    combat_rating: int   # MegaMud kill-type tier (in-mem record +0x28): 2=good NPC,
+                         # 3=neutral, 4=hostile, 5=special. Gates auto-attack
+                         # (combat_flee_or_hide_decide: `tier != 4 -> skip`).
     alignment: int
     hp_estimate: int
     short_name1: str
@@ -128,7 +130,7 @@ def load_monsters(path: pathlib.Path) -> list[Monster]:
       +0x00: u16 record_id
       +0x02: char[31] name
       +0x21: u32 flags
-      +0x25: u8  combat_rating
+      +0x25: u8  combat_rating (kill-type tier; see dataclass note)
       +0x35: i16 level
       +0x39: i16 exp_value
       +0x3d: i16 alignment
