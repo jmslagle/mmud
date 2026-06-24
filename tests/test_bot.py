@@ -282,6 +282,35 @@ def test_kill_clears_casting_task_and_removes_monster():
     assert bot._state.task.type is TaskType.IDLE
 
 
+@pytest.mark.asyncio
+async def test_idle_refresh_sends_bare_enter_when_idle():
+    # MegaMud's 10s room refresh: idle in-game -> bare Enter to re-sync.
+    import time as _t
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    bot._last_activity = _t.monotonic() - 20.0   # idle for 20s
+    await bot._maybe_idle_refresh()
+    assert bot._conn.sent == [""]                 # bare Enter
+    # Throttled: not re-sent immediately.
+    await bot._maybe_idle_refresh()
+    assert bot._conn.sent == [""]
+
+
+@pytest.mark.asyncio
+async def test_idle_refresh_skips_when_active_or_not_in_game():
+    import time as _t
+    bot = make_transcript_bot([])
+    # Not in game yet -> never refresh (don't disrupt login/menus).
+    bot._last_activity = _t.monotonic() - 20.0
+    await bot._maybe_idle_refresh()
+    assert bot._conn.sent == []
+    # In game but just acted -> not idle.
+    bot._login_handler.in_game = True
+    bot._last_activity = _t.monotonic()
+    await bot._maybe_idle_refresh()
+    assert bot._conn.sent == []
+
+
 def test_stat_sent_once_on_game_entry():
     # Learn max HP/MA on entry so flee/rest/mana thresholds can fire.
     bot = make_transcript_bot([])
