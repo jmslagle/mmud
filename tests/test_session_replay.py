@@ -67,6 +67,25 @@ async def test_do_not_see_drops_phantom_target():
 
 
 @pytest.mark.asyncio
+async def test_no_bare_kill_after_monster_dies_while_in_combat():
+    # Regression: after a kill the in_combat flag lingers a beat before *Combat
+    # Off*; with the roster empty the bot must NOT emit a bare "kill" (the log
+    # showed "TX kill" -> server `You say "kill"`).
+    bot = make_transcript_bot([])
+    await _feed(bot, "Also here: kobold thief.", "Obvious exits: north",
+                "*Combat Engaged*")
+    assert bot._state.in_combat is True
+    await _feed(
+        bot,
+        "The kobold thief falls to the ground with a shrill cry.",
+        "You gain 26 experience.",
+    )
+    # Monster gone but combat flag may still be set -> no targetless attack.
+    assert bot._state.monster_names() == []
+    assert bot._next_command() is None
+
+
+@pytest.mark.asyncio
 async def test_empty_room_clears_stale_monsters():
     bot = make_transcript_bot([])
     await _feed(bot, "Also here: kobold thief.", "Obvious exits: north")
