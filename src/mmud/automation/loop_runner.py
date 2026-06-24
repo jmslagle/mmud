@@ -62,22 +62,45 @@ class LoopRunner:
         loop_steps = route_for_path(self._path, self._rooms)
         if not loop_steps:
             return f"Loop path '{self._nav.loop_path}' has no steps"
-        loop_start = self._path.steps[0].hex_id.upper()
-        approach: list[RouteStep] = []
-        if (self._current_hex and self._current_hex != loop_start
-                and self._route_find is not None):
-            res = self._route_find(self._current_hex, loop_start)
-            if res.status is not NavStatus.OK:
-                return (f"No route from {self._current_hex} to loop start "
-                        f"{loop_start} ({res.status.name})")
-            approach = res.steps
-        self._travel.set_route(approach + loop_steps, loop=True,
-                               loop_from=len(approach))
+        loop_hexes = [s.hex_id.upper() for s in self._path.steps]
+        loop_start = loop_hexes[0]
+        cur = self._current_hex
+
+        # Already ON the loop -> finish it from here (MegaMud-style), no routing.
+        if cur and cur in loop_hexes:
+            idx = loop_hexes.index(cur)
+            self._travel.set_route(loop_steps, loop=True, loop_from=0, start_at=idx)
+            self._running = True
+            return (f"On loop {self._nav.loop_path} -> resuming from step "
+                    f"{idx + 1}/{len(loop_steps)}")
+
+        if self._route_find is not None:
+            # Known position off the loop -> route to its start, then loop.
+            if cur:
+                res = self._route_find(cur, loop_start)
+                if res.status is NavStatus.OK:
+                    approach = res.steps
+                    self._travel.set_route(approach + loop_steps, loop=True,
+                                           loop_from=len(approach))
+                    self._running = True
+                    return (f"Navigating {len(approach)} steps to "
+                            f"{self._nav.loop_path} start, then looping")
+            # Unknown position, or no route from a known one -> wander onto the loop.
+            self._travel.set_wander(set(loop_hexes), self._engage_at)
+            self._running = True
+            return f"Position unknown -> wandering until on loop {self._nav.loop_path}"
+
+        # No navigation context (simple use): assume we're at the loop start.
+        self._travel.set_route(loop_steps, loop=True, loop_from=0)
         self._running = True
-        if approach:
-            return (f"Navigating {len(approach)} steps to {self._nav.loop_path} "
-                    f"start, then looping")
         return f"Loop started: {self._nav.loop_path}"
+
+    def _engage_at(self, hexid: str) -> None:
+        """Wander reached a loop room: resume the loop from that index."""
+        loop_steps = route_for_path(self._path, self._rooms)
+        loop_hexes = [s.hex_id.upper() for s in self._path.steps]
+        idx = loop_hexes.index(hexid.upper()) if hexid.upper() in loop_hexes else 0
+        self._travel.set_route(loop_steps, loop=True, loop_from=0, start_at=idx)
 
     def stop(self) -> None:
         self._running = False

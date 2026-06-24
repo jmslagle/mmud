@@ -1029,8 +1029,10 @@ class MudBot:
             self._loop_runner.stop()
         self._loop_runner = self._make_loop_runner()
         msg = self._loop_runner.start()
-        if self._travel.active:
+        if self._travel.route:
             self._log_route(f"loop {loop_name}", self._travel.route)
+        else:
+            self._session_log.event(f"loop {loop_name}: {msg}")
         return msg
 
     def stop_all(self) -> str:
