@@ -246,6 +246,7 @@ class MudBot:
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._room_block: list[str] = []   # recent display lines -> room-hash title
+        self._wait_reason = ""             # current intentional-wait status (UI)
         self._pending_move = ""
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
         # True once an "Also here:" line is parsed in the current room display;
@@ -762,7 +763,13 @@ class MudBot:
             else:
                 self._on_monster_killed("kill")
             return
-        # Exp remaining to next level (stat/exp screen) -> exp_needed + ETA.
+        # The in-game `exp` command prints all of these on ONE line:
+        #   "Exp: 11801 Level: 4 Exp needed for next level: 6349 ...".
+        # Parse each independently (no early return) so the absolute Exp and Level
+        # aren't swallowed by the exp-needed match.
+        if (exp := self._who_parser.parse_exp_line(line)) is not None:
+            self._state.set_exp(exp)
+            self._emit(SessionStatUpdated(key="exp", value=str(exp)))
         if (need := self._who_parser.parse_exp_needed_line(line)) is not None:
             self._state.set_exp_needed(need)
             self._emit(SessionStatUpdated(key="exp_needed", value=str(need)))
@@ -770,11 +777,6 @@ class MudBot:
             self._emit(SessionStatUpdated(
                 key="will_level_in",
                 value=(f"{eta:.1f} hr" if eta > 0 else "?")))
-            return
-        # Absolute total from the stat/exp screen ("Exp: 52497") — display only.
-        if (exp := self._who_parser.parse_exp_line(line)) is not None:
-            self._state.set_exp(exp)
-            self._emit(SessionStatUpdated(key="exp", value=str(exp)))
         if (lvl := self._who_parser.parse_level_line(line)) is not None:
             if lvl > self._state.level:
                 self._stat_requested = False   # leveled up -> re-stat to learn new max
@@ -938,7 +940,23 @@ class MudBot:
             self._state.record_ran_away()
             self._emit(SessionStatUpdated(key="ran_away",
                                           value=str(self._state.ran_away)))
+        self._update_activity(cmd)
         return cmd
+
+    def _update_activity(self, cmd) -> None:
+        """Surface an intentional wait (mana regen / resting) so it doesn't look
+        frozen — to the StatsBar, :status, and the session log."""
+        from mmud.combat.combat import activity_reason
+        reason = activity_reason(self._state, cmd,
+                                 self._config.combat.mana_attack_pct,
+                                 self._config.combat.rest_threshold)
+        if reason != self._wait_reason:
+            self._wait_reason = reason
+            self._emit(SessionStatUpdated(key="activity", value=reason))
+            if reason:
+                s = self._state
+                self._session_log.event(
+                    f"status: {reason} (HP={s.hp}/{s.max_hp} MA={s.mana}/{s.max_mana})")
 
     def _check_task_timeout(self, now: float) -> None:
         if self._state.task.expired(now):
@@ -1121,4 +1139,5 @@ class MudBot:
             name = self._config.navigation.loop_path
             loop = f" | Loop:{name} lap:{self._loop_runner.lap}"
         combat = " | IN COMBAT" if s.in_combat else ""
-        return f"Room:{room} {hp_str} {mp_str}{loop}{combat}"
+        wait = f" | {self._wait_reason}" if self._wait_reason else ""
+        return f"Room:{room} {hp_str} {mp_str}{loop}{combat}{wait}"

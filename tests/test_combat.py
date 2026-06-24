@@ -253,6 +253,26 @@ def test_targets_hostile_and_skips_npc_in_same_room():
     assert CombatEngine(CombatConfig()).decide(gs) == "kill kobold thief"
 
 
+def test_activity_reason_reports_waiting_for_mana():
+    from mmud.combat.combat import activity_reason
+    gs = GameState(); gs.set_combat(True); gs.set_hp(80, 100); gs.set_mana(5, 100)
+    # in combat, mana below the attack threshold, engine returned nothing -> waiting
+    assert activity_reason(gs, None, mana_attack_pct=0.20, rest_threshold=0.40) \
+        == "waiting for mana"
+    # mana fine -> no wait reason
+    gs.set_mana(80, 100)
+    assert activity_reason(gs, None, 0.20, 0.40) == ""
+    # actually acting (cmd present) -> no wait reason
+    gs.set_mana(5, 100)
+    assert activity_reason(gs, "mmis orc", 0.20, 0.40) == ""
+
+
+def test_activity_reason_reports_resting():
+    from mmud.combat.combat import activity_reason
+    gs = GameState(); gs.set_combat(False); gs.set_hp(20, 100); gs.set_mana(50, 100)
+    assert activity_reason(gs, None, 0.20, 0.40) == "resting"
+
+
 def test_rests_once_not_respammed_while_resting():
     # HP 29/82 = 35% < 40% rest_threshold. Rest ONCE; while the prompt shows
     # "(Resting)" don't re-send rest every tick.

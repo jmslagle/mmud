@@ -7,6 +7,23 @@ _SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
 _SNEAK_FAIL_RE = re.compile(r"fail to sneak|make a noise", re.IGNORECASE)
 
 
+def activity_reason(state: GameState, cmd, mana_attack_pct: float,
+                    rest_threshold: float) -> str:
+    """Why the bot is intentionally idle this tick (so a wait doesn't look frozen).
+    "" when it's acting or has nothing to wait on."""
+    if cmd is not None:
+        return ""
+    mp_pct = state.mana / state.max_mana if state.max_mana > 0 else 1.0
+    hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
+    if ((state.in_combat or state.monsters_present)
+            and state.max_mana > 0 and mp_pct < mana_attack_pct):
+        return "waiting for mana"
+    if (not state.in_combat and not state.monsters_present
+            and hp_pct < rest_threshold):
+        return "resting"
+    return ""
+
+
 def is_attackable(kill_type: int, attack_neutral: bool) -> bool:
     """MegaMud's attack gate (combat_flee_or_hide_decide: `tier != 4 -> skip`).
     kill-type 4 = hostile (always attacked); 3 = neutral (only if AttackNeutral);
