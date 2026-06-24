@@ -3,7 +3,7 @@ import json
 import os
 import pathlib
 
-STORE_VERSION = 1
+STORE_VERSION = 2   # v2: corrected ITEMS.MD layout (source field, numeric offsets)
 
 _EMPTY = {
     "version": STORE_VERSION,
