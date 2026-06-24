@@ -74,8 +74,10 @@ class StatsBar(Widget):
     def on_stats_bar_session_update(self, message: SessionUpdate) -> None:
         self.session[message.key] = message.value
         # Separate combat stats from navigation stats
-        nav_keys = {"kills", "exp", "session_time", "loop", "lap"}
-        combat_keys = {"hit_pct", "backstab", "avg_dmg"}
+        nav_keys = {"kills", "exp", "exp_rate", "session_time", "loop", "lap",
+                    "people_seen"}
+        combat_keys = {"hit_pct", "crit_pct", "backstab_pct", "miss_pct",
+                       "sneak_pct", "dodge_pct"}
         nav_parts = [f"{k}: {v}" for k, v in self.session.items() if k in nav_keys]
         combat_parts = [f"{k}: {v}" for k, v in self.session.items() if k in combat_keys]
         self.query_one("#session-label", Static).update("  ".join(nav_parts))

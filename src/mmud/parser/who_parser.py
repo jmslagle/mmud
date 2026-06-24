@@ -23,6 +23,9 @@ _LEVEL_RE = re.compile(r"Level[:\s]+(\d+)", re.IGNORECASE)
 # Per-kill delta: "You gain 26 experience." (megamud.exe combat_event_parse adds
 # this to a running total). Distinct from the absolute "Exp:" stat-screen value.
 _EXP_GAIN_RE = re.compile(r"You gain\s+(\d[\d,]*)\s+experience", re.IGNORECASE)
+# Stat/exp screen: "Exp needed for next level: 92,130".
+_EXP_NEEDED_RE = re.compile(
+    r"Exp(?:erience)? needed (?:for next level|to level)[:\s]+(\d[\d,]*)", re.IGNORECASE)
 
 
 class WhoParser:
@@ -52,5 +55,11 @@ class WhoParser:
     def parse_exp_gain_line(self, line: str) -> int | None:
         """Per-kill experience DELTA from 'You gain N experience.'"""
         if m := _EXP_GAIN_RE.search(line):
+            return int(m.group(1).replace(",", ""))
+        return None
+
+    def parse_exp_needed_line(self, line: str) -> int | None:
+        """Experience remaining to next level (stat/exp screen)."""
+        if m := _EXP_NEEDED_RE.search(line):
             return int(m.group(1).replace(",", ""))
         return None

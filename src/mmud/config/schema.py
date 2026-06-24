@@ -175,6 +175,7 @@ class PvpConfig:
     spell: str = ""                # cast at the player when action == "attack"
     flee_rooms: int = 2
     hangup_delay_s: int = 0        # delay before hangup when action == "hangup"
+    look_players: bool = True      # auto "l <name>" at unknown players (MegaMud LookPlayers)
 
 
 @dataclass

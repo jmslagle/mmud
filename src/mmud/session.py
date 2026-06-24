@@ -25,6 +25,10 @@ class SessionManager:
         self.dial_failed = 0
         self.connected = 0
         self.carrier_lost = 0
+        # Visitor / wealth session counters (Session pane)
+        self._visitors: set[str] = set()   # unique players seen this session
+        self.attacked = 0                  # times a player attacked / eyed us
+        self.deposited = 0                 # copper-equiv deposited at the bank
 
     # ---- feeds ---------------------------------------------------------------
 
@@ -55,6 +59,23 @@ class SessionManager:
     @property
     def exp_gained(self) -> int:
         return self._exp_total
+
+    def on_player_seen(self, name: str) -> None:
+        self._visitors.add(name.lower())
+
+    def on_attacked(self) -> None:
+        self.attacked += 1
+
+    def on_deposit(self, copper: int) -> None:
+        self.deposited += copper
+
+    @property
+    def people_seen(self) -> int:
+        return len(self._visitors)
+
+    def income_rate_per_hour(self, now: float) -> float:
+        hrs = self.hours_elapsed(now)
+        return self.deposited / hrs if hrs > 0 else 0.0
 
     def on_dial(self) -> None:
         self.dialed += 1

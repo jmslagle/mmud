@@ -6,32 +6,23 @@ function pct(n: number, d: number): string {
 }
 
 export function PlayerStats({ state }: { state: PanelState }) {
-  const c = state.combat;
-  const attacks = c.hits + c.misses + c.special;
-  const monsterAttacks = c.monsterHits + c.monsterMisses;
   const s = state.session;
+  const stat = (k: string, d = "0%") => s.stats[k] ?? d;
 
-  // Combat Accuracy rows. R: = latest round (Doc 1 fills; mirrors A: for now).
-  const rows: { label: string; a: string; r: string }[] = [
-    { label: "Miss", a: pct(c.misses, attacks), r: pct(c.misses, attacks) },
-    { label: "Hit", a: pct(c.hits, attacks), r: pct(c.hits, attacks) },
-    { label: "Extra", a: pct(c.special, attacks), r: pct(c.special, attacks) },
-    { label: "Crit", a: s.stats["crit_pct"] ?? "0%", r: s.stats["crit_pct"] ?? "0%" },
-    {
-      label: "BS",
-      a: pct(c.backstabSuccesses, c.backstabAttempts),
-      r: pct(c.backstabSuccesses, c.backstabAttempts),
-    },
-    { label: "Cast", a: s.stats["cast_pct"] ?? "0%", r: s.stats["cast_pct"] ?? "0%" },
-    {
-      label: "Round",
-      a: pct(c.monsterMisses, monsterAttacks),
-      r: pct(c.monsterMisses, monsterAttacks),
-    },
+  // Combat Accuracy: "<label> <pct>  R:<min-max>  A:<avg>" (matches MegaMud).
+  const rows: { label: string; pct: string; r: string; a: string }[] = [
+    { label: "Miss", pct: stat("miss_pct"), r: "", a: "" },
+    { label: "Hit", pct: stat("hit_pct"), r: stat("hit_range", "0-0"), a: stat("hit_avg", "0") },
+    { label: "Extra", pct: stat("extra_pct"), r: stat("extra_range", "0-0"), a: stat("extra_avg", "0") },
+    { label: "Crit", pct: stat("crit_pct"), r: stat("crit_range", "0-0"), a: stat("crit_avg", "0") },
+    { label: "BS", pct: stat("backstab_pct"), r: stat("backstab_range", "0-0"), a: stat("backstab_avg", "0") },
+    { label: "Cast", pct: stat("cast_pct"), r: stat("cast_range", "0-0"), a: stat("cast_avg", "0") },
+    { label: "Round", pct: "", r: stat("round_range", "0-0"), a: stat("round_avg", "0") },
   ];
 
   const expNeeded = s.stats["exp_needed"] ?? "?";
   const willLevelIn = s.stats["will_level_in"] ?? "?";
+  void pct;  // (legacy helper retained for compatibility)
 
   return (
     <div className="player-stats">
@@ -55,7 +46,7 @@ export function PlayerStats({ state }: { state: PanelState }) {
         </div>
         {rows.map((row) => (
           <div className="accuracy-row" key={row.label}>
-            <span className="col-label">{row.label}</span>
+            <span className="col-label">{row.label} {row.pct}</span>
             <span className="col-r">{row.r}</span>
             <span className="col-a">{row.a}</span>
           </div>

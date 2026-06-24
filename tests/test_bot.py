@@ -311,6 +311,47 @@ async def test_idle_refresh_skips_when_active_or_not_in_game():
     assert bot._conn.sent == []
 
 
+def test_flush_stats_emits_panel_fields():
+    from mmud.events import GameEventBus, SessionStatUpdated
+    seen = {}
+    bus = GameEventBus()
+    bus.subscribe(SessionStatUpdated, lambda e: seen.__setitem__(e.key, e.value))
+    bot = make_transcript_bot([], event_bus=bus)
+    bot._state.record_hit(20, "hit")
+    bot._state.record_crit(64)
+    bot._state.record_monster_hit(8)
+    bot._flush_stats()
+    # Combat accuracy ranges + percentages.
+    assert seen["hit_range"] == "20-20"
+    assert seen["crit_range"] == "64-64"
+    assert seen["round_range"] == "8-8"
+    assert "%" in seen["hit_pct"] and "%" in seen["miss_pct"]
+    # Session-pane fields all present.
+    for k in ("sneak_pct", "dodge_pct", "exp_rate", "people_seen", "attacked",
+              "dialed", "connected", "had_to_run", "health_low", "income_rate"):
+        assert k in seen
+
+
+def test_combat_stats_parsing_by_type():
+    bot = make_transcript_bot([])
+    bot._parse_combat_stats("You slash the orc for 12 damage!")
+    bot._parse_combat_stats("You critically smash the orc for 40 damage!")
+    bot._parse_combat_stats("You backstab the orc for 105 damage!")
+    bot._parse_combat_stats("You fire a magic missile at the orc for 18 damage!")
+    bot._parse_combat_stats("You miss the orc!")
+    bot._parse_combat_stats("The cave worm chomps you for 8 damage!")
+    bot._parse_combat_stats("The orc misses you!")
+    acc = bot._state.combat_accuracy()
+    assert acc["hit"]["range"] == "12-12"
+    assert acc["crit"]["range"] == "40-40"
+    assert acc["backstab"]["range"] == "105-105"
+    assert acc["cast"]["range"] == "18-18"
+    assert acc["round"]["range"] == "8-8"            # damage taken
+    assert bot._state.combat_misses == 1
+    assert bot._state.dodges == 1                    # "misses you"
+    assert bot._state.backstab_successes == 1
+
+
 def test_stat_sent_once_on_game_entry():
     # Learn max HP/MA on entry so flee/rest/mana thresholds can fire.
     bot = make_transcript_bot([])

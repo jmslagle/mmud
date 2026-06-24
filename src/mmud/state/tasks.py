@@ -19,6 +19,7 @@ class TaskType(Enum):
     RELOGGING = auto()
     HANGING = auto()
     TRAINING = auto()
+    LOOKING = auto()    # examining a player ("l <name>"); MegaMud task 0x1c
 
 
 @dataclass

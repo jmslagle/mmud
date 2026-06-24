@@ -111,18 +111,29 @@ class WebPanelServer:
             "room": {"code": s.current_room, "hex": s.current_hex},
             "vitals": {"hp": s.hp, "max_hp": s.max_hp, "mana": s.mana,
                        "max_mana": s.max_mana, "in_combat": s.in_combat},
-            "progress": {"level": s.level, "exp": s.exp, "kills": s.kills},
+            "progress": {"level": s.level, "exp": s.exp, "kills": s.kills,
+                         "exp_needed": s.exp_needed},
             "combat": {"hits": s.combat_hits, "misses": s.combat_misses,
                        "special": s.combat_special, "dmg_sum": s.combat_dmg_sum,
                        "monster_hits": s.monster_hits, "monster_misses": s.monster_misses,
                        "backstab_attempts": s.backstab_attempts,
                        "backstab_successes": s.backstab_successes,
-                       "hit_pct": s.hit_pct, "avg_damage": s.avg_damage},
+                       "hit_pct": s.hit_pct, "avg_damage": s.avg_damage,
+                       "accuracy": s.combat_accuracy()},
             "session": {"hours_elapsed": sess.hours_elapsed(now),
-                        "exp_rate_per_hour": sess.exp_rate_per_hour()},
+                        "exp_rate_per_hour": sess.exp_rate_per_hour(),
+                        "people_seen": sess.people_seen, "attacked": sess.attacked,
+                        "dialed": sess.dialed, "dial_failed": sess.dial_failed,
+                        "connected": sess.connected, "carrier_lost": sess.carrier_lost,
+                        "deposited": sess.deposited,
+                        "income_rate": sess.income_rate_per_hour(now),
+                        "sneak_pct": s.sneak_pct, "dodge_pct": s.dodge_pct,
+                        "ran_away": s.ran_away, "health_low": s.health_low},
             "monsters": [{"name": m.name, "count": m.count, "exp_each": m.exp_each}
                          for m in s.monsters_present],
             "players": list(s.players_present),
+            "player_records": (store.players()
+                               if (store := getattr(self._bot, "_store", None)) else {}),
         }
 
     def _config_service(self):
