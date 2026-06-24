@@ -52,6 +52,26 @@ def test_uses_config_attack_cmd():
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
     assert ce.decide(gs) == "kill orc warrior"
 
+def test_engages_target_once_not_every_round():
+    # Re-sending the melee attack restarts the round and wastes swings; engage
+    # once per target, re-engage only when the target changes.
+    gs = GameState()
+    gs.set_combat(True); gs.set_hp(80, 100); gs.set_mana(80, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    ce = CombatEngine(CombatConfig(attack_cmd="kill"))
+    assert ce.decide(gs) == "kill orc"
+    assert ce.decide(gs) is None          # same target, already engaged
+    assert ce.decide(gs) is None
+    # A new monster -> re-engage.
+    gs.monsters_present = [MonsterSighting(name="goblin")]
+    assert ce.decide(gs) == "kill goblin"
+    # Encounter ends then a fresh orc appears -> engage again.
+    gs.set_combat(False); gs.monsters_present = []
+    assert ce.decide(gs) is None
+    gs.set_combat(True); gs.monsters_present = [MonsterSighting(name="orc")]
+    assert ce.decide(gs) == "kill orc"
+
+
 def test_no_attack_without_target():
     # Regression: in_combat can linger after a kill before *Combat Off*; with no
     # monster to target the bot must NOT emit a bare "kill" (server reads it as

@@ -40,6 +40,7 @@ class CombatEngine:
         self.must_sneak = must_sneak
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
+        self._engaged_target = ""   # monster we've already sent the attack at
 
     def on_line(self, line: str) -> None:
         if not self.must_sneak:
@@ -72,12 +73,22 @@ class CombatEngine:
             # the kill, before *Combat Off* arrives. A bare "kill" is useless (the
             # server treats it as chat — `You say "kill"`), so wait instead.
             if not target:
+                self._engaged_target = ""
                 return None
+            # Engage ONCE per target: MajorMUD auto-combat swings each round on
+            # its own, so re-sending the attack restarts the round and wastes
+            # swings. Re-send only when the target changes (e.g. after a kill).
+            # The between-round *Combat Off*/*Combat Engaged* flicker leaves the
+            # target unchanged, so it won't re-trigger.
+            if target == self._engaged_target:
+                return None
+            self._engaged_target = target
             return f"{self.attack_cmd} {target}"
 
         # Not engaged: reset sneak flags for the next encounter
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
+        self._engaged_target = ""
 
         if hp_pct < self.rest_threshold:
             return "rest"
