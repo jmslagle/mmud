@@ -68,7 +68,12 @@ class CombatEngine:
             if self.polite_attacks and state.players_present:
                 return None
             target = self._pick_target(state)
-            return f"{self.attack_cmd} {target}".strip()
+            # No monster to target: the in_combat flag can linger for a beat after
+            # the kill, before *Combat Off* arrives. A bare "kill" is useless (the
+            # server treats it as chat — `You say "kill"`), so wait instead.
+            if not target:
+                return None
+            return f"{self.attack_cmd} {target}"
 
         # Not engaged: reset sneak flags for the next encounter
         self._sneaked_this_encounter = False

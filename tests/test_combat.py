@@ -9,9 +9,10 @@ def test_attacks_when_in_combat():
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(50, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
     ce = CombatEngine()
     cmd = ce.decide(gs)
-    assert cmd == "kill"
+    assert cmd == "kill orc"
 
 
 def test_flees_when_critically_low_hp():
@@ -51,14 +52,17 @@ def test_uses_config_attack_cmd():
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
     assert ce.decide(gs) == "kill orc warrior"
 
-def test_attack_without_monster_name():
+def test_no_attack_without_target():
+    # Regression: in_combat can linger after a kill before *Combat Off*; with no
+    # monster to target the bot must NOT emit a bare "kill" (server reads it as
+    # chat -> `You say "kill"`).
     gs = GameState()
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(50, 100)
     gs.monsters_present = []
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
-    assert ce.decide(gs) == "kill"
+    assert ce.decide(gs) is None
 
 def test_respects_mana_attack_pct():
     gs = GameState()
@@ -82,9 +86,10 @@ def test_no_config_uses_defaults():
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(50, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
     ce = CombatEngine()
     cmd = ce.decide(gs)
-    assert cmd == "kill"  # default attack_cmd
+    assert cmd == "kill orc"  # default attack_cmd
 
 
 def test_sneak_before_first_attack():
