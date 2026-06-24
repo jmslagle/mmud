@@ -20,6 +20,22 @@ def test_expand_annotated():
     assert expand_annotated("go path") == ["go path"]
 
 
+def test_ignores_departure_room_redisplay():
+    # Reproduces the live hang: after issuing a move, the room we're LEAVING
+    # re-displays its exits (an idle refresh racing the move). on_arrival must not
+    # treat the departure hex as an arrival and clear("lost").
+    d = _decider()
+    gs = GameState()
+    gs.current_hex = "BANK0001"
+    d.set_route([_step("e", "DEST0001"), _step("n", "DEST0002")])
+    assert d.decide(gs) == "e"          # from_hex captured = BANK0001
+    d.on_arrival(gs, "BANK0001")        # departure room re-display (race)
+    assert d.active                     # route NOT cleared
+    assert d.decide(gs) is None         # still in flight, awaiting real arrival
+    d.on_arrival(gs, "")                # real arrival (unknown room -> empty hex)
+    assert d.decide(gs) == "n"          # advanced to the next step
+
+
 def test_loop_from_resets_to_offset_not_zero():
     # 1 approach step ("e") + 2 loop steps ("n","s"); loop_from=1 means a completed
     # lap restarts at the loop body, never replaying the approach.
