@@ -17,6 +17,7 @@ class SessionManager:
         self.started_at = now()
         self._first_exp: tuple[float, int] | None = None   # (t, exp)
         self._last_exp: tuple[float, int] | None = None
+        self._exp_total = 0    # running session total from per-kill "You gain N" deltas
         self._capture = None
         self._fired = False    # actions fire once per session
         # Comms counters (lifetime-of-process; NOT cleared on reset)
@@ -40,6 +41,20 @@ class SessionManager:
         if self._first_exp is None:
             self._first_exp = (now, value)
         self._last_exp = (now, value)
+
+    def on_exp_gain(self, delta: int, now: float) -> None:
+        """Per-kill experience delta ("You gain N experience."). Accumulates a
+        running session total and feeds it to the absolute-sample rate machinery,
+        so exp_rate_per_hour reflects actual kills. Seeds a 0 baseline at the
+        first gain so the whole session window is measured."""
+        if self._first_exp is None:
+            self._first_exp = (now, 0)
+        self._exp_total += delta
+        self._last_exp = (now, self._exp_total)
+
+    @property
+    def exp_gained(self) -> int:
+        return self._exp_total
 
     def on_dial(self) -> None:
         self.dialed += 1
@@ -96,6 +111,7 @@ class SessionManager:
         self.started_at = now
         self._first_exp = None
         self._last_exp = None
+        self._exp_total = 0
         self._fired = False
 
     def close(self) -> None:

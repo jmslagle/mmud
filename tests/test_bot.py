@@ -29,30 +29,25 @@ async def test_connection_sends_and_receives(unused_tcp_port):
 
 @pytest.mark.asyncio
 async def test_bot_processes_line_and_issues_command(unused_tcp_port):
-    """Bot receives a combat message and sends 'attack' in response."""
+    """A monster in the room makes the bot initiate combat ('kill <monster>')."""
     received = []
 
     async def server_handler(reader, writer):
-        # Send a combat message
-        writer.write(b"An orc hits you!\r\n")
+        # A monster sighting -> bot attacks (CombatEngine acts on monsters_present).
+        writer.write(b"Also here: an orc.\r\n")
         await writer.drain()
-        # Wait for bot's response
         cmd = await asyncio.wait_for(reader.readline(), timeout=2.0)
         received.append(cmd.decode().strip())
         writer.close()
 
     server = await asyncio.start_server(server_handler, "127.0.0.1", unused_tcp_port)
-    patterns = [
-        MessagePattern(name="being hit", flags=0, third_field=0,
-                       apply_message="An orc hits you!", remove_message="")
-    ]
     async with server:
-        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=patterns)
+        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[])
         try:
             await asyncio.wait_for(bot.run(), timeout=3.0)
         except asyncio.TimeoutError:
             pass
-    assert any("kill" in r for r in received)
+    assert any("kill orc" in r for r in received)
 
 
 @pytest.mark.asyncio
@@ -273,17 +268,42 @@ def test_must_sneak_wires_sneak_cmd_without_auto_sneak():
     assert bot._combat.sneak_cmd == "sneak"   # hardcoded literal wired by the bot
 
 
-def test_combat_exit_clears_casting_task():
-    # The attack-spell pace token (CASTING task) must be released the instant
-    # combat ends, so loot/movement isn't blocked for a full round after a kill.
+def test_kill_clears_casting_task_and_removes_monster():
+    # A kill (named slay) drops the monster and releases the attack-spell pace
+    # token, so loot/movement isn't blocked for a full round after a kill.
     from mmud.state.tasks import TaskType
     from mmud.automation.decision import PRIO_SPELLS
+    from mmud.state.game_state import MonsterSighting
     bot = make_transcript_bot([])
-    bot._state.set_combat(True)
+    bot._state.monsters_present = [MonsterSighting(name="filthbug")]
     bot._state.begin_task(TaskType.CASTING, priority=PRIO_SPELLS, timeout_s=4.0)
-    bot._parse_combat_exit("You have slain the filthbug!")
-    assert bot._state.in_combat is False
+    bot._parse_monster_removal("You have slain the filthbug!")
+    assert bot._state.monster_names() == []
     assert bot._state.task.type is TaskType.IDLE
+
+
+def test_stat_sent_once_on_game_entry():
+    # Learn max HP/MA on entry so flee/rest/mana thresholds can fire.
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    bot._handle_login("[HP=46/MA=12]:")
+    assert bot._state.dequeue() == "stat"
+    # Idempotent: not re-sent on every subsequent in-game line.
+    bot._handle_login("[HP=46/MA=12]:")
+    assert bot._state.dequeue() is None
+
+
+def test_combat_markers_toggle_in_combat():
+    # *Combat Engaged* / *Combat Off* drive in_combat; *Combat Off* must NOT
+    # clear the roster (it fires between rounds mid-fight).
+    from mmud.state.game_state import MonsterSighting
+    bot = make_transcript_bot([])
+    bot._state.monsters_present = [MonsterSighting(name="orc")]
+    bot._parse_combat_state("*Combat Engaged*")
+    assert bot._state.in_combat is True
+    bot._parse_combat_state("*Combat Off*")
+    assert bot._state.in_combat is False
+    assert bot._state.monster_names() == ["orc"]   # roster preserved
 
 
 @pytest.mark.asyncio

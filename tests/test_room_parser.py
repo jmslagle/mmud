@@ -124,3 +124,43 @@ def test_monster_arrival_line():
     p = RoomParser({})
     assert p.extract_sightings(
         "A fat giant rat creeps into the room from nowhere.") == [("fat giant rat", 1)]
+
+
+def test_extract_removed_monster_death_falls():
+    p = RoomParser({})
+    assert p.extract_removed_monster(
+        "The kobold thief falls to the ground with a shrill cry.") == "kobold thief"
+
+
+def test_extract_removed_monster_drops_and_is_dead():
+    p = RoomParser({})
+    assert p.extract_removed_monster("The orc drops to the ground.") == "orc"
+    assert p.extract_removed_monster("An angry kobold thief is dead.") == "angry kobold thief"
+
+
+def test_extract_removed_monster_slain():
+    p = RoomParser({})
+    assert p.extract_removed_monster("You have slain the angry kobold thief.") == "angry kobold thief"
+    assert p.extract_removed_monster("You killed a goblin!") == "goblin"
+
+
+def test_extract_removed_monster_do_not_see():
+    p = RoomParser({})
+    assert p.extract_removed_monster("You do not see angry kobold thief here!") == "angry kobold thief"
+
+
+def test_extract_removed_monster_none_for_normal_lines():
+    p = RoomParser({})
+    assert p.extract_removed_monster("The kobold thief lunges at you with their shortsword!") is None
+    assert p.extract_removed_monster("Obvious exits: north, south") is None
+
+
+def test_detect_room_normalizes_comma_format():
+    from mmud.data.rooms import Room
+    rooms = {"NARN": Room(code="NARN", hex_id="ABC10002", hex_id2="",
+                          flags=(0, 0, 0), region="Newhaven", name="Newhaven Arena")}
+    p = RoomParser(rooms)
+    # Server prints "Newhaven, Arena" (comma); ROOMS.MD stores "Newhaven Arena".
+    assert p.detect_room("Newhaven, Arena") == "NARN"
+    assert p.detect_room("Newhaven Arena") == "NARN"
+    assert p.detect_room("Somewhere Else") is None
