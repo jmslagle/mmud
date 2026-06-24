@@ -36,24 +36,44 @@ class TravelDecider:
         self._loop = False
         self._loop_from = 0
         self._from_hex = ""   # hex we issued the in-flight move FROM
+        self._wander_targets: set[str] | None = None   # hexes that end wandering
+        self._on_reach = None                          # callback(hex) when reached
+        self._last_dir = ""                            # last wander move (avoid U-turn)
         self.lap = 0
+
+    _REVERSE = {"n": "s", "s": "n", "e": "w", "w": "e", "ne": "sw", "sw": "ne",
+                "nw": "se", "se": "nw", "u": "d", "d": "u"}
 
     # ---- route control ------------------------------------------------------
 
     @property
     def active(self) -> bool:
-        return bool(self._steps)
+        return bool(self._steps) or self._wander_targets is not None
 
     @property
     def route(self) -> list[RouteStep]:
         return list(self._steps)
 
-    def set_route(self, steps: list[RouteStep], loop: bool = False,
-                  loop_from: int = 0) -> None:
-        """Arm a route. When `loop`, a completed lap restarts at `loop_from`
-        (not 0) — so a one-time approach prefix [0:loop_from] isn't replayed."""
-        self._steps = list(steps)
+    def set_wander(self, targets: set[str], on_reach) -> None:
+        """Enter wander mode: pick an exit each arrival until the room's hash is in
+        `targets`, then call on_reach(hex) (which typically arms the real route).
+        Used to recover an unknown start position — MegaMud wanders onto its loop."""
+        self._steps = []
         self._cursor = 0
+        self._in_flight = False
+        self._retries = 0
+        self._wander_targets = {h.upper() for h in targets if h}
+        self._on_reach = on_reach
+        self._last_dir = ""
+
+    def set_route(self, steps: list[RouteStep], loop: bool = False,
+                  loop_from: int = 0, start_at: int = 0) -> None:
+        """Arm a route. When `loop`, a completed lap restarts at `loop_from`
+        (not 0) — so a one-time approach prefix [0:loop_from] isn't replayed.
+        `start_at` begins the FIRST pass partway in (resuming a loop already in
+        progress); subsequent laps still restart at `loop_from`."""
+        self._steps = list(steps)
+        self._cursor = start_at
         self._in_flight = False
         self._retries = 0
         self._loop = loop
@@ -61,14 +81,31 @@ class TravelDecider:
         self.lap = 0
 
     def clear(self, reason: str = "stopped") -> None:
-        if self._steps:
+        if self._steps or self._wander_targets is not None:
             self._bus.post(TravelEnded(reason=reason))
         self._steps = []
+        self._wander_targets = None
+        self._on_reach = None
         self._in_flight = False
 
     # ---- decider ------------------------------------------------------------
 
+    def _decide_wander(self, state: GameState) -> str | None:
+        if self._in_flight:
+            return None
+        exits = list(state.last_exits or [])
+        if not exits:
+            return None
+        rev = self._REVERSE.get(self._last_dir)   # don't immediately backtrack
+        choice = next((e for e in exits if e != rev), exits[0])
+        self._last_dir = choice
+        self._from_hex = (state.current_hex or "").upper()
+        self._in_flight = True
+        return choice
+
     def decide(self, state: GameState) -> str | None:
+        if self._wander_targets is not None:
+            return self._decide_wander(state)
         if not self._steps or self._in_flight:
             return None
         level = state.inventory.encumbrance_level
@@ -93,6 +130,19 @@ class TravelDecider:
         destinations (step.expect / step.chosen are .MP hashes), which is how we
         place ourselves even in rooms absent from ROOMS.MD. A bare hex string is
         accepted too (tests/back-compat)."""
+        if self._wander_targets is not None:
+            self._in_flight = False
+            seen_hexes = ({h.upper() for h in seen if h}
+                          if isinstance(seen, (set, frozenset))
+                          else ({seen.upper()} if seen else set()))
+            hit = self._wander_targets & seen_hexes
+            if hit:
+                on_reach = self._on_reach
+                self._wander_targets = None
+                self._on_reach = None
+                if on_reach:
+                    on_reach(next(iter(hit)))   # arms the real route (set_route)
+            return
         if not self._steps or not self._in_flight:
             return
         if isinstance(seen, (set, frozenset)):

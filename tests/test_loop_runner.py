@@ -56,6 +56,25 @@ def test_stop_clears_route():
     assert travel.decide(gs) is None
 
 
+def test_resumes_loop_when_already_on_it():
+    # On the loop already -> finish it from here (no routing to the start).
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "e"), ("CCCC0003", "s")])
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    def find_path(frm, to):
+        raise AssertionError("should not route when already on the loop")
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
+                        find_path=find_path, current_hex="BBBB0002")  # index 1
+    runner.start()
+    gs = GameState()
+    assert travel.decide(gs) == "e"           # resumes at index-1's command
+    gs.current_hex = "BBBB0002"
+    travel.on_arrival(gs, {"CCCC0003"})
+    assert travel.decide(gs) == "s"
+    travel.on_arrival(gs, {"AAAA0001"})       # looped back to the top
+    assert runner.lap == 1
+    assert travel.decide(gs) == "n"           # full loop from step 0 now
+
+
 def _nav_ok(steps):
     from mmud.navigation.graph import NavResult, NavStatus
     return NavResult(NavStatus.OK, steps)
@@ -95,7 +114,7 @@ def test_start_skips_approach_when_already_at_loop_start():
     assert travel.decide(GameState()) == "n"           # straight into the loop
 
 
-def test_start_reports_when_no_route_to_loop_start():
+def test_no_route_to_loop_start_falls_back_to_wander():
     from mmud.navigation.graph import NavResult, NavStatus
     path = _loop("HOME", [("AAAA0001", "n")])
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
@@ -103,9 +122,25 @@ def test_start_reports_when_no_route_to_loop_start():
                         find_path=lambda f, t: NavResult(NavStatus.NO_PATH, []),
                         current_hex="FAR00000")
     msg = runner.start()
-    assert not runner.running
-    assert not travel.active
-    assert "route" in msg.lower()
+    assert runner.running and "wander" in msg.lower()
+
+
+def test_wanders_when_position_unknown_then_engages_loop():
+    from mmud.navigation.graph import NavResult, NavStatus
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "e")])
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
+                        find_path=lambda f, t: NavResult(NavStatus.NO_PATH, []),
+                        current_hex="")                  # unknown position
+    msg = runner.start()
+    assert "wander" in msg.lower() and runner.running
+    gs = GameState(); gs.last_exits = ["s", "e"]
+    assert travel.decide(gs) in ("s", "e")               # wander move
+    travel.on_arrival(gs, {"ZZZZ9999"})                  # not on loop -> keep going
+    gs.last_exits = ["w", "n"]
+    assert travel.decide(gs) in ("w", "n")
+    travel.on_arrival(gs, {"AAAA0001"})                  # stepped onto the loop
+    assert travel.decide(gs) == "n"                      # real loop engaged at idx 0
 
 
 def test_missing_path_does_not_arm():
