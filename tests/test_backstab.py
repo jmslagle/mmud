@@ -31,6 +31,26 @@ def test_full_sequence():
     assert eng.decide(gs) is None            # done; melee takes over
 
 
+def test_backstab_skips_good_npc():
+    # kill-type 2 (guard/shopkeeper) -> never opened on
+    eng = _engine()
+    gs = GameState(); gs.set_hp(100, 100)
+    gs.monsters_present.append(MonsterSighting(name="happy guardsman", kill_type=2))
+    assert eng.decide(gs) is None
+
+
+def test_backstab_targets_hostile_over_npc():
+    eng = _engine()
+    gs = GameState(); gs.set_hp(100, 100)
+    gs.monsters_present.append(MonsterSighting(name="happy guardsman", kill_type=2))
+    gs.monsters_present.append(MonsterSighting(name="kobold thief", kill_type=4))
+    assert eng.decide(gs) == "hide"   # there IS an attackable target -> proceed
+    eng.on_line("You slip into the shadows.")
+    eng.decide(gs)
+    eng.on_line("You move silently.")
+    assert eng.decide(gs) == "bs kobold thief"
+
+
 def test_disabled_returns_none():
     eng = BackstabEngine(CombatConfig(backstab=False), StealthConfig())
     assert eng.decide(_state_with_target()) is None

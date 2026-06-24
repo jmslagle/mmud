@@ -115,6 +115,36 @@ def test_pre_attack_skipped_when_no_monsters():
 from mmud.state.game_state import MonsterSighting
 
 
+def test_attack_spell_skips_good_npc():
+    # kill-type 2 (shopkeeper/guard) -> never auto-nuked, out of combat
+    cfg = SpellsConfig(attack="magic missile")
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(False)
+    gs.monsters_present = [MonsterSighting(name="happy guardsman", kill_type=2)]
+    assert SpellEngine(cfg).decide(gs) is None
+
+
+def test_attack_spell_skips_neutral_unless_attack_neutral():
+    cfg = SpellsConfig(attack="magic missile")
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(False)
+    gs.monsters_present = [MonsterSighting(name="giant rat", kill_type=3)]
+    assert SpellEngine(cfg).decide(gs) is None
+    assert SpellEngine(cfg, attack_neutral=True).decide(gs) == "magic missile giant rat"
+
+
+def test_attack_spell_casts_on_hostile():
+    cfg = SpellsConfig(attack="magic missile")
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(False)
+    gs.monsters_present = [MonsterSighting(name="kobold thief", kill_type=4)]
+    assert SpellEngine(cfg).decide(gs) == "magic missile kobold thief"
+
+
+def test_attack_spell_fights_back_in_combat_even_npc():
+    cfg = SpellsConfig(attack="magic missile")
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(True)
+    gs.monsters_present = [MonsterSighting(name="happy guardsman", kill_type=2)]
+    assert SpellEngine(cfg).decide(gs) == "magic missile happy guardsman"
+
+
 def _combat_state():
     gs = GameState()
     gs.set_hp(100, 100); gs.set_mana(100, 100); gs.set_combat(True)
