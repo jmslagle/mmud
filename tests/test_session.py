@@ -20,6 +20,16 @@ def test_exp_rate_per_hour():
     assert m.exp_rate_per_hour() == 4000.0
 
 
+def test_on_exp_gain_accumulates_and_rates():
+    m = _mgr()
+    m.on_exp_gain(26, now=0.0)           # first kill seeds baseline
+    assert m.exp_gained == 26
+    assert m.exp_rate_per_hour() == 0.0  # one time point -> no rate yet
+    m.on_exp_gain(34, now=1800.0)        # +34 -> total 60 over 30 min
+    assert m.exp_gained == 60
+    assert m.exp_rate_per_hour() == 120.0  # 60 exp / 0.5h
+
+
 def test_hours_elapsed():
     m = _mgr(start=0.0)
     assert m.hours_elapsed(7200.0) == 2.0

@@ -33,7 +33,7 @@ from mmud.parser.room_parser import RoomParser
 from mmud.parser.ansi import render_line, visible_text
 from mmud.state.game_state import GameState, MonsterSighting
 from mmud.navigation.navigator import Navigator
-from mmud.combat.combat import CombatEngine
+from mmud.combat.combat import CombatEngine, select_target
 from mmud.automation.login import LoginHandler
 from mmud.automation.spells import SpellEngine
 
@@ -48,12 +48,12 @@ _MP_RE = re.compile(r"\b(?:MA|MP)=(\d+)(?:/(\d+))?")
 _STAT_HITS_RE = re.compile(r"\b(?:Hits|Hit Points|HP):\s*(\d+)/(\d+)")
 _STAT_MANA_RE = re.compile(r"\bMana:\s*(\d+)/(\d+)")
 # Line rendering (cursor replay + colour) lives in mmud.parser.ansi.
-_COMBAT_EXIT_RE = re.compile(
-    r"breaks off combat|Combat Engaged:\s*Off|"
-    r"You have (?:slain|killed)|falls? to the ground|"
-    r"(?:is|are) dead\b",
-    re.IGNORECASE,
-)
+# Authoritative combat-state markers (megamud.exe: *Combat Engaged* 0x4b78ac,
+# *Combat Off* 0x4b789c, " breaks off combat" 0x4b77f4). *Combat Off* fires
+# between rounds mid-fight, so it only toggles the flag — it does NOT clear the
+# roster (combat_event_parse @ 0x004176b0).
+_COMBAT_ENGAGED_RE = re.compile(r"\*Combat Engaged\*", re.IGNORECASE)
+_COMBAT_OFF_RE = re.compile(r"\*Combat Off\*|breaks off combat", re.IGNORECASE)
 _NAV_FAIL_RE = re.compile(
     r"(?:you can'?t go that way|alas|there is no exit|"
     r"you cannot go that direction|no exit|blocked|closed)",
@@ -218,6 +218,10 @@ class MudBot:
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
+        # True once an "Also here:" line is parsed in the current room display;
+        # checked at the "Obvious exits:" terminator to clear a monster-free room.
+        self._also_here_seen = False
+        self._stat_requested = False   # send `stat` once per session to learn maxes
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()
@@ -365,9 +369,10 @@ class MudBot:
         # 12. invites.check    auto-accept party invites -> enqueue join
         # 13. loot.process     remember dropped loot for the get decider
         # 14. _parse_get_results  GETTING/EQUIPPING task success/failure
-        # 15. _parse_room      room detection: resets per-room state, learns exits
-        # 16. _parse_exits     exit list -> travel arrival, completes SEARCHING
-        # 17. _parse_combat_exit  combat end -> clear monsters, mark inv dirty
+        # 15. _parse_room      room detection + roster (Also-here REPLACE / arrival append)
+        # 16. _parse_exits     exits -> travel arrival; clears roster for empty rooms
+        # 17. _parse_combat_state  *Combat Engaged*/*Combat Off* -> in_combat (no roster clear)
+        # 17b. _parse_monster_removal  named death / slay / "you do not see" -> drop monster
         # 18. _parse_combat_stats hit/miss/backstab accounting
         # 19. _handle_doors    open doors when travelling/looping (needs room/exits)
         # 20. _parse_nav_failure  "can't go that way" -> travel/loop failure
@@ -401,7 +406,8 @@ class MudBot:
         self._parse_get_results(clean)
         self._parse_room(clean)
         self._parse_exits(clean)
-        self._parse_combat_exit(clean)
+        self._parse_combat_state(clean)
+        self._parse_monster_removal(clean)
         self._parse_combat_stats(clean)
         self._handle_doors(clean)
         self._parse_nav_failure(clean)
@@ -411,13 +417,12 @@ class MudBot:
         result = self._matcher.match(clean)
         if result:
             self._state.apply_match(result)
+            # NOTE: effect apply/remove only. Combat state is driven by the
+            # authoritative *Combat Engaged*/*Combat Off* markers in
+            # _parse_combat_state — NOT by any MESSAGES.MD apply-match (which fired
+            # for buffs/effects and falsely flagged combat).
             if result.is_apply:
                 self._emit(EffectApplied(name=result.pattern.name, flags=result.pattern.flags))
-                prev = self._state.in_combat
-                self._state.set_combat(True)
-                if not prev:
-                    self._session_log.event("combat=on")
-                    self._emit(CombatChanged(in_combat=True))
             else:
                 self._emit(EffectRemoved(name=result.pattern.name))
 
@@ -472,12 +477,23 @@ class MudBot:
                     and self._state.task.payload.get("condition") == cond.name):
                 self._state.complete_task()
 
+    def _build_sighting(self, name: str, count: int) -> MonsterSighting:
+        rec = self._monster_db.find(name)
+        if rec is None and self._store is not None:
+            self._store.learn_monster(name)
+        return MonsterSighting(
+            name=name, count=count,
+            exp_each=rec.exp_value if rec else 0,
+            record_id=rec.record_id if rec else -1,
+        )
+
     def _parse_room(self, line: str) -> None:
         if code := self._room_parser.detect_room(line):
             prev = self._state.current_room
             prev_hex = self._state.current_hex
             self._state.set_room(code)
             self._state.monsters_present.clear()
+            self._also_here_seen = False   # new room display starting
             self._state.players_present = []
             self._state.ground_items.clear()
             self._state.ground_coins.clear()
@@ -500,15 +516,16 @@ class MudBot:
         else:
             sightings = self._room_parser.extract_sightings(line)
             if sightings:
-                for name, count in sightings:
-                    rec = self._monster_db.find(name)
-                    self._state.monsters_present.append(MonsterSighting(
-                        name=name, count=count,
-                        exp_each=rec.exp_value if rec else 0,
-                        record_id=rec.record_id if rec else -1,
-                    ))
-                    if rec is None and self._store is not None:
-                        self._store.learn_monster(name)
+                built = [self._build_sighting(name, count) for name, count in sightings]
+                # "Also here:" is the authoritative room roster -> REPLACE (drops
+                # stale monsters, like MegaMud's room_entity_classify_all). An
+                # arrival ("A rat creeps in") / "X is here" -> append-if-absent.
+                if line.lower().startswith("also here:"):
+                    self._state.replace_monsters(built)
+                    self._also_here_seen = True
+                else:
+                    for s in built:
+                        self._state.add_monster(s)
                 self._session_log.event(
                     "monsters=" + repr([m.name for m in self._state.monsters_present]))
                 self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
@@ -536,6 +553,12 @@ class MudBot:
 
     def _handle_login(self, line: str) -> None:
         if self._login_handler.in_game:
+            # Learn max HP/MA once on entry: the live prompt is current-only
+            # ("[HP=46/MA=12]"), so without a `stat` read max stays 0 and the
+            # flee/rest/mana-gate thresholds never fire (they divide by max).
+            if not self._stat_requested:
+                self._stat_requested = True
+                self._state.enqueue("stat")
             # Check auto_start on first game entry
             if (not self._auto_started
                     and self._config.navigation.auto_start):
@@ -555,17 +578,32 @@ class MudBot:
             self._emit(PlayerSeen(name=entry.name, level=entry.level,
                                   rep=entry.rep, gang=entry.gang))
             return
-        # XP tracking
+        # Per-kill experience: "You gain N experience." This is MegaMud's kill
+        # signal (combat_event_parse @ 0x004176b0): accumulate the delta, count
+        # the kill, and remove the monster we were fighting (the current target,
+        # by position — slot 0 == select_target's pick). The named death/slay
+        # lines in _parse_monster_removal handle the by-name cases.
+        if (gain := self._who_parser.parse_exp_gain_line(line)) is not None:
+            self._session.on_exp_gain(gain, time.monotonic())
+            self._state.add_kill()
+            self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
+            self._emit(SessionStatUpdated(key="exp_gained",
+                                          value=str(self._session.exp_gained)))
+            target = select_target(
+                self._state.monster_names(),
+                [p.lower() for p in self._config.combat.monster_priority],
+                self._config.combat.attack_order)
+            if target and self._state.remove_monster(target):
+                self._on_monster_killed(f"killed {target}")
+            else:
+                self._on_monster_killed("kill")
+            return
+        # Absolute total from the stat/exp screen ("Exp: 52497") — display only.
         if (exp := self._who_parser.parse_exp_line(line)) is not None:
             self._state.set_exp(exp)
-            self._session.on_exp(exp, time.monotonic())
             self._emit(SessionStatUpdated(key="exp", value=str(exp)))
         if (lvl := self._who_parser.parse_level_line(line)) is not None:
             self._state.set_level(lvl)
-        # Kill detection: "You have slain the X" (already in combat exit)
-        if "have slain" in line.lower() or "have killed" in line.lower():
-            self._state.add_kill()
-            self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
 
     def _room_graph(self):
         if self._graph is None:
@@ -581,11 +619,37 @@ class MudBot:
         exits = parse_exits(line)
         if exits is None:
             return
+        # "Obvious exits:" terminates a room display. If this display showed no
+        # "Also here:", the room has no monsters -> clear the roster (handles
+        # rooms missing from ROOMS.MD, where name-detection can't fire).
+        if not self._also_here_seen and self._state.monsters_present:
+            self._state.replace_monsters([])
+            self._session_log.event("monsters=[] (empty room)")
+        self._also_here_seen = False
         self._state.last_exits = exits
         self._travel.on_arrival(self._state, self._last_seen_hex)
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()
+
+    def _parse_monster_removal(self, line: str) -> None:
+        """Drop a monster from the roster on a named death / slay / "you do not
+        see X" line (combat-state-independent). The unnamed "You gain N
+        experience" kill is handled in _parse_who_and_exp by target removal."""
+        name = self._room_parser.extract_removed_monster(line)
+        if name and self._state.remove_monster(name):
+            self._on_monster_killed(f"removed {name}")
+
+    def _on_monster_killed(self, reason: str) -> None:
+        """Shared cleanup when a monster leaves the roster via death/kill: mark
+        loot pending and release the attack-spell pace token so the bot loots and
+        moves promptly instead of waiting out the cast cooldown."""
+        self._state.inventory_dirty = True   # loot may have dropped
+        if self._state.task.type is TaskType.CASTING:
+            self._state.abort_task()
+        self._session_log.event(
+            "monsters=" + repr([m.name for m in self._state.monsters_present])
+            + f" ({reason})")
 
     def _handle_doors(self, line: str) -> None:
         if not (self._travel.active or (self._loop_runner and self._loop_runner.running)):
@@ -645,17 +709,21 @@ class MudBot:
                     self._equip_decider.mark_failed(last)
                 self._state.abort_task()
 
-    def _parse_combat_exit(self, line: str) -> None:
-        if self._state.in_combat and _COMBAT_EXIT_RE.search(line):
-            self._state.set_combat(False)
-            self._state.monsters_present.clear()
-            self._state.inventory_dirty = True   # loot may have dropped
-            # Release the attack-spell pace token: the cast round is moot now that
-            # combat is over, so loot/movement isn't blocked until it times out.
-            if self._state.task.type is TaskType.CASTING:
-                self._state.abort_task()
-            self._session_log.event("combat=off")
-            self._emit(CombatChanged(in_combat=False))
+    def _parse_combat_state(self, line: str) -> None:
+        """Drive in_combat from the authoritative *Combat Engaged*/*Combat Off*
+        markers. Does NOT clear the monster roster (handled by death/exp lines and
+        room re-displays) — *Combat Off* fires between rounds while the monster is
+        still present (combat_event_parse @ 0x004176b0)."""
+        if _COMBAT_ENGAGED_RE.search(line):
+            if not self._state.in_combat:
+                self._state.set_combat(True)
+                self._session_log.event("combat=on")
+                self._emit(CombatChanged(in_combat=True))
+        elif _COMBAT_OFF_RE.search(line):
+            if self._state.in_combat:
+                self._state.set_combat(False)
+                self._session_log.event("combat=off")
+                self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:
         was_running = self._state.task.type is TaskType.RUNNING

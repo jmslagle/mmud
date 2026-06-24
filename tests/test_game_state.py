@@ -9,6 +9,39 @@ def _make_result(name, flags, is_apply, captures=None):
     return MatchResult(pattern=p, is_apply=is_apply, captures=captures or {})
 
 
+def test_replace_monsters_drops_stale():
+    from mmud.state.game_state import MonsterSighting
+    gs = GameState()
+    gs.monsters_present = [MonsterSighting(name="angry kobold thief"),
+                          MonsterSighting(name="kobold thief")]
+    gs.replace_monsters([MonsterSighting(name="kobold thief")])
+    assert gs.monster_names() == ["kobold thief"]
+
+
+def test_remove_monster_exact_not_substring():
+    from mmud.state.game_state import MonsterSighting
+    gs = GameState()
+    gs.monsters_present = [MonsterSighting(name="angry kobold thief"),
+                          MonsterSighting(name="kobold thief")]
+    assert gs.remove_monster("kobold thief") is True       # exact, not the "angry" one
+    assert gs.monster_names() == ["angry kobold thief"]
+
+
+def test_remove_monster_decrements_count_then_drops():
+    from mmud.state.game_state import MonsterSighting
+    gs = GameState()
+    gs.monsters_present = [MonsterSighting(name="rat", count=2)]
+    gs.remove_monster("rat")
+    assert gs.monsters_present[0].count == 1
+    gs.remove_monster("rat")
+    assert gs.monster_names() == []
+
+
+def test_remove_monster_absent_returns_false():
+    gs = GameState()
+    assert gs.remove_monster("ghost") is False
+
+
 def test_initial_state():
     gs = GameState()
     assert gs.current_room == ""

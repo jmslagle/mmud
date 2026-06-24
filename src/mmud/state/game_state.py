@@ -89,6 +89,31 @@ class GameState:
     def monster_names(self) -> list[str]:
         return [s.name for s in self.monsters_present]
 
+    def replace_monsters(self, sightings: list[MonsterSighting]) -> None:
+        """The room's `Also here:` list is the authoritative roster — replace,
+        dropping stale entries (mirrors MegaMud's room_entity_classify_all)."""
+        self.monsters_present = list(sightings)
+
+    def add_monster(self, sighting: MonsterSighting) -> None:
+        """Append-if-absent on an arrival line (exact-name dedupe)."""
+        if not any(s.name.lower() == sighting.name.lower()
+                   for s in self.monsters_present):
+            self.monsters_present.append(sighting)
+
+    def remove_monster(self, name: str) -> bool:
+        """Remove one sighting by EXACT (case-insensitive) name — decrement its
+        count, drop it when it reaches 0. Exact match so "kobold thief" never
+        removes "angry kobold thief". Returns True if something was removed."""
+        key = name.strip().lower()
+        for i, s in enumerate(self.monsters_present):
+            if s.name.lower() == key:
+                if s.count > 1:
+                    s.count -= 1
+                else:
+                    del self.monsters_present[i]
+                return True
+        return False
+
     def monster_count(self) -> int:
         return sum(s.count for s in self.monsters_present)
 
