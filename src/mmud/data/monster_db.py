@@ -42,21 +42,30 @@ class MonsterDB:
 
     def find(self, name: str) -> Monster | None:
         key = normalize(name)
-        if key in self._by_name:
-            return self._by_name[key]
+        exact = self._by_name.get(key)
+        # A REAL (catalogued, record_id >= 0) exact match always wins. A learned
+        # placeholder (negative id, e.g. a bogus "happy guardsman" recorded back
+        # when lookups were exact-only) must NOT shadow the real base name, so we
+        # fall through to adjective matching and only use the learned record if no
+        # real monster resolves.
+        if exact is not None and exact.record_id >= 0:
+            return exact
         # naive de-pluralize: "orc warriors" -> "orc warrior"
-        if key.endswith("s") and key[:-1] in self._by_name:
-            return self._by_name[key[:-1]]
+        if key.endswith("s"):
+            dep = self._by_name.get(key[:-1])
+            if dep is not None and dep.record_id >= 0:
+                return dep
         # Leading adjectives/moods: MegaMud's monster_db_lookup_by_name (0x4544d0)
         # matches a DB base name as a word-boundary substring of the room name
         # (offset 0 or preceded by a space), absorbing words like "happy"/"large".
-        # We prefer the LONGEST match so "rat" can't hijack "giant rat".
+        # Real records only, preferring the LONGEST ("rat" can't hijack "giant rat").
         best: Monster | None = None
         best_len = 0
         for db_name, mon in self._by_name.items():
-            if len(db_name) > best_len and _word_boundary_match(key, db_name):
+            if (mon.record_id >= 0 and len(db_name) > best_len
+                    and _word_boundary_match(key, db_name)):
                 best, best_len = mon, len(db_name)
-        return best
+        return best or exact
 
     def exp_value(self, name: str) -> int:
         m = self.find(name)

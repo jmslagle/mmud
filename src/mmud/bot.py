@@ -638,7 +638,8 @@ class MudBot:
                     for s in built:
                         self._state.add_monster(s)
                 self._session_log.event(
-                    "monsters=" + repr([m.name for m in self._state.monsters_present]))
+                    "monsters=" + repr([(m.name, getattr(m, "kill_type", 0))
+                                        for m in self._state.monsters_present]))
                 self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
             players = self._room_parser.extract_players(line)
             if players:

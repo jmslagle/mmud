@@ -137,6 +137,30 @@ class ImportReport:
     skipped_sources: int = 0
 
 
+def prune_learned_resolvable(store: GameStore) -> int:
+    """Drop learned (negative-id) monster records whose name now resolves to a
+    REAL catalogued monster via adjective matching — e.g. a bogus "happy guardsman"
+    recorded back when lookups were exact-only, which would otherwise shadow the
+    real "guardsman". Returns the number removed. Self-heals an out-of-date store."""
+    from mmud.data.binary import Monster
+    from mmud.data.monster_db import MonsterDB
+    monsters = store.data["monsters"]
+    real = [_to_dataclass(Monster, r) for r in monsters.values()
+            if r.get("record_id", 0) >= 0]
+    db = MonsterDB(real)
+    drop = []
+    for key, rec in monsters.items():
+        if rec.get("record_id", 0) < 0:
+            m = db.find(rec.get("name", ""))
+            if m is not None and m.record_id >= 0:
+                drop.append(key)
+    for key in drop:
+        del monsters[key]
+    if drop:
+        store.save()
+    return len(drop)
+
+
 def import_md(store: GameStore, data_dir: pathlib.Path) -> ImportReport:
     """Convert/merge the MDB2 binaries into the store. Never writes the MDs.
 
@@ -184,6 +208,7 @@ def import_md(store: GameStore, data_dir: pathlib.Path) -> ImportReport:
         report.added[section] = added
         report.updated[section] = updated
     store.save()
+    prune_learned_resolvable(store)   # self-heal bogus learned adjective variants
     return report
 
 
