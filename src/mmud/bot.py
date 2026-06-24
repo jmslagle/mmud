@@ -52,6 +52,7 @@ _STAT_MANA_RE = re.compile(r"\bMana:\s*(\d+)/(\d+)")
 # *Combat Off* 0x4b789c, " breaks off combat" 0x4b77f4). *Combat Off* fires
 # between rounds mid-fight, so it only toggles the flag — it does NOT clear the
 # roster (combat_event_parse @ 0x004176b0).
+IDLE_REFRESH_S = 10.0   # idle keepalive: bare Enter every 10s (MegaMud parity)
 _COMBAT_ENGAGED_RE = re.compile(r"\*Combat Engaged\*", re.IGNORECASE)
 _COMBAT_OFF_RE = re.compile(r"\*Combat Off\*|breaks off combat", re.IGNORECASE)
 _NAV_FAIL_RE = re.compile(
@@ -218,6 +219,7 @@ class MudBot:
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
         self._pending_move = ""
+        self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
         # True once an "Also here:" line is parsed in the current room display;
         # checked at the "Obvious exits:" terminator to clear a monster-free room.
         self._also_here_seen = False
@@ -342,6 +344,24 @@ class MudBot:
             self._check_task_timeout(time.monotonic())
             self._check_session(time.monotonic())
             self._scheduler.tick(time.monotonic())
+            await self._maybe_idle_refresh()
+
+    async def _maybe_idle_refresh(self) -> None:
+        """MegaMud's 10-second room refresh (ai_room_refresh_trigger @ 0x00407e1a):
+        when idle in-game it sends a bare Enter so the server re-prints the
+        prompt/room and the bot re-syncs (sees wandered-in monsters, gets a fresh
+        prompt to act on, recovers from a stalled combat). Our decision loop only
+        fires on an incoming line, so without this the bot stalls when the server
+        goes quiet. Throttled separately from _last_activity so it doesn't mask
+        the AFK timer."""
+        if not self._login_handler.in_game:
+            return
+        now = time.monotonic()
+        if (now - self._last_activity >= IDLE_REFRESH_S
+                and now - self._last_refresh >= IDLE_REFRESH_S):
+            self._last_refresh = now
+            self._session_log.tx("(idle refresh)")
+            await self._conn.send("")   # bare Enter (\r) — re-print prompt/room
 
     def _check_afk(self) -> None:
         cfg = self._config.afk
