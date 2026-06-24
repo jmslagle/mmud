@@ -2,6 +2,7 @@ from __future__ import annotations
 import re
 from enum import Enum, auto
 from mmud.automation.decision import PRIO_FLEE
+from mmud.combat.combat import attackable_sightings, select_attack_target
 from mmud.config.schema import CombatConfig, StealthConfig
 from mmud.state.game_state import GameState
 from mmud.state.tasks import TaskType
@@ -34,6 +35,10 @@ class BackstabEngine:
     def __init__(self, combat: CombatConfig, stealth: StealthConfig) -> None:
         self._enabled = combat.backstab
         self._run_if_fails = combat.run_if_bs_fails
+        # Share the melee/nuke target policy so we never open on a guard/NPC.
+        self._attack_neutral = combat.attack_neutral
+        self._priority = [p.lower() for p in combat.monster_priority]
+        self._attack_order = combat.attack_order
         # MegaMud hardcodes these verbs (literals "hide"/"sneak"/"bs" — see
         # docs/megamud-commands-reference.md §3); they are not configurable.
         self._hide_cmd = "hide"
@@ -65,9 +70,12 @@ class BackstabEngine:
                 self._stage = _Stage.RUN if self._run_if_fails else _Stage.DONE
 
     def decide(self, state: GameState) -> str | None:
-        if not self._enabled or state.in_combat or not state.monsters_present:
-            if not state.monsters_present and not state.in_combat:
-                self.reset()        # room cleared: new encounter next time
+        # Only open on an attackable target — NPCs/guards (kill-type 2, or neutral
+        # when attack_neutral is off) never trigger a backstab.
+        targets = attackable_sightings(state, self._attack_neutral)
+        if not self._enabled or state.in_combat or not targets:
+            if not targets and not state.in_combat:
+                self.reset()        # no valid target: new encounter next time
             return None
         if self._stage is _Stage.IDLE:
             self._stage = _Stage.HIDING
@@ -77,7 +85,7 @@ class BackstabEngine:
             return self._sneak_cmd
         if self._stage is _Stage.SNUCK:
             self._stage = _Stage.STABBING
-            return f"bs {state.monster_names()[0]}"
+            return f"bs {select_attack_target(state, self._priority, self._attack_order, self._attack_neutral)}"
         if self._stage is _Stage.RUN:
             self._stage = _Stage.DONE
             state.begin_task(TaskType.RUNNING, priority=PRIO_FLEE, timeout_s=15.0)

@@ -33,7 +33,7 @@ from mmud.parser.room_parser import RoomParser
 from mmud.parser.ansi import render_line, visible_text
 from mmud.state.game_state import GameState, MonsterSighting
 from mmud.navigation.navigator import Navigator
-from mmud.combat.combat import CombatEngine, select_target
+from mmud.combat.combat import CombatEngine, select_attack_target
 from mmud.automation.login import LoginHandler
 from mmud.automation.spells import SpellEngine
 
@@ -180,6 +180,7 @@ class MudBot:
             self._config.spells,
             monster_priority=self._config.combat.monster_priority,
             attack_order=self._config.combat.attack_order,
+            attack_neutral=self._config.combat.attack_neutral,
         )
         self._engine = DecisionEngine()
         self._safety = SafetyMonitor(self._config.safety)
@@ -734,10 +735,11 @@ class MudBot:
             self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
             self._emit(SessionStatUpdated(key="exp_gained",
                                           value=str(self._session.exp_gained)))
-            target = select_target(
-                self._state.monster_names(),
+            target = select_attack_target(
+                self._state,
                 [p.lower() for p in self._config.combat.monster_priority],
-                self._config.combat.attack_order)
+                self._config.combat.attack_order,
+                self._config.combat.attack_neutral)
             if target and self._state.remove_monster(target):
                 self._on_monster_killed(f"killed {target}")
             else:

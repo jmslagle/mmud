@@ -2,7 +2,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 from mmud.automation.decision import PRIO_SPELLS
-from mmud.combat.combat import select_target
+from mmud.combat.combat import attackable_sightings, select_attack_target
 from mmud.config.schema import SpellsConfig
 from mmud.state.game_state import GameState
 from mmud.state.tasks import TaskType
@@ -18,12 +18,13 @@ class SpellEngine:
     """Decides which spell to cast based on SpellsConfig and current GameState."""
 
     def __init__(self, config: SpellsConfig, monster_priority: list[str] | None = None,
-                 attack_order: str = "first",
+                 attack_order: str = "first", attack_neutral: bool = False,
                  now: Callable[[], float] = time.monotonic) -> None:
         self._cfg = config
         # Target selection mirrors melee so the nuke and the swing share a target.
         self._monster_priority = [p.lower() for p in (monster_priority or [])]
         self._attack_order = attack_order
+        self._attack_neutral = attack_neutral
         self._now = now
         # Initialize to -BLESS_COOLDOWN_TICKS so the first cast is always allowed
         self._bless_cooldowns: list[int] = [-BLESS_COOLDOWN_TICKS] * len(config.bless)
@@ -40,8 +41,8 @@ class SpellEngine:
         """The primary attack spell is single-target offensive: MegaMud sends
         "{spell} {target}" (combat_spell_cast @ 0x00407b7d). Without the target
         the server rejects it ("You must specify a target for that spell!")."""
-        target = select_target(state.monster_names(), self._monster_priority,
-                               self._attack_order)
+        target = select_attack_target(state, self._monster_priority,
+                                      self._attack_order, self._attack_neutral)
         return f"{self._cfg.attack} {target}".strip()
 
     def _begin_cast(self, state: GameState, command: str) -> str:
@@ -81,9 +82,11 @@ class SpellEngine:
                 and not state.in_combat):
             return self._cfg.heal
 
-        # Attack spell — cast when a monster is present (initiating combat or
-        # continuing it); takes priority over bless. Bounded by max_cast_count.
-        if self._cfg.attack and state.monsters_present:
+        # Attack spell — cast when an *attackable* monster is present (initiating)
+        # or we're already fighting; takes priority over bless. Bounded by
+        # max_cast_count. NPCs/guards (kill-type 2) never trigger a nuke.
+        attackable = attackable_sightings(state, self._attack_neutral)
+        if self._cfg.attack and (attackable or state.in_combat):
             limit = self._cfg.max_cast_count
             if limit <= 0 or self._attack_casts < limit:
                 self._attack_casts += 1
@@ -100,9 +103,8 @@ class SpellEngine:
                 return self._cfg.melee_weapon_cmd
             return None
 
-        # Pre-attack spell — cast just before engaging
-        if (self._cfg.pre_attack and not state.in_combat
-                and state.monsters_present):
+        # Pre-attack spell — cast just before engaging (only for attackable targets)
+        if (self._cfg.pre_attack and not state.in_combat and attackable):
             return self._cfg.pre_attack
 
         # Bless spells (check each slot)

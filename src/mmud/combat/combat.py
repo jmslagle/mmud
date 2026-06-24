@@ -20,6 +20,25 @@ def is_attackable(kill_type: int, attack_neutral: bool) -> bool:
     return True   # kill-type 4 (hostile) or 0 (unknown/uncatalogued)
 
 
+def attackable_sightings(state: GameState, attack_neutral: bool) -> list:
+    """The monsters in the room the bot is allowed to *initiate* on, filtered by
+    kill-type. Tolerates bare-string entries (treated as unknown/attackable)."""
+    return [s for s in state.monsters_present
+            if is_attackable(getattr(s, "kill_type", 0), attack_neutral)]
+
+
+def select_attack_target(state: GameState, priority: list[str], attack_order: str,
+                         attack_neutral: bool) -> str:
+    """THE shared attack-target picker for every attack path (melee swing, nuke,
+    backstab). Returns the chosen monster name, or "" if nothing should be hit.
+    Only attackable (non-NPC) monsters are eligible to initiate on; once already
+    in combat we fight back against whatever is here (a guard that engaged us)."""
+    names = [getattr(s, "name", s) for s in attackable_sightings(state, attack_neutral)]
+    if not names and state.in_combat:
+        names = state.monster_names()
+    return select_target(names, priority, attack_order)
+
+
 def select_target(names: list[str], priority: list[str], attack_order: str) -> str:
     """Pick the monster to act on: configured priority first, else by attack_order.
     `priority` is expected pre-lowercased. Returns "" when no monster is present.
@@ -72,7 +91,7 @@ class CombatEngine:
         # Non-hostile creatures (kill-type 2 NPCs, neutral guards when
         # attack_neutral is off) never trigger an initiation — that's the fix for
         # auto-attacking town guards/shopkeepers.
-        if state.in_combat or self._attackable_sightings(state):
+        if state.in_combat or attackable_sightings(state, self.attack_neutral):
             if state.in_combat and hp_pct <= self.flee_threshold:
                 return "flee"
             if state.max_mana > 0 and mp_pct < self.mana_attack_pct:
@@ -111,14 +130,6 @@ class CombatEngine:
             return "rest"
         return None
 
-    def _attackable_sightings(self, state: GameState) -> list:
-        return [s for s in state.monsters_present
-                if is_attackable(s.kill_type, self.attack_neutral)]
-
     def _pick_target(self, state: GameState) -> str:
-        names = [s.name for s in self._attackable_sightings(state)]
-        # Already engaged but nothing here is a type we'd initiate on (e.g. a guard
-        # that attacked us first): fight back against whatever is in the room.
-        if not names and state.in_combat:
-            names = state.monster_names()
-        return select_target(names, self.monster_priority, self.attack_order)
+        return select_attack_target(state, self.monster_priority,
+                                    self.attack_order, self.attack_neutral)

@@ -11,6 +11,15 @@ def normalize(name: str) -> str:
     return _ARTICLE_RE.sub("", name.strip().lower())
 
 
+def _word_boundary_match(room: str, db_name: str) -> bool:
+    """True if room == db_name, or room ends with " <db_name>". MegaMud's
+    monster_db_lookup_by_name (0x4544d0) matches the base name as a word-boundary
+    substring (offset 0 or after a space); the base name is the tail of a display
+    name ("happy guardsman", "a large giant rat"), so we anchor to the suffix —
+    safer than MegaMud's left-only test (won't match "rat" inside "rat catcher")."""
+    return room == db_name or room.endswith(" " + db_name)
+
+
 class MonsterDB:
     """Name-indexed monster lookup over MONSTERS.MD records."""
 
@@ -38,7 +47,16 @@ class MonsterDB:
         # naive de-pluralize: "orc warriors" -> "orc warrior"
         if key.endswith("s") and key[:-1] in self._by_name:
             return self._by_name[key[:-1]]
-        return None
+        # Leading adjectives/moods: MegaMud's monster_db_lookup_by_name (0x4544d0)
+        # matches a DB base name as a word-boundary substring of the room name
+        # (offset 0 or preceded by a space), absorbing words like "happy"/"large".
+        # We prefer the LONGEST match so "rat" can't hijack "giant rat".
+        best: Monster | None = None
+        best_len = 0
+        for db_name, mon in self._by_name.items():
+            if len(db_name) > best_len and _word_boundary_match(key, db_name):
+                best, best_len = mon, len(db_name)
+        return best
 
     def exp_value(self, name: str) -> int:
         m = self.find(name)
