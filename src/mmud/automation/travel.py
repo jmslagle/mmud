@@ -44,6 +44,10 @@ class TravelDecider:
     def active(self) -> bool:
         return bool(self._steps)
 
+    @property
+    def route(self) -> list[RouteStep]:
+        return list(self._steps)
+
     def set_route(self, steps: list[RouteStep], loop: bool = False,
                   loop_from: int = 0) -> None:
         """Arm a route. When `loop`, a completed lap restarts at `loop_from`
@@ -83,32 +87,45 @@ class TravelDecider:
 
     # ---- signals from the bot -------------------------------------------------
 
-    def on_arrival(self, state: GameState, seen_hex: str = "") -> None:
+    def on_arrival(self, state: GameState, seen="") -> None:
+        """`seen` is the SET of candidate room hashes computed from the arrived
+        room's display (room title x exits). We match it against the corpus-recorded
+        destinations (step.expect / step.chosen are .MP hashes), which is how we
+        place ourselves even in rooms absent from ROOMS.MD. A bare hex string is
+        accepted too (tests/back-compat)."""
         if not self._steps or not self._in_flight:
             return
-        seen = seen_hex.upper()
-        if seen and seen == self._from_hex:
+        if isinstance(seen, (set, frozenset)):
+            seen_hexes = {h.upper() for h in seen if h}
+        else:
+            seen_hexes = {seen.upper()} if seen else set()
+        step = self._steps[self._cursor]
+        on_track = step.expect & seen_hexes
+        if seen_hexes and self._from_hex in seen_hexes and not on_track:
             # Re-display of the room we're leaving (e.g. an idle refresh that raced
-            # the move we just sent). The move hasn't resolved — keep waiting so we
-            # don't mistake the departure room for an off-route arrival ("lost").
+            # the move). The move hasn't resolved — keep waiting, don't advance.
             return
         self._in_flight = False
         self._retries = 0
-        step = self._steps[self._cursor]
-        if seen and seen not in step.expect:
-            # reality disagrees: resync against the whole route
-            for idx, other in enumerate(self._steps):
-                if seen in other.expect:
-                    self._bus.post(TravelResynced(from_step=self._cursor + 1,
-                                                  to_step=idx + 1))
-                    state.current_hex = seen
-                    self._cursor = idx + 1
-                    self._finish_if_done()
-                    return
-            state.current_hex = seen
-            self.clear(reason="lost")
+        if on_track:                                   # arrived as planned
+            state.current_hex = next(iter(on_track))
+            self._cursor += 1
+            self._finish_if_done()
             return
-        state.current_hex = seen or step.chosen
+        for idx, other in enumerate(self._steps):      # resync against any step
+            hit = other.expect & seen_hexes
+            if hit:
+                self._bus.post(TravelResynced(from_step=self._cursor + 1,
+                                              to_step=idx + 1))
+                state.current_hex = next(iter(hit))
+                self._cursor = idx + 1
+                self._finish_if_done()
+                return
+        # No hash placed us on the route (only the room's description/junk lines
+        # hashed, or we're genuinely off-route): trust that the move worked and
+        # advance via the planned destination. A real dead-end surfaces as a nav
+        # failure ("no exit") -> on_move_failed -> blocked, so we don't loop forever.
+        state.current_hex = step.chosen
         self._cursor += 1
         self._finish_if_done()
 
