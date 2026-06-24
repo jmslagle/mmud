@@ -35,6 +35,14 @@ _SLAIN_RE = re.compile(r"You (?:have )?(?:slain|killed)\s+(.+?)[.!]", re.IGNOREC
 _NOT_HERE_RE = re.compile(r"You do not see\s+(.+?)\s+here", re.IGNORECASE)
 
 
+def _plausible_monster_name(name: str) -> bool:
+    """Reject prose mis-matched as a monster: real names (MONSTERS.MD is <=30 chars)
+    are short. A description like '...with your every step.' captures 11 words —
+    guard the 'is here'/arrival patterns, which scan loosely for a verb."""
+    name = name.strip()
+    return 0 < len(name) <= 32 and len(name.split()) <= 5
+
+
 def _normalize_room_name(name: str) -> str:
     """Canonicalize a room name for matching: lowercase, drop commas, collapse
     whitespace. The server prints "Newhaven, Arena" while ROOMS.MD stores
@@ -86,12 +94,12 @@ class RoomParser:
             return self._classify_also_here(m.group(1))[0]
         if m := _IS_HERE_RE.match(line):
             name = m.group(1).strip().lower()
-            if name and not _NON_MONSTER.search(name):
+            if _plausible_monster_name(name) and not _NON_MONSTER.search(name):
                 return [(name, 1)]
             return []
         if m := _ARRIVES_RE.match(line):
             name = _PAREN_SUFFIX_RE.sub("", m.group(1)).strip().lower()
-            if name and not _NON_MONSTER.search(name):
+            if _plausible_monster_name(name) and not _NON_MONSTER.search(name):
                 return [(name, 1)]
             return []
         # NOTE: "You notice X here." is GROUND LOOT (handled by items.LootMonitor),

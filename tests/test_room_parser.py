@@ -126,6 +126,16 @@ def test_monster_arrival_line():
         "A fat giant rat creeps into the room from nowhere.") == [("fat giant rat", 1)]
 
 
+def test_description_sentence_is_not_a_monster():
+    # A room-description line that happens to contain an arrival verb ("...your
+    # every step.") must NOT be parsed as a monster — names aren't 11 words long.
+    p = RoomParser({})
+    assert p.extract_sightings(
+        "The bridge below your feet seems to creak oddly with your every step.") == []
+    assert p.extract_sightings(
+        "The walls here are covered in moss and the floor is wet.") == []
+
+
 def test_extract_removed_monster_death_falls():
     p = RoomParser({})
     assert p.extract_removed_monster(
