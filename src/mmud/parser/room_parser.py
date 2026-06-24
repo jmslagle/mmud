@@ -1,6 +1,7 @@
 from __future__ import annotations
 import re
 from mmud.data.rooms import Room
+from mmud.parser.exits_parser import room_id
 
 _NOTICE_RE = re.compile(r"You notice\s+(.*?)\s+here\.", re.IGNORECASE)
 _IS_HERE_RE = re.compile(
@@ -46,9 +47,29 @@ class RoomParser:
         self._name_to_code: dict[str, str] = {
             _normalize_room_name(r.name): code for code, r in rooms.items()
         }
+        self._hex_to_code: dict[str, str] = {
+            r.hex_id.upper(): code for code, r in rooms.items() if r.hex_id
+        }
 
     def detect_room(self, line: str) -> str | None:
         return self._name_to_code.get(_normalize_room_name(line))
+
+    def detect_room_from_block(self, candidates: list[str],
+                               exits_line: str) -> str | None:
+        """Resolve the current room by MegaMud's room hash: hash each recent
+        display line as a candidate title against the obvious-exits, and return the
+        code whose 32-bit id (ROOMS.MD HexID1) is a known room. Self-validating —
+        no need to pre-identify which line is the title — and it resolves rooms
+        whose live name differs from the abbreviated ROOMS.MD label (where
+        detect_room's name match fails)."""
+        for cand in candidates:
+            rid = room_id(cand, exits_line)
+            if rid is None:        # not an exits line -> nothing will match
+                return None
+            code = self._hex_to_code.get(rid)
+            if code:
+                return code
+        return None
 
     def extract_monsters(self, line: str) -> list[str]:
         """Monster names only (names-only view of extract_sightings)."""

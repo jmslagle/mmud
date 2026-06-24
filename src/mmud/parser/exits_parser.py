@@ -69,9 +69,8 @@ def exit_signature(line: str) -> int | None:
     (open-door 3 -> closed-door 2; secret 4 -> 0) so a room matches whether its
     door is shown open or closed. A stable per-room exit fingerprint for learning.
 
-    NOTE: MegaMud's full 32-bit room id ORs an upper-12-bit base id (game_state
-    +0x2e9c) onto this; that base's source (no 'In room:' id on this server) is a
-    follow-up before this can drive ROOMS.MD lookups.
+    MegaMud's full 32-bit room id ORs an upper-12-bit base onto this; that base is
+    `title_hash(room_title) & 0xFFF` (see room_id()).
     """
     toks = _tokenize(line)
     if toks is None:
@@ -82,3 +81,29 @@ def exit_signature(line: str) -> int | None:
             state = _STATE_CLOSED_DOOR
         sig |= state << (_DIR_ORDER.index(direction) * 2)
     return sig
+
+
+def title_hash(title: str) -> int:
+    """MegaMud room-title hash (room_title_parse @0x00475e20): a position-weighted
+    byte sum with a 1-based index, 32-bit wraparound. The top 12 bits of a room's
+    id come from `title_hash(title) & 0xFFF`."""
+    acc = 0
+    for i, ch in enumerate(title):
+        acc = (acc + (i + 1) * ord(ch)) & 0xFFFFFFFF
+    return acc
+
+
+def room_id(title: str, exits_line: str) -> str | None:
+    """MegaMud's 32-bit room id (HexID1 in ROOMS.MD, used by the .MP path files):
+    top 12 bits from the LIVE room title, low 20 bits from the obvious-exits
+    bitfield (room_exit_parse @0x00425290). 8-char upper-hex, or None if
+    `exits_line` isn't an 'Obvious exits:' line. Uses the server's displayed room
+    name (NOT the abbreviated ROOMS.MD label), so it resolves rooms name-matching
+    can't."""
+    sig = exit_signature(exits_line)
+    if sig is None:
+        return None
+    rid = (((title_hash(title) & 0xFFF) << 20) | sig) & 0xFFFFFFFF
+    if rid == 0xB7200050:        # the binary's single hard-coded fixup
+        rid = 0xB7200055
+    return f"{rid:08X}"

@@ -253,6 +253,19 @@ def test_targets_hostile_and_skips_npc_in_same_room():
     assert CombatEngine(CombatConfig()).decide(gs) == "kill kobold thief"
 
 
+def test_rests_once_not_respammed_while_resting():
+    # HP 29/82 = 35% < 40% rest_threshold. Rest ONCE; while the prompt shows
+    # "(Resting)" don't re-send rest every tick.
+    gs = GameState(); gs.set_combat(False); gs.set_hp(29, 82)
+    ce = CombatEngine(CombatConfig(rest_threshold=0.40))
+    assert ce.decide(gs) == "rest"
+    ce.on_line("[HP=29/MA=30]: (Resting) ")
+    assert ce.decide(gs) is None          # already resting -> no respam
+    assert ce.decide(gs) is None
+    ce.on_line("[HP=29/MA=30]:")          # stood / interrupted -> resting cleared
+    assert ce.decide(gs) == "rest"        # rest again (still low)
+
+
 def test_initiates_on_unknown_monster_not_in_db():
     # kill_type 0 = not catalogued -> attackable (DB protects known NPCs only)
     gs = _gs_room(MonsterSighting(name="weird beast", kill_type=0))

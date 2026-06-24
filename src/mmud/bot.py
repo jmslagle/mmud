@@ -245,6 +245,7 @@ class MudBot:
         self._build_engines()
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
+        self._room_block: list[str] = []   # recent display lines -> room-hash title
         self._pending_move = ""
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
         # True once an "Also here:" line is parsed in the current room display;
@@ -486,6 +487,12 @@ class MudBot:
         if clean.lower().startswith("also here:") and not clean.endswith("."):
             self._also_here_pending = clean
             return
+        # Accumulate display lines so _parse_exits can recover the room title for
+        # MegaMud's room-hash lookup (reset when an exits line closes the block).
+        if clean:
+            self._room_block.append(clean)
+            if len(self._room_block) > 30:
+                self._room_block = self._room_block[-30:]
         self._parse_vitals(clean)
         if inv := self._inv_parser.feed(clean):
             self._state.inventory = inv
@@ -778,6 +785,20 @@ class MudBot:
         exits = parse_exits(line)
         if exits is None:
             return
+        # Resolve the room by MegaMud's room hash (title + exits). Authoritative and
+        # works for rooms whose live name != the abbreviated ROOMS.MD label, where
+        # name detection (_parse_room) returns nothing. Sets the hex travel verifies
+        # arrivals against. The block is consumed here.
+        code = self._room_parser.detect_room_from_block(self._room_block, line)
+        self._room_block = []
+        if code:
+            room = self._rooms.get(code)
+            if room and room.hex_id:
+                self._last_seen_hex = room.hex_id.upper()
+                self._state.current_hex = self._last_seen_hex
+            if code != self._state.current_room:
+                self._state.set_room(code)
+                self._emit(RoomChanged(code=code, name=(room.name if room else code)))
         # "Obvious exits:" terminates a room display. If this display showed no
         # "Also here:", the room has no monsters -> clear the roster (handles
         # rooms missing from ROOMS.MD, where name-detection can't fire).

@@ -74,8 +74,14 @@ class CombatEngine:
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
         self._engaged_target = ""   # monster we've already sent the attack at
+        self._resting = False       # server has us resting (prompt shows (Resting))
 
     def on_line(self, line: str) -> None:
+        # The MajorMUD prompt authoritatively flags resting: "[HP=..]: (Resting)".
+        # Track it so we send 'rest' once instead of spamming it every tick.
+        low = line.lower()
+        if "[hp=" in low:
+            self._resting = "(resting)" in low
         if not self.must_sneak:
             return
         if _SNEAK_OK_RE.search(line):
@@ -126,7 +132,7 @@ class CombatEngine:
         self._sneak_confirmed = False
         self._engaged_target = ""
 
-        if hp_pct < self.rest_threshold:
+        if hp_pct < self.rest_threshold and not self._resting:
             return "rest"
         return None
 
