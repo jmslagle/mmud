@@ -347,37 +347,88 @@ class Player:
 
 
 def load_players(path: pathlib.Path) -> list[Player]:
-    """Parse PLAYERS.MD and return all non-deleted Player records.
+    """Parse PLAYERS.MD (the spy DB) — non-deleted records.
 
-    Payload offsets (true MDB2 walk; PLAYERS.MD is absent from the public
-    extraction, so the numeric offsets remain provisional):
-      +0x02: char[11] name   +0x0d: char[19] title   +0x20: char[31] guild
-      +0x3f: char[21] location   +0x21: u32 flags
+    Layout from players_md_save_one_record (megamud.exe 0x0046c719). That function
+    writes the 0xF8=248B record via explicit EBP-relative offsets (so these are
+    EXACT, not stack-reconstructed). PLAYERS.MD is KEYED BY NAME (no numeric
+    record_id at +0x00 — the old parser wrongly assumed one and was shifted +2):
+      +0x00 char[11] name (the key)   +0x0b char[19] title
+      +0x1e char[31] guild            +0x3d char[21] location
+      +0x52 u32 flags (0x4000=friend 0x8000=enemy 0x80000000=deleted)
+      +0x56 i16 level   +0x58 i16 exp_rank   +0x5a i16 alignment
+      +0x5c i16 class_id   +0x5e i16 race_id   +0x76 i16 reputation
+      +0x78 u32 combat_rating   +0x7c i32 last_seen   +0x80 i32 first_seen
+    (PLAYERS.MD is absent from the public extraction, so this is Ghidra-confirmed
+    but not file-verified.)
     """
     if not path.exists():
         return []
     out: list[Player] = []
     for entry in walk_entries(path):
+        rec = parse_player_record(entry.payload)
+        if rec is not None and not _deleted(rec.flags):
+            out.append(rec)
+    return out
+
+
+def parse_player_record(p: bytes) -> Player | None:
+    """Parse one 0xF8 PLAYERS.MD payload (split out so it's testable without a
+    file — PLAYERS.MD isn't shipped). Offsets per players_md_save_one_record."""
+    name = _cstr(p, 0x00, 11)
+    if not name:
+        return None
+    return Player(
+        name=name,
+        title=_cstr(p, 0x0B, 19),
+        guild=_cstr(p, 0x1E, 31),
+        location=_cstr(p, 0x3D, 21),
+        level=struct.unpack_from("<h", p, 0x56)[0],
+        alignment=struct.unpack_from("<h", p, 0x5A)[0],
+        class_id=struct.unpack_from("<h", p, 0x5C)[0],
+        race_id=struct.unpack_from("<h", p, 0x5E)[0],
+        reputation=struct.unpack_from("<h", p, 0x76)[0],
+        first_seen=struct.unpack_from("<i", p, 0x80)[0],
+        last_seen=struct.unpack_from("<i", p, 0x7C)[0],
+        flags=struct.unpack_from("<I", p, 0x52)[0],
+    )
+
+
+# ── Paths index (PATHS.MD) ───────────────────────────────────────────────────
+
+@dataclass
+class PathIndex:
+    """One PATHS.MD directory entry — metadata indexing a `.MP` path-step file
+    (the steps themselves are parsed by mmud.data.paths from the .MP files)."""
+    from_desc: str    # "CODE:Region:Name" of the start room
+    npc: str
+    mp_file: str       # .MP filename (the cdb record key)
+    to_region_name: str
+    to_code: str
+    flags: int
+
+
+def load_paths_index(path: pathlib.Path) -> list[PathIndex]:
+    """Parse the PATHS.MD index. Layout from paths_md_save (megamud.exe 0x00465860)
+    + the real file; records are VARIABLE-length (cdb stores trimmed payloads), so
+    short records simply yield empty trailing fields:
+      +0x00 from_desc[61]  +0x3d npc[41]  +0x66 mp_file[14] (key)
+      +0x74 to_region_name[31]  +0x93 to_code[14]  +0xaf u32 flags
+    The .MP files are the primary path source; this index is the directory.
+    """
+    out: list[PathIndex] = []
+    for entry in walk_entries(path):
         p = entry.payload
-        name = _cstr(p, 0x02, 11)
-        if not name:
+        from_desc = _cstr(p, 0x00, 61)
+        if not from_desc:
             continue
-        flags = struct.unpack_from("<I", p, 0x21)[0]
-        if _deleted(flags):
-            continue
-        out.append(Player(
-            name=name,
-            title=_cstr(p, 0x0D, 19),
-            guild=_cstr(p, 0x20, 31),
-            location=_cstr(p, 0x3F, 21),
-            level=struct.unpack_from("<h", p, 0x57)[0],
-            alignment=struct.unpack_from("<h", p, 0x5F)[0],
-            class_id=struct.unpack_from("<h", p, 0x63)[0],
-            race_id=struct.unpack_from("<h", p, 0x67)[0],
-            reputation=struct.unpack_from("<h", p, 0x6B)[0],
-            first_seen=struct.unpack_from("<i", p, 0x77)[0],
-            last_seen=struct.unpack_from("<i", p, 0x7B)[0],
-            flags=flags,
+        out.append(PathIndex(
+            from_desc=from_desc,
+            npc=_cstr(p, 0x3D, 41),
+            mp_file=_cstr(p, 0x66, 14),
+            to_region_name=_cstr(p, 0x74, 31),
+            to_code=_cstr(p, 0x93, 14),
+            flags=struct.unpack_from("<I", p, 0xAF)[0] if len(p) >= 0xB3 else 0,
         ))
     return out
 

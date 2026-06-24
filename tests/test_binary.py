@@ -239,3 +239,42 @@ def test_classrace_db_lookup(data_dir):
     assert db.class_name(10) == "Gypsy"     # Horis's class
     assert db.race_name(7) == "Dark-Elf"    # Horis's race
     assert db.class_name(999) == "" and db.race_name(999) == ""
+
+
+def test_player_record_synthetic_roundtrip():
+    # PLAYERS.MD isn't shipped; build a 248B record per players_md_save_one_record
+    # (0x0046c719) and confirm the parse. Keyed by name (no record_id at 0x00).
+    import struct
+    from mmud.data.binary import parse_player_record
+    p = bytearray(0xF8)
+    def put(off, s): p[off:off+len(s)] = s.encode("latin-1")
+    put(0x00, "Horis\x00")
+    put(0x0b, "the Bold\x00")
+    put(0x1e, "Nazi Criminals\x00")
+    put(0x3d, "Newhaven\x00")
+    struct.pack_into("<I", p, 0x52, 0x4000)   # friend
+    struct.pack_into("<h", p, 0x56, 21)       # level
+    struct.pack_into("<h", p, 0x5a, -3)       # alignment
+    struct.pack_into("<h", p, 0x5c, 10)       # class_id (Gypsy)
+    struct.pack_into("<h", p, 0x5e, 7)        # race_id (Dark-Elf)
+    struct.pack_into("<h", p, 0x76, 2)        # reputation
+    struct.pack_into("<i", p, 0x7c, 555)      # last_seen
+    struct.pack_into("<i", p, 0x80, 111)      # first_seen
+    rec = parse_player_record(bytes(p))
+    assert rec.name == "Horis" and rec.title == "the Bold"
+    assert rec.guild == "Nazi Criminals" and rec.location == "Newhaven"
+    assert rec.level == 21 and rec.alignment == -3
+    assert rec.class_id == 10 and rec.race_id == 7 and rec.reputation == 2
+    assert rec.first_seen == 111 and rec.last_seen == 555
+    assert rec.is_friend and not rec.is_enemy
+
+
+def test_load_paths_index(data_dir):
+    from mmud.data.binary import load_paths_index
+    idx = load_paths_index(data_dir / "PATHS.MD")
+    assert len(idx) > 0
+    # Verified vs paths_md_save (0x00465860) + file: first record indexes the
+    # Ancient Ruin Dark Alley path to its .MP file.
+    first = idx[0]
+    assert first.from_desc.startswith("AALY") and first.mp_file.lower().endswith(".mp")
+    assert all(x.from_desc for x in idx)
