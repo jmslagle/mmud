@@ -160,6 +160,8 @@ class MudBot:
         self._safety = SafetyMonitor(self._config.safety)
         from mmud.session import SessionManager
         self._session = SessionManager(self._config.session)
+        from mmud.debug_log import SessionLogger
+        self._session_log = SessionLogger(self._config.session.debug_log)
         self._relog_pending = False
         from mmud.automation.scheduler import Scheduler
         self._scheduler = Scheduler(
@@ -313,6 +315,7 @@ class MudBot:
                     break
                 cmd = self._next_command()
                 if cmd:
+                    self._session_log.tx(cmd)
                     await self._conn.send(cmd)
                     self._last_activity = time.monotonic()
                     if cmd in ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"):
@@ -321,6 +324,7 @@ class MudBot:
         finally:
             ticker_task.cancel()
             await self._conn.close()
+            self._session_log.close()
 
     async def _ticker(self) -> None:
         """1Hz background tick: advances spell cooldowns and checks AFK."""
@@ -376,6 +380,8 @@ class MudBot:
         # ("nNorth") resolve. Display keeps colour; parsing uses plain text.
         self._emit(LineReceived(line=render_line(line, color=True)))
         clean = visible_text(line).strip()
+        if clean:
+            self._session_log.rx(clean)
         self._parse_vitals(clean)
         if inv := self._inv_parser.feed(clean):
             self._state.inventory = inv
@@ -410,6 +416,7 @@ class MudBot:
                 prev = self._state.in_combat
                 self._state.set_combat(True)
                 if not prev:
+                    self._session_log.event("combat=on")
                     self._emit(CombatChanged(in_combat=True))
             else:
                 self._emit(EffectRemoved(name=result.pattern.name))
@@ -502,6 +509,8 @@ class MudBot:
                     ))
                     if rec is None and self._store is not None:
                         self._store.learn_monster(name)
+                self._session_log.event(
+                    "monsters=" + repr([m.name for m in self._state.monsters_present]))
                 self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
             players = self._room_parser.extract_players(line)
             if players:
@@ -645,6 +654,7 @@ class MudBot:
             # combat is over, so loot/movement isn't blocked until it times out.
             if self._state.task.type is TaskType.CASTING:
                 self._state.abort_task()
+            self._session_log.event("combat=off")
             self._emit(CombatChanged(in_combat=False))
 
     def _next_command(self) -> str | None:

@@ -30,3 +30,6 @@ mmud.lock
 mmud.lock~
 mmud.rep/
 *.exe
+
+# debug session logs
+logs/
