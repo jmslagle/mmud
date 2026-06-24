@@ -166,6 +166,10 @@ class MudBot:
                              if items_md and items_md.exists() else ItemDB([]))
 
         self._state = GameState()
+        from mmud.data.classes_races import ClassRaceDB
+        # id->name for resolving PLAYERS.MD class_id/race_id (race 7=Dark-Elf,
+        # class 10=Gypsy) on spy records.
+        self._class_race = ClassRaceDB.from_dir(data_dir)
         self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
         self._combat = CombatEngine(
             config=self._config.combat,
