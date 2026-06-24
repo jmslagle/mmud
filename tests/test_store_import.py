@@ -5,7 +5,7 @@ def test_initial_import_pins_real_counts(tmp_path, data_dir):
     s = GameStore(tmp_path / "gamedb.json")
     report = import_md(s, data_dir)
     assert report.added["monsters"] == 788
-    assert report.added["items"] == 667
+    assert report.added["items"] == 1336   # all live records (was 667 via a bogus flag filter)
     assert report.added["spells"] == 936
     assert report.collisions == 0
     assert s.data["monsters"]["1"]["name"] == "giant rat"

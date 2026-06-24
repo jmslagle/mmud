@@ -8,9 +8,9 @@ from mmud.state.tasks import TaskType
 
 
 def _item(name, slot):
-    return Item(record_id=1, name=name, description="", suffix="",
+    return Item(record_id=1, name=name, source="", suffix="",
                 item_type=1, equip_slot=slot, ac_or_dmg=0, weight=0,
-                value=0, extra_stat1=0, extra_stat2=0, flags=0x40000000)
+                value=0, extra_stat1=0, flags=0x40000000)
 
 
 def _decider(items, auto=True):

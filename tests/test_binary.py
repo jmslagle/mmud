@@ -187,11 +187,20 @@ def test_monsters_recovered_by_true_walk(data_dir):
 
 
 def test_items_recovered_by_true_walk(data_dir):
+    # All 1336 live B-tree records load. (The old code returned 667 by an accident
+    # of reading the *source* string as flags and filtering on bit 0x40000000 —
+    # arbitrarily dropping ~half the real items.)
     items = load_items(data_dir / "ITEMS.MD")
-    assert len(items) == 667             # active entries of 1336 total
+    assert len(items) == 1336
+    assert len({i.record_id for i in items}) == 1336   # all distinct, no junk
     names = {i.name.lower() for i in items}
-    assert "a statue of a bard" in names   # missed by the old heuristic
-    assert all(i.is_active for i in items)
+    assert "a statue of a bard" in names
+    # The "description" field was really the shop the item is sold by; the old
+    # parser read it one byte late ("urniture Shop"). Now correct.
+    desk = next(i for i in items if i.record_id == 1093)
+    assert desk.name == "desk" and desk.source == "Furniture Shop"
+    qstaff = next(i for i in items if i.record_id == 100)
+    assert qstaff.value == 100
 
 
 def test_spells_all_entries_loaded(data_dir):

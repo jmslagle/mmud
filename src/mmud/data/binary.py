@@ -169,7 +169,7 @@ def load_monsters(path: pathlib.Path) -> list[Monster]:
 class Item:
     record_id: int
     name: str
-    description: str
+    source: str          # the shop the item is sold by (e.g. "Furniture Shop")
     suffix: str
     item_type: int
     equip_slot: int
@@ -177,7 +177,6 @@ class Item:
     weight: int
     value: int
     extra_stat1: int
-    extra_stat2: int
     flags: int
 
     @property
@@ -186,40 +185,42 @@ class Item:
 
 
 def load_items(path: pathlib.Path) -> list[Item]:
-    """Parse ITEMS.MD and return all active Item records.
+    """Parse ITEMS.MD records.
 
-    Payload offsets (true MDB2 walk):
-      +0x00: u16 record_id   +0x02: char[31] name   +0x21: u32 flags
-      +0x21+31..: description/suffix strings
-      +0x5f: u8 item_type   +0x60: u8 equip_slot
-      +0x63/+0x67/+0x6b: i16 ac_or_dmg / weight / value
-      +0x6f/+0x73: u32 extra stats
-    Numeric offsets are the old empirical ones shifted -1; they remain
-    approximate until Phase 5's item_db consumes them in anger.
+    On-disk payload layout, derived from `items_md_save` (megamud.exe 0x00441210)
+    which str_copy_safe's each field into a fixed buffer, and verified against the
+    real file (e.g. record 1093 'desk': source 'Furniture Shop' @0x20; value 100
+    for the quarterstaff @0x5d):
+      +0x00 u16 record_id   +0x02 char[30] name   +0x20 char[41] source
+      +0x49 char[14] suffix
+      +0x57 i16 ac_or_dmg   +0x59 i16 weight   +0x5b u8 item_type
+      +0x5d i16 value       +0x5f u32 extra_stat1   +0x63 u32 flags
+      +0xa3 u8 equip_slot
+    NB: items differ from monsters — 0x20 is the *source* string, NOT flags (the
+    old parser cloned the monster layout, corrupting every field). No active-flag
+    filter: items_md_save writes only active records and removes deleted ones from
+    the B-tree, so walk_entries already yields live records only. Numeric field
+    *semantics* (item_type/ac_or_dmg/…) are best-effort; the offsets are
+    save-derived, name/source/suffix/value are confirmed.
     """
     out: list[Item] = []
     for entry in walk_entries(path):
         p = entry.payload
-        flags = struct.unpack_from("<I", p, 0x21)[0]
-        if not _active(flags):
-            continue
-        name = _cstr(p, 0x02, 31)
+        name = _cstr(p, 0x02, 30)
         if not name:
             continue
-        desc_start = 0x02 + 31
         out.append(Item(
             record_id=struct.unpack_from("<H", p, 0x00)[0],
             name=name,
-            description=_cstr(p, desc_start, 40),
-            suffix=_cstr(p, desc_start + 40, 14),
-            item_type=p[0x5F],
-            equip_slot=p[0x60],
-            ac_or_dmg=struct.unpack_from("<h", p, 0x63)[0],
-            weight=struct.unpack_from("<h", p, 0x67)[0],
-            value=struct.unpack_from("<h", p, 0x6B)[0],
-            extra_stat1=struct.unpack_from("<I", p, 0x6F)[0],
-            extra_stat2=struct.unpack_from("<I", p, 0x73)[0],
-            flags=flags,
+            source=_cstr(p, 0x20, 41),
+            suffix=_cstr(p, 0x49, 14),
+            ac_or_dmg=struct.unpack_from("<h", p, 0x57)[0],
+            weight=struct.unpack_from("<h", p, 0x59)[0],
+            item_type=p[0x5B],
+            value=struct.unpack_from("<h", p, 0x5D)[0],
+            extra_stat1=struct.unpack_from("<I", p, 0x5F)[0],
+            flags=struct.unpack_from("<I", p, 0x63)[0],
+            equip_slot=p[0xA3],
         ))
     return out
 
