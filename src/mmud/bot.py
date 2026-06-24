@@ -221,6 +221,9 @@ class MudBot:
         # True once an "Also here:" line is parsed in the current room display;
         # checked at the "Obvious exits:" terminator to clear a monster-free room.
         self._also_here_seen = False
+        # Buffer for a word-wrapped "Also here:" list (server hard-wraps long
+        # lines); stitched with the continuation line before parsing.
+        self._also_here_pending = ""
         self._stat_requested = False   # send `stat` once per session to learn maxes
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
@@ -387,6 +390,17 @@ class MudBot:
         clean = visible_text(line).strip()
         if clean:
             self._session_log.rx(clean)
+        # Stitch a word-wrapped "Also here:" list. The server hard-wraps long
+        # lines (~79 cols), so a crowded room's monster list arrives split across
+        # lines; MegaMud buffers the incomplete also-here and appends the next
+        # line (responses-ref §2.3). Without this the list is dropped -> the bot
+        # never sees those monsters (combat misses).
+        if self._also_here_pending:
+            clean = self._also_here_pending + " " + clean
+            self._also_here_pending = ""
+        if clean.lower().startswith("also here:") and not clean.endswith("."):
+            self._also_here_pending = clean
+            return
         self._parse_vitals(clean)
         if inv := self._inv_parser.feed(clean):
             self._state.inventory = inv
@@ -494,6 +508,7 @@ class MudBot:
             self._state.set_room(code)
             self._state.monsters_present.clear()
             self._also_here_seen = False   # new room display starting
+            self._also_here_pending = ""
             self._state.players_present = []
             self._state.ground_items.clear()
             self._state.ground_coins.clear()

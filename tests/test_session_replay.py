@@ -86,6 +86,25 @@ async def test_no_bare_kill_after_monster_dies_while_in_combat():
 
 
 @pytest.mark.asyncio
+async def test_wrapped_also_here_is_stitched():
+    # Regression: the server word-wraps a long monster list across two lines
+    # ("...nasty\ngiant rat."). Both must be stitched so all 5 monsters parse,
+    # else the bot sees no monsters and walks through the room (combat misses).
+    bot = make_transcript_bot([])
+    await _feed(
+        bot,
+        "Newhaven, Arena 2",
+        "Also here: cave worm, nasty kobold thief, acid slime, fat giant rat, nasty",
+        "giant rat.",
+        "Obvious exits: down",
+    )
+    assert bot._state.monster_names() == [
+        "cave worm", "nasty kobold thief", "acid slime",
+        "fat giant rat", "nasty giant rat",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_empty_room_clears_stale_monsters():
     bot = make_transcript_bot([])
     await _feed(bot, "Also here: kobold thief.", "Obvious exits: north")
