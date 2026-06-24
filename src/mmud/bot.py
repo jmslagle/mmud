@@ -650,10 +650,19 @@ class MudBot:
                 self._emit(MonstersSeen(monsters=[n for n, _ in sightings]))
             players = self._room_parser.extract_players(line)
             if players:
-                self._state.players_present = players
+                # A proper-named entry that's a catalogued monster is an NPC, not a
+                # player (mirrors room_entity_classify_all's monster-DB lookup).
+                # Track it as a non-attackable sighting; never look/spy it.
+                real = []
                 for name in players:
+                    if self._monster_db.find(name) is not None:
+                        self._state.add_monster(self._build_sighting(name, 1))
+                    else:
+                        real.append(name)
+                self._state.players_present = real
+                for name in real:
                     self._note_player_seen(name)
-                if cmd := self._pvp.check(self._state):
+                if real and (cmd := self._pvp.check(self._state)):
                     self._state.enqueue(cmd)
 
     def _note_player_seen(self, name: str, **fields) -> None:
@@ -971,8 +980,16 @@ class MudBot:
         from mmud.automation.loop_runner import LoopRunner
         paths = list(self._navigator._paths.values())
         return LoopRunner(self._config.navigation, paths, self._rooms, self._travel,
-                          find_path=self._room_graph().find_path,
+                          code_route=self._code_route,
+                          current_code=self._state.current_room,
                           current_hex=self._resolved_current_hex())
+
+    def _code_route(self, from_code: str, to_code: str):
+        """Walkable route between two room codes by chaining .MP paths (reliable),
+        not the collision-prone room-hash BFS. Returns RouteSteps or None."""
+        from mmud.navigation.code_route import find_code_route
+        return find_code_route(from_code, to_code,
+                               list(self._navigator._paths.values()), self._rooms)
 
     def _hex_name(self, hexid: str) -> str:
         """A short label for a hex id: 'CODE(Name)' if in ROOMS.MD, else the hex."""
@@ -1065,8 +1082,8 @@ class MudBot:
         return [c for c, r in self._rooms.items() if tl and tl in r.name.lower()]
 
     def navigate_to_room(self, target: str) -> str:
-        """Multi-hop navigate to a room by 4-letter code OR name substring."""
-        from mmud.navigation.graph import NavStatus
+        """Multi-hop navigate to a room by 4-letter code OR name substring, by
+        chaining recorded .MP paths over the room-code graph."""
         codes = self._resolve_rooms(target)
         if not codes:
             return f"Unknown room: {target}"
@@ -1074,28 +1091,20 @@ class MudBot:
             shown = ", ".join(f"{c} ({self._rooms[c].name})" for c in codes[:6])
             more = " …" if len(codes) > 6 else ""
             return f"Ambiguous '{target}' — matches {len(codes)}: {shown}{more}"
-        to_code = codes[0]
-        dest = self._rooms.get(to_code)
-        if dest is None or not dest.hex_id:
-            return f"Unknown destination room: {to_code}"
-        src_hex = self._state.current_hex
-        if not src_hex and self._state.current_room:
-            room = self._rooms.get(self._state.current_room)
-            src_hex = room.hex_id.upper() if room and room.hex_id else ""
-        if not src_hex:
+        to_code = codes[0].upper()
+        from_code = self._state.current_room
+        if not from_code:
             return "Current room unknown — move around first to establish position"
-        result = self._room_graph().find_path(src_hex, dest.hex_id)
-        if result.status is NavStatus.UNKNOWN_START:
-            return f"Current room {src_hex} not in the path corpus"
-        if result.status is NavStatus.UNKNOWN_DEST:
-            return f"Unknown destination room: {to_code.upper()}"
-        if result.status is NavStatus.NO_PATH:
-            return f"No known route to {to_code.upper()}"
+        steps = self._code_route(from_code, to_code)
+        if steps is None:
+            return f"No known route from {from_code} to {to_code}"
+        if not steps:
+            return f"Already at {to_code}"
         while self._state.dequeue() is not None:
             pass
-        self._travel.set_route(result.steps)
-        self._log_route(f"goto {to_code.upper()}", result.steps)
-        return f"Navigating to {to_code.upper()} ({len(result.steps)} steps)"
+        self._travel.set_route(steps)
+        self._log_route(f"goto {to_code}", steps)
+        return f"Navigating to {to_code} ({len(steps)} steps)"
 
     def list_paths(self) -> list[str]:
         """Return all known loop path names."""

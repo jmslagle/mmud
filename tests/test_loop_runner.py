@@ -60,10 +60,11 @@ def test_resumes_loop_when_already_on_it():
     # On the loop already -> finish it from here (no routing to the start).
     path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "e"), ("CCCC0003", "s")])
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
-    def find_path(frm, to):
+    def code_route(frm, to):
         raise AssertionError("should not route when already on the loop")
     runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
-                        find_path=find_path, current_hex="BBBB0002")  # index 1
+                        code_route=code_route, current_code="HOME",
+                        current_hex="BBBB0002")           # index 1
     runner.start()
     gs = GameState()
     assert travel.decide(gs) == "e"           # resumes at index-1's command
@@ -75,23 +76,19 @@ def test_resumes_loop_when_already_on_it():
     assert travel.decide(gs) == "n"           # full loop from step 0 now
 
 
-def _nav_ok(steps):
-    from mmud.navigation.graph import NavResult, NavStatus
-    return NavResult(NavStatus.OK, steps)
-
-
-def test_start_paths_to_loop_start_when_away():
+def test_routes_to_loop_when_away():
     from mmud.navigation.graph import RouteStep
-    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])  # loop start = AAAA0001
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
     calls = {}
-    def find_path(frm, to):
+    def code_route(frm, to):
         calls["args"] = (frm, to)
-        return _nav_ok([RouteStep("e", frozenset({"AAAA0001"}), "AAAA0001")])
+        return [RouteStep("e", frozenset({"AAAA0001"}), "AAAA0001")]
     runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
-                        find_path=find_path, current_hex="FAR00000")
+                        code_route=code_route, current_code="FARR",
+                        current_hex="FAR00000")
     runner.start()
-    assert calls["args"] == ("FAR00000", "AAAA0001")   # routed to the loop start hex
+    assert calls["args"] == ("FARR", "HOME")           # routed over the code graph
     gs = GameState()
     assert travel.decide(gs) == "e"                    # approach step first
     travel.on_arrival(gs, "AAAA0001")
@@ -106,31 +103,30 @@ def test_start_paths_to_loop_start_when_away():
 def test_start_skips_approach_when_already_at_loop_start():
     path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
-    def find_path(frm, to):
-        raise AssertionError("should not path when already at start")
+    def code_route(frm, to):
+        raise AssertionError("should not route when already at start")
     runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
-                        find_path=find_path, current_hex="AAAA0001")
+                        code_route=code_route, current_code="HOME",
+                        current_hex="AAAA0001")
     runner.start()
     assert travel.decide(GameState()) == "n"           # straight into the loop
 
 
-def test_no_route_to_loop_start_falls_back_to_wander():
-    from mmud.navigation.graph import NavResult, NavStatus
+def test_no_route_to_loop_falls_back_to_wander():
     path = _loop("HOME", [("AAAA0001", "n")])
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
     runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
-                        find_path=lambda f, t: NavResult(NavStatus.NO_PATH, []),
+                        code_route=lambda f, t: None, current_code="FARR",
                         current_hex="FAR00000")
     msg = runner.start()
     assert runner.running and "wander" in msg.lower()
 
 
 def test_wanders_when_position_unknown_then_engages_loop():
-    from mmud.navigation.graph import NavResult, NavStatus
     path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "e")])
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
     runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
-                        find_path=lambda f, t: NavResult(NavStatus.NO_PATH, []),
+                        code_route=lambda f, t: None, current_code="",
                         current_hex="")                  # unknown position
     msg = runner.start()
     assert "wander" in msg.lower() and runner.running

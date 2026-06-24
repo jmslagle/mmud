@@ -4,7 +4,7 @@ from mmud.automation.travel import TravelDecider
 from mmud.config.schema import NavigationConfig
 from mmud.data.paths import GamePath
 from mmud.data.rooms import Room
-from mmud.navigation.graph import NavResult, NavStatus, RouteStep
+from mmud.navigation.graph import RouteStep
 
 
 def route_for_path(path: GamePath, rooms: dict[str, Room]) -> list[RouteStep]:
@@ -28,15 +28,17 @@ class LoopRunner:
 
     def __init__(self, nav_config: NavigationConfig, paths: list[GamePath],
                  rooms: dict[str, Room], travel: TravelDecider,
-                 find_path: Callable[[str, str], NavResult] | None = None,
-                 current_hex: str = "") -> None:
+                 code_route: Callable[[str, str], list | None] | None = None,
+                 current_code: str = "", current_hex: str = "") -> None:
         self._nav = nav_config
         self._rooms = rooms
         self._travel = travel
         self._running = False
         self._path = self._find_path(paths)
-        # When the bot isn't standing on the loop's first room, path there first.
-        self._route_find = find_path          # RoomGraph.find_path (hex -> hex)
+        # Route to the loop by chaining .MP paths over the room-CODE graph (reliable),
+        # not the collision-ridden room-hash BFS.
+        self._code_route = code_route         # callable(from_code, to_code)->[RouteStep]|None
+        self._current_code = current_code.upper()
         self._current_hex = current_hex.upper()
 
     def _find_path(self, paths: list[GamePath]) -> GamePath | None:
@@ -63,7 +65,7 @@ class LoopRunner:
         if not loop_steps:
             return f"Loop path '{self._nav.loop_path}' has no steps"
         loop_hexes = [s.hex_id.upper() for s in self._path.steps]
-        loop_start = loop_hexes[0]
+        loop_code = self._path.from_code.upper()
         cur = self._current_hex
 
         # Already ON the loop -> finish it from here (MegaMud-style), no routing.
@@ -74,18 +76,22 @@ class LoopRunner:
             return (f"On loop {self._nav.loop_path} -> resuming from step "
                     f"{idx + 1}/{len(loop_steps)}")
 
-        if self._route_find is not None:
-            # Known position off the loop -> route to its start, then loop.
-            if cur:
-                res = self._route_find(cur, loop_start)
-                if res.status is NavStatus.OK:
-                    approach = res.steps
+        if self._code_route is not None:
+            # Known room off the loop -> chain .MP paths over the code graph to the
+            # loop, then loop. (Reliable; avoids hash-BFS collisions.)
+            if self._current_code:
+                approach = self._code_route(self._current_code, loop_code)
+                if approach:
                     self._travel.set_route(approach + loop_steps, loop=True,
                                            loop_from=len(approach))
                     self._running = True
-                    return (f"Navigating {len(approach)} steps to "
-                            f"{self._nav.loop_path} start, then looping")
-            # Unknown position, or no route from a known one -> wander onto the loop.
+                    return (f"Routing {len(approach)} steps "
+                            f"({self._current_code}->{loop_code}), then looping")
+                if approach == []:                     # already at the loop's room
+                    self._travel.set_route(loop_steps, loop=True, loop_from=0)
+                    self._running = True
+                    return f"Loop started: {self._nav.loop_path}"
+            # Unknown room, or no code route -> wander until we step onto the loop.
             self._travel.set_wander(set(loop_hexes), self._engage_at)
             self._running = True
             return f"Position unknown -> wandering until on loop {self._nav.loop_path}"
