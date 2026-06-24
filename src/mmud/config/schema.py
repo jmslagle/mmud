@@ -196,6 +196,7 @@ class CommerceConfig:
 @dataclass
 class SessionConfig:
     capture_file: str = ""          # append raw server lines here ("" = off)
+    debug_log: str = ""             # human-readable RX/TX/event session log ("" = off)
     max_hours_per_day: int = 0      # hangup after this many hours (0 = unlimited)
     min_exp_rate: int = 0           # exp/hour floor (0 = disabled)
     grace_minutes: int = 15         # no rate enforcement during warmup
