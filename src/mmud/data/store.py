@@ -84,6 +84,23 @@ class GameStore:
         self.save()
         return rec
 
+    def learn_player(self, name: str, **fields) -> dict:
+        """Record/merge a seen player into the spy DB (keyed by lowercased name).
+        Only non-empty fields overwrite, so a who-list sighting and a later
+        examine accumulate (level/rep/gang + race/class)."""
+        key = name.strip().lower()
+        rec = self.data["players"].get(key) or {"name": name, "origin": "learned"}
+        rec["name"] = name
+        for k, v in fields.items():
+            if v not in (None, "", 0):
+                rec[k] = v
+        self.data["players"][key] = rec
+        self.save()
+        return rec
+
+    def players(self) -> dict:
+        return dict(self.data["players"])
+
 
 # ---- MD importer (binary MDB2 sources only) -------------------------------
 

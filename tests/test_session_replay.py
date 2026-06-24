@@ -86,6 +86,34 @@ async def test_no_bare_kill_after_monster_dies_while_in_combat():
 
 
 @pytest.mark.asyncio
+async def test_player_spy_replay(tmp_path):
+    # Replay the Horis sequence: room sighting -> examine -> looking-at, and
+    # confirm the player is learned/persisted and session counters update.
+    from mmud.config.schema import MudConfig, LearningConfig
+    cfg = MudConfig()
+    cfg.learning = LearningConfig(enabled=True, store_path=str(tmp_path / "db.json"))
+    bot = make_transcript_bot([], config=cfg, data_dir=None)
+    await _feed(
+        bot,
+        "Also here: Horis, giant rat.",
+        "Obvious exits: north",
+        "[ Horis ]",
+        "Horis is a solid, well built Dark-Elf Gypsy with no hair and black eyes.  He",
+        "Horis is looking at you.",
+    )
+    assert "Horis" in bot._state.players_present
+    assert bot._state.monster_names() == ["giant rat"]   # player not a monster
+    assert bot._session.people_seen == 1
+    assert bot._session.attacked == 1
+    learned = bot._store.players()["horis"]
+    assert learned["race"] == "Dark-Elf" and learned["class"] == "Gypsy"
+    # Persisted: a fresh store from the same path round-trips the record.
+    from mmud.data.store import GameStore
+    import pathlib
+    assert GameStore(pathlib.Path(cfg.learning.store_path)).players()["horis"]["class"] == "Gypsy"
+
+
+@pytest.mark.asyncio
 async def test_wrapped_also_here_is_stitched():
     # Regression: the server word-wraps a long monster list across two lines
     # ("...nasty\ngiant rat."). Both must be stitched so all 5 monsters parse,

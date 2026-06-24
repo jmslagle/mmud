@@ -17,7 +17,7 @@ from mmud.events import (
 from mmud.automation.decision import (
     DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
     PRIO_BACKSTAB, PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH,
-    PRIO_COMMERCE, PRIO_PARTY,
+    PRIO_COMMERCE, PRIO_PARTY, PRIO_LOOK,
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
@@ -60,10 +60,24 @@ _NAV_FAIL_RE = re.compile(
     r"you cannot go that direction|no exit|blocked|closed)",
     re.IGNORECASE,
 )
-_PLAYER_HIT_RE = re.compile(r"You (?:hit|strike|slash|pierce|bash|backstab)\w* \w.+? for (\d+) damage", re.IGNORECASE)
+# Melee hit: optional adverb (e.g. "critically") before the verb, then "... for N damage".
+_PLAYER_HIT_RE = re.compile(
+    r"You (?:\w+ )?(?:hit|strike|slash|slice|cut|pierce|bash|smash|backstab|stab|"
+    r"crush|maul|cleave|chop|kick|punch)\w* .+? for (\d+) damage", re.IGNORECASE)
+# Spell/cast damage: "You fire a magic missile at X for 18 damage!".
+_CAST_HIT_RE = re.compile(
+    r"You (?:fire|cast|blast|hurl|invoke|channel|conjure|sear|scorch|zap|smite|"
+    r"electrocute|incinerate) .+? for (\d+) damage", re.IGNORECASE)
 _PLAYER_MISS_RE = re.compile(r"You miss\b", re.IGNORECASE)
-_MONSTER_HIT_RE = re.compile(r"(?:hits?|strikes?|slashes?|bashes?|pierces?) you for (\d+) damage", re.IGNORECASE)
-_BACKSTAB_RE = re.compile(r"You backstab", re.IGNORECASE)
+# Damage taken (the "Round" range): "The cave worm chomps you for 8 damage!".
+_MONSTER_HIT_RE = re.compile(
+    r"\w+ you(?: with [\w' ]+)? for (\d+) damage", re.IGNORECASE)
+# A round where the monster missed = a dodge (drives Dodge%).
+_DODGE_RE = re.compile(r"misses you|miss you\b|You (?:dodge|parry|evade|sidestep)", re.IGNORECASE)
+_BACKSTAB_RE = re.compile(r"\bbackstab", re.IGNORECASE)
+_CRIT_RE = re.compile(r"critical|devastat|annihilat|massacre|demolish|savage", re.IGNORECASE)
+_SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
+_SNEAK_FAIL_RE = re.compile(r"fail to sneak|make a noise", re.IGNORECASE)
 
 _log = logging.getLogger(__name__)
 
@@ -112,6 +126,8 @@ class MudBot:
             rooms = load_rooms(data_dir / "ROOMS.MD")
         self._room_parser = RoomParser(rooms or {})
         self._convo_parser = ConversationParser()
+        from mmud.parser.player_parser import PlayerExamineParser
+        self._examine_parser = PlayerExamineParser()
         self._bus = event_bus   # assigned early so DB import can emit events
 
         from mmud.config.runtime import ConfigService
@@ -125,9 +141,13 @@ class MudBot:
         from mmud.data.monster_db import MonsterDB
         from mmud.data.item_db import ItemDB
         self._store = None
-        if self._config.learning.enabled and data_dir is not None:
+        if self._config.learning.enabled:
+            # The store powers live learning (players, exits) and is useful even
+            # without the bundled MD files; import_md only runs when data_dir is set.
             from mmud.data.store import GameStore, import_md
             self._store = GameStore(pathlib.Path(self._config.learning.store_path))
+        if self._store is not None and data_dir is not None:
+            from mmud.data.store import import_md
             report = import_md(self._store, data_dir)
             self._monster_db = MonsterDB.from_store(self._store)
             self._item_db = ItemDB.from_store(self._store)
@@ -215,6 +235,8 @@ class MudBot:
         self._party_parser = PartyParser()
         self._invites = InviteMonitor(self._config.players)
         self._party_decider = PartyDecider(self._config.party, self._config.players)
+        from mmud.automation.players import PlayerLookDecider
+        self._player_look = PlayerLookDecider(self._config.pvp, self._config.players)
         self._build_engines()
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
@@ -261,6 +283,7 @@ class MudBot:
             ("items", self._get_decider, PRIO_ITEMS),
             ("commerce", self._commerce, PRIO_COMMERCE),
             ("party", self._party_decider, PRIO_PARTY),
+            ("look", self._player_look, PRIO_LOOK),
             ("travel", self._travel, PRIO_TRAVEL),
             ("search", SearchDecider(self._config.navigation), PRIO_SEARCH),
         ]
@@ -344,7 +367,44 @@ class MudBot:
             self._check_task_timeout(time.monotonic())
             self._check_session(time.monotonic())
             self._scheduler.tick(time.monotonic())
+            self._flush_stats()
             await self._maybe_idle_refresh()
+
+    def _flush_stats(self) -> None:
+        """Emit the full MegaMud stat set for the Player/Session panes. Runs at
+        1Hz so derived/computed values (accuracy ranges, sneak/dodge %, exp rate,
+        comms, visitors) stay live without per-line event spam."""
+        s, sess = self._state, self._session
+        now = time.monotonic()
+        acc = s.combat_accuracy()
+        out: dict[str, str] = {
+            "miss_pct": f"{acc['miss_pct']:.0f}%",
+            "sneak_pct": f"{s.sneak_pct:.0f}%",
+            "dodge_pct": f"{s.dodge_pct:.0f}%",
+            "exp_rate": f"{sess.exp_rate_per_hour()/1000:.0f} k/hr",
+            "had_to_run": str(s.ran_away),
+            "health_low": str(s.health_low),
+            "people_seen": str(sess.people_seen),
+            "attacked": str(sess.attacked),
+            "dialed": str(sess.dialed),
+            "failed": str(sess.dial_failed),
+            "connected": str(sess.connected),
+            "lost_carrier": str(sess.carrier_lost),
+            "deposited": str(sess.deposited),
+            "income_rate": f"{sess.income_rate_per_hour(now):.0f}/hr",
+        }
+        for kind in ("hit", "extra", "crit", "backstab", "cast"):
+            row = acc[kind]
+            out[f"{kind}_pct"] = f"{row['pct']:.0f}%"
+            out[f"{kind}_range"] = row["range"]
+            out[f"{kind}_avg"] = str(row["avg"])
+        out["round_range"] = acc["round"]["range"]
+        out["round_avg"] = str(acc["round"]["avg"])
+        if s.exp_needed:
+            eta = sess.time_to_level_hours(s.exp_needed)
+            out["will_level_in"] = f"{eta:.1f} hr" if eta > 0 else "?"
+        for key, value in out.items():
+            self._emit(SessionStatUpdated(key=key, value=value))
 
     async def _maybe_idle_refresh(self) -> None:
         """MegaMud's 10-second room refresh (ai_room_refresh_trigger @ 0x00407e1a):
@@ -439,6 +499,7 @@ class MudBot:
         self._loot.process_line(clean, self._state)
         self._parse_get_results(clean)
         self._parse_room(clean)
+        self._parse_players(clean)
         self._parse_exits(clean)
         self._parse_combat_state(clean)
         self._parse_monster_removal(clean)
@@ -567,8 +628,45 @@ class MudBot:
             players = self._room_parser.extract_players(line)
             if players:
                 self._state.players_present = players
+                for name in players:
+                    self._note_player_seen(name)
                 if cmd := self._pvp.check(self._state):
                     self._state.enqueue(cmd)
+
+    def _note_player_seen(self, name: str, **fields) -> None:
+        """Tally a unique visitor and persist to the spy store (merges who-list +
+        examine fields)."""
+        self._session.on_player_seen(name)
+        self._emit(SessionStatUpdated(key="people_seen",
+                                      value=str(self._session.people_seen)))
+        if self._store is not None:
+            self._store.learn_player(name, **fields)
+
+    def _parse_players(self, line: str) -> None:
+        from mmud.parser.player_parser import (
+            parse_arrival, parse_departure, parse_looking_at)
+        # Examine result ("[ Name ]" + "is a <race> <class>") -> learn + finish look.
+        if rec := self._examine_parser.feed(line):
+            # race/class persist to the spy store + snapshot; don't emit PlayerSeen
+            # here (it would clobber the who-list level/rep/gang in Online Players).
+            self._note_player_seen(rec["name"], race=rec["race"], **{"class": rec["class"]})
+            self._player_look.mark_looked(rec["name"])
+            if self._state.task.type is TaskType.LOOKING:
+                self._state.complete_task()
+            return
+        if name := parse_arrival(line):
+            if name not in self._state.players_present:
+                self._state.players_present.append(name)
+            self._note_player_seen(name)
+            if cmd := self._pvp.check(self._state):
+                self._state.enqueue(cmd)
+        elif name := parse_departure(line):
+            if name in self._state.players_present:
+                self._state.players_present.remove(name)
+        elif name := parse_looking_at(line):
+            self._session.on_attacked()
+            self._emit(SessionStatUpdated(key="attacked",
+                                          value=str(self._session.attacked)))
 
     def _parse_conversation(self, line: str) -> None:
         msg = self._convo_parser.parse(line)
@@ -610,6 +708,8 @@ class MudBot:
         # WHO list entry
         entry = self._who_parser.parse_line(line)
         if entry:
+            self._note_player_seen(entry.name, level=entry.level,
+                                   rep=entry.rep, gang=entry.gang)
             self._emit(PlayerSeen(name=entry.name, level=entry.level,
                                   rep=entry.rep, gang=entry.gang))
             return
@@ -632,6 +732,15 @@ class MudBot:
                 self._on_monster_killed(f"killed {target}")
             else:
                 self._on_monster_killed("kill")
+            return
+        # Exp remaining to next level (stat/exp screen) -> exp_needed + ETA.
+        if (need := self._who_parser.parse_exp_needed_line(line)) is not None:
+            self._state.set_exp_needed(need)
+            self._emit(SessionStatUpdated(key="exp_needed", value=str(need)))
+            eta = self._session.time_to_level_hours(need)
+            self._emit(SessionStatUpdated(
+                key="will_level_in",
+                value=(f"{eta:.1f} hr" if eta > 0 else "?")))
             return
         # Absolute total from the stat/exp screen ("Exp: 52497") — display only.
         if (exp := self._who_parser.parse_exp_line(line)) is not None:
@@ -709,15 +818,26 @@ class MudBot:
     def _parse_combat_stats(self, line: str) -> None:
         if m := _PLAYER_HIT_RE.search(line):
             dmg = int(m.group(1))
-            is_bs = bool(_BACKSTAB_RE.search(line))
-            self._state.record_hit(dmg)
-            if is_bs:
+            if _BACKSTAB_RE.search(line):
+                self._state.record_hit(dmg, kind="backstab")
                 self._state.record_backstab(success=True)
+            elif _CRIT_RE.search(line):
+                self._state.record_crit(dmg)
+            else:
+                self._state.record_hit(dmg, kind="hit")
             self._emit(SessionStatUpdated(key="hit_pct", value=f"{self._state.hit_pct:.0f}%"))
+        elif m := _CAST_HIT_RE.search(line):
+            self._state.record_cast(int(m.group(1)))
         elif _PLAYER_MISS_RE.search(line):
             self._state.record_miss()
+        elif _SNEAK_OK_RE.search(line):
+            self._state.record_sneak(success=True)
+        elif _SNEAK_FAIL_RE.search(line):
+            self._state.record_sneak(success=False)
+        elif _DODGE_RE.search(line):
+            self._state.record_dodge()
         elif m := _MONSTER_HIT_RE.search(line):
-            self._state.record_monster_hit()
+            self._state.record_monster_hit(int(m.group(1)))
 
     def _parse_get_results(self, line: str) -> None:
         from mmud.automation.items import _GET_FAIL_RE, _GOT_RE

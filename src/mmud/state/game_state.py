@@ -19,6 +19,35 @@ class MonsterSighting:
     record_id: int = -1     # MONSTERS.MD record id; -1 if unknown
 
 
+@dataclass
+class DamageStat:
+    """Per-hit-type damage accumulator for MegaMud's Combat Accuracy panel
+    ("R:min-max A:avg"). One per category: hit/extra/crit/backstab/cast/round."""
+    count: int = 0
+    dmg_min: int = 0
+    dmg_max: int = 0
+    dmg_sum: int = 0
+
+    def add(self, dmg: int) -> None:
+        if self.count == 0 or dmg < self.dmg_min:
+            self.dmg_min = dmg
+        if dmg > self.dmg_max:
+            self.dmg_max = dmg
+        self.count += 1
+        self.dmg_sum += dmg
+
+    @property
+    def avg(self) -> float:
+        return self.dmg_sum / self.count if self.count else 0.0
+
+    @property
+    def range_str(self) -> str:
+        return f"{self.dmg_min}-{self.dmg_max}" if self.count else "0-0"
+
+
+_DMG_KINDS = ("hit", "extra", "crit", "backstab", "cast", "round")
+
+
 class GameState:
     def __init__(self) -> None:
         self.current_room: str = ""
@@ -47,6 +76,7 @@ class GameState:
         self.task: TaskState = TaskState()
         self.kills: int = 0
         self.exp: int = 0
+        self.exp_needed: int = 0   # exp remaining to next level (from stat/exp screen)
         self.level: int = 0
 
         # Combat accuracy stats (from Ghidra gs+0x9500 block)
@@ -54,6 +84,8 @@ class GameState:
         self.combat_misses: int = 0
         self.combat_dmg_sum: int = 0
         self.combat_special: int = 0  # backstab/crit count
+        # Per-hit-type damage ranges for the Combat Accuracy panel.
+        self.dmg: dict[str, DamageStat] = {k: DamageStat() for k in _DMG_KINDS}
         self.monster_hits: int = 0
         self.monster_misses: int = 0
         self.backstab_attempts: int = 0
@@ -126,18 +158,34 @@ class GameState:
     def set_exp(self, exp: int) -> None:
         self.exp = exp
 
+    def set_exp_needed(self, exp_needed: int) -> None:
+        self.exp_needed = exp_needed
+
     def set_level(self, level: int) -> None:
         self.level = level
 
-    def record_hit(self, damage: int = 0) -> None:
+    def record_hit(self, damage: int = 0, kind: str = "hit") -> None:
+        """Record a landed player attack. `kind` is hit/extra/crit/backstab/cast
+        for the per-type Combat Accuracy ranges."""
         self.combat_hits += 1
         self.combat_dmg_sum += damage
+        if kind in self.dmg:
+            self.dmg[kind].add(damage)
+        if kind in ("crit", "backstab", "extra"):
+            self.combat_special += 1
+
+    def record_crit(self, damage: int = 0) -> None:
+        self.record_hit(damage, kind="crit")
+
+    def record_cast(self, damage: int = 0) -> None:
+        self.record_hit(damage, kind="cast")
 
     def record_miss(self) -> None:
         self.combat_misses += 1
 
-    def record_monster_hit(self) -> None:
+    def record_monster_hit(self, damage: int = 0) -> None:
         self.monster_hits += 1
+        self.dmg["round"].add(damage)   # damage taken -> "Round" range
 
     def record_backstab(self, success: bool) -> None:
         self.backstab_attempts += 1
@@ -180,7 +228,34 @@ class GameState:
     def avg_damage(self) -> float:
         return (self.combat_dmg_sum / self.combat_hits) if self.combat_hits > 0 else 0.0
 
+    def combat_accuracy(self) -> dict:
+        """MegaMud Combat Accuracy panel: per-type pct + R:min-max + A:avg.
+        Percentages are over total swings (hits+crits+extra+misses; backstab is a
+        separate success/attempt rate; cast over cast attempts)."""
+        swings = (self.dmg["hit"].count + self.dmg["crit"].count
+                  + self.dmg["extra"].count + self.combat_misses)
+
+        def row(kind: str, pct: float) -> dict:
+            d = self.dmg[kind]
+            return {"pct": round(pct, 1), "range": d.range_str, "avg": round(d.avg)}
+
+        def share(kind: str) -> float:
+            return self.dmg[kind].count * 100 / swings if swings else 0.0
+
+        return {
+            "miss_pct": round(self.combat_misses * 100 / swings, 1) if swings else 0.0,
+            "hit": row("hit", share("hit")),
+            "extra": row("extra", share("extra")),
+            "crit": row("crit", share("crit")),
+            "backstab": row("backstab", self.backstab_pct),
+            "cast": row("cast", 0.0),
+            "round": {"range": self.dmg["round"].range_str,
+                      "avg": round(self.dmg["round"].avg)},
+        }
+
     def reset_combat_stats(self) -> None:
+        for d in self.dmg.values():
+            d.count = d.dmg_min = d.dmg_max = d.dmg_sum = 0
         self.combat_hits = 0
         self.combat_misses = 0
         self.combat_dmg_sum = 0

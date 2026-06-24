@@ -42,6 +42,24 @@ def test_remove_monster_absent_returns_false():
     assert gs.remove_monster("ghost") is False
 
 
+def test_damage_ranges_per_type():
+    gs = GameState()
+    gs.record_hit(5, "hit"); gs.record_hit(20, "hit")
+    gs.record_crit(64)
+    gs.record_hit(105, "backstab"); gs.record_backstab(success=True)
+    gs.record_miss()
+    gs.record_monster_hit(167)   # damage taken -> Round
+    acc = gs.combat_accuracy()
+    assert acc["hit"]["range"] == "5-20" and acc["hit"]["avg"] == 12  # round(12.5)=12
+    assert acc["crit"]["range"] == "64-64" and acc["crit"]["avg"] == 64
+    assert acc["backstab"]["range"] == "105-105"
+    assert acc["round"]["range"] == "167-167"   # one sample; widens with more rounds
+    # swings = 2 hit + 1 crit + 0 extra + 1 miss = 4 -> hit 50%, crit 25%, miss 25%
+    assert acc["hit"]["pct"] == 50.0
+    assert acc["crit"]["pct"] == 25.0
+    assert acc["miss_pct"] == 25.0
+
+
 def test_initial_state():
     gs = GameState()
     assert gs.current_room == ""

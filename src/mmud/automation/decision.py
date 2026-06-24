@@ -17,6 +17,7 @@ PRIO_EQUIP = 80     # auto-equip                         (Phase 5)
 PRIO_ITEMS = 90     # get/drop/stash/cash                (Phase 5)
 PRIO_COMMERCE = 95  # bank/shop/train detours            (Phase 8)
 PRIO_PARTY = 100    # party heal/wait/share              (Phase 10)
+PRIO_LOOK = 108     # look/spy unknown players before moving on
 PRIO_TRAVEL = 110   # path following / goto              (Phase 6)
 PRIO_SEARCH = 120   # hidden-exit searching              (Phase 6)
 
