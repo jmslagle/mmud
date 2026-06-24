@@ -71,15 +71,18 @@ class StatsBar(Widget):
         self.max_mp = message.max_mp
         self.query_one("#mp-label", Static).update(f"MP: {message.mp}/{message.max_mp}")
 
+    # Curated headline fields with friendly labels (no raw snake_case in the UI).
+    _NAV_LABELS = {"kills": "Kills", "exp": "Exp", "exp_rate": "Exp/hr",
+                   "people_seen": "Seen", "loop": "Loop", "lap": "Lap"}
+    _COMBAT_LABELS = {"hit_pct": "Hit", "crit_pct": "Crit", "backstab_pct": "BS",
+                      "miss_pct": "Miss", "sneak_pct": "Sneak", "dodge_pct": "Dodge"}
+
     def on_stats_bar_session_update(self, message: SessionUpdate) -> None:
         self.session[message.key] = message.value
-        # Separate combat stats from navigation stats
-        nav_keys = {"kills", "exp", "exp_rate", "session_time", "loop", "lap",
-                    "people_seen"}
-        combat_keys = {"hit_pct", "crit_pct", "backstab_pct", "miss_pct",
-                       "sneak_pct", "dodge_pct"}
-        nav_parts = [f"{k}: {v}" for k, v in self.session.items() if k in nav_keys]
-        combat_parts = [f"{k}: {v}" for k, v in self.session.items() if k in combat_keys]
+        nav_parts = [f"{lbl} {self.session[k]}"
+                     for k, lbl in self._NAV_LABELS.items() if k in self.session]
+        combat_parts = [f"{lbl} {self.session[k]}"
+                        for k, lbl in self._COMBAT_LABELS.items() if k in self.session]
         self.query_one("#session-label", Static).update("  ".join(nav_parts))
         if combat_parts:
             self.query_one("#combat-label", Static).update("  ".join(combat_parts))

@@ -133,13 +133,22 @@ class MegaMudApp(App):
             ScreenUpdated,
             lambda e: term.refresh_screen(),
         )
+        def _to_stats(make):
+            # Feed both the bottom bar and the rich Stats-tab pane (fresh message
+            # instances — a Message can only be posted once).
+            stats.post_message(make())
+            try:
+                self.query_one("#stats-pane").post_message(make())
+            except Exception:
+                pass   # Stats tab not mounted yet
+
         self._bus.subscribe(
             HpChanged,
-            lambda e: stats.post_message(StatsBar.HpUpdate(hp=e.hp, max_hp=e.max_hp)),
+            lambda e: _to_stats(lambda: StatsBar.HpUpdate(hp=e.hp, max_hp=e.max_hp)),
         )
         self._bus.subscribe(
             MpChanged,
-            lambda e: stats.post_message(StatsBar.MpUpdate(mp=e.mp, max_mp=e.max_mp)),
+            lambda e: _to_stats(lambda: StatsBar.MpUpdate(mp=e.mp, max_mp=e.max_mp)),
         )
         # Defer nested widget queries to event-fire time — widgets inside
         # RightPanel's TabbedContent may not be mounted yet during on_mount.
@@ -157,7 +166,7 @@ class MegaMudApp(App):
         )
         self._bus.subscribe(
             SessionStatUpdated,
-            lambda e: stats.post_message(StatsBar.SessionUpdate(key=e.key, value=e.value)),
+            lambda e: _to_stats(lambda: StatsBar.SessionUpdate(key=e.key, value=e.value)),
         )
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -176,6 +185,35 @@ class MegaMudApp(App):
         view._emulator.feed("\r\n" + text)
         view.refresh_screen()
 
+    def _start_loop(self, name: str) -> None:
+        self._echo(f"[bot] {self._bot.start_loop(name)}")
+        running = self._bot._loop_runner and self._bot._loop_runner.running
+        self.sub_title = (f"{self._host}:{self._port} [looping]" if running
+                          else f"{self._host}:{self._port} [connected]")
+
+    def _open_goto_picker(self) -> None:
+        from mmud.tui.search_picker import SearchPickerScreen
+
+        def provider(q: str) -> list[tuple[str, str]]:
+            return [(r.code, f"{r.code}  {r.name}" + (f"  [{r.region}]" if r.region else ""))
+                    for r in self._bot.find_rooms(q, limit=50)]
+        self.push_screen(SearchPickerScreen(
+            "Go to room — type a name or code",
+            provider, lambda code: self._echo(f"[bot] {self._bot.navigate_to_room(code)}")))
+
+    def _open_loop_picker(self) -> None:
+        from mmud.tui.search_picker import SearchPickerScreen
+        paths = self._bot.list_paths()
+        if not paths:
+            self._echo("[bot] No loop paths loaded")
+            return
+
+        def provider(q: str) -> list[tuple[str, str]]:
+            ql = q.strip().lower()
+            return [(p, p) for p in paths if ql in p.lower()]
+        self.push_screen(SearchPickerScreen(
+            "Start loop — type a name", provider, self._start_loop))
+
     async def _handle_bot_command(self, cmd: str) -> None:
         """Handle :command bot commands without sending to server."""
         parts = cmd.strip().split(None, 1)
@@ -186,13 +224,10 @@ class MegaMudApp(App):
             if self._bot is None:
                 self._echo("[bot] Not connected")
                 return
-            msg = self._bot.start_loop(arg)
-            self._echo(f"[bot] {msg}")
-            running = self._bot._loop_runner and self._bot._loop_runner.running
-            self.sub_title = (
-                f"{self._host}:{self._port} [looping]" if running
-                else f"{self._host}:{self._port} [connected]"
-            )
+            if not arg:
+                self._open_loop_picker()
+                return
+            self._start_loop(arg)
 
         elif verb in ("stop", "s"):
             if self._bot:
@@ -201,14 +236,13 @@ class MegaMudApp(App):
                 self.sub_title = f"{self._host}:{self._port} [connected]"
 
         elif verb in ("goto", "go", "g"):
-            if not arg:
-                self._echo("[bot] Usage: :goto CODE | name   (e.g. :goto CLKR or :goto arena)")
-                return
             if self._bot is None:
                 self._echo("[bot] Not connected")
                 return
-            msg = self._bot.navigate_to_room(arg)
-            self._echo(f"[bot] {msg}")
+            if not arg:
+                self._open_goto_picker()
+                return
+            self._echo(f"[bot] {self._bot.navigate_to_room(arg)}")
 
         elif verb in ("find", "f", "rooms"):
             if not arg:

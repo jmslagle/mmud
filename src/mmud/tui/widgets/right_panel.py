@@ -4,7 +4,7 @@ from textual.widget import Widget
 from textual.widgets import TabbedContent, TabPane
 from mmud.tui.widgets.conversations import ConversationsPane
 from mmud.tui.widgets.players import PlayersPane
-from mmud.tui.widgets.stats_bar import StatsBar
+from mmud.tui.widgets.stats_pane import StatsPane
 
 
 class RightPanel(Widget):
@@ -32,7 +32,7 @@ class RightPanel(Widget):
             with TabPane("Players", id="tab-players"):
                 yield PlayersPane(id="players")
             with TabPane("Stats", id="tab-stats"):
-                yield StatsBar(id="stats-tab-bar")
+                yield StatsPane(id="stats-pane")
 
     def switch_to(self, tab: str) -> None:
         """Switch active tab: 'conversations' | 'players' | 'stats'."""
