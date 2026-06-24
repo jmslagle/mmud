@@ -781,21 +781,23 @@ class MudBot:
         return self._graph
 
     def _parse_exits(self, line: str) -> None:
-        from mmud.parser.exits_parser import parse_exits
+        from mmud.parser.exits_parser import parse_exits, room_id
         exits = parse_exits(line)
         if exits is None:
             return
-        # Resolve the room by MegaMud's room hash (title + exits). Authoritative and
-        # works for rooms whose live name != the abbreviated ROOMS.MD label, where
-        # name detection (_parse_room) returns nothing. Sets the hex travel verifies
-        # arrivals against. The block is consumed here.
-        code = self._room_parser.detect_room_from_block(self._room_block, line)
+        # Resolve the room by MegaMud's room hash (title x exits). The COMPUTED hash
+        # of each display line is what the .MP corpus records, so we hash every block
+        # line and let travel match the set against the route (works even for rooms
+        # absent from ROOMS.MD). detect_room_from_block additionally names the room
+        # (ROOMS.MD) for the UI/position. The block is consumed here.
+        block = self._room_block
         self._room_block = []
+        seen_hexes = {h for c in block if (h := room_id(c, line))}
+        code = self._room_parser.detect_room_from_block(block, line)
         if code:
             room = self._rooms.get(code)
             if room and room.hex_id:
-                self._last_seen_hex = room.hex_id.upper()
-                self._state.current_hex = self._last_seen_hex
+                self._state.current_hex = room.hex_id.upper()
             if code != self._state.current_room:
                 self._state.set_room(code)
                 self._emit(RoomChanged(code=code, name=(room.name if room else code)))
@@ -807,7 +809,11 @@ class MudBot:
             self._session_log.event("monsters=[] (empty room)")
         self._also_here_seen = False
         self._state.last_exits = exits
-        self._travel.on_arrival(self._state, self._last_seen_hex)
+        if self._travel.active:
+            self._session_log.event(
+                f"arrive room={code or '?'} hex={self._state.current_hex or '?'} "
+                f"seen={sorted(seen_hexes)}")
+        self._travel.on_arrival(self._state, seen_hexes)
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()
@@ -968,6 +974,20 @@ class MudBot:
                           find_path=self._room_graph().find_path,
                           current_hex=self._resolved_current_hex())
 
+    def _hex_name(self, hexid: str) -> str:
+        """A short label for a hex id: 'CODE(Name)' if in ROOMS.MD, else the hex."""
+        if not hexid:
+            return "?"
+        for code, room in self._rooms.items():
+            if room.hex_id and room.hex_id.upper() == hexid.upper():
+                return f"{code}({room.name})"
+        return hexid
+
+    def _log_route(self, label: str, steps) -> None:
+        legs = [f"{s.command}->{self._hex_name(s.chosen)}" for s in steps]
+        self._session_log.event(f"route {label} ({len(steps)} steps): "
+                                + " | ".join(legs))
+
     def _resolved_current_hex(self) -> str:
         """Best-effort current hex: live position, else the current room's ROOMS.MD
         hex. Empty when position is unknown."""
@@ -1008,7 +1028,10 @@ class MudBot:
         if self._loop_runner and self._loop_runner.running:
             self._loop_runner.stop()
         self._loop_runner = self._make_loop_runner()
-        return self._loop_runner.start()
+        msg = self._loop_runner.start()
+        if self._travel.active:
+            self._log_route(f"loop {loop_name}", self._travel.route)
+        return msg
 
     def stop_all(self) -> str:
         """Stop loop/travel and clear command queue."""
@@ -1069,6 +1092,7 @@ class MudBot:
         while self._state.dequeue() is not None:
             pass
         self._travel.set_route(result.steps)
+        self._log_route(f"goto {to_code.upper()}", result.steps)
         return f"Navigating to {to_code.upper()} ({len(result.steps)} steps)"
 
     def list_paths(self) -> list[str]:

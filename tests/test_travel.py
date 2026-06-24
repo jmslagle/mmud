@@ -20,6 +20,19 @@ def test_expand_annotated():
     assert expand_annotated("go path") == ["go path"]
 
 
+def test_matches_corpus_expect_hash_for_room_not_in_roomsmd():
+    # The arrived room (e.g. "Mystic Alley") isn't in ROOMS.MD, but its COMPUTED
+    # hash is what the .MP corpus recorded as the step's destination. on_arrival
+    # gets the set of candidate hashes from the room block and matches expect.
+    d = _decider()
+    gs = GameState(); gs.current_hex = "DEF00011"
+    d.set_route([_step("n", "DB600014"), _step("e", "DB600041")])
+    assert d.decide(gs) == "n"
+    d.on_arrival(gs, {"99999999", "DB600014"})   # junk + the real room's hash
+    assert gs.current_hex == "DB600014"
+    assert d.decide(gs) == "e"                    # advanced via corpus match
+
+
 def test_ignores_departure_room_redisplay():
     # Reproduces the live hang: after issuing a move, the room we're LEAVING
     # re-displays its exits (an idle refresh racing the move). on_arrival must not
@@ -95,17 +108,18 @@ def test_resync_jumps_cursor():
     assert d.decide(gs) == "s"               # cursor resumed at step 3
 
 
-def test_lost_ends_route():
-    received = []
-    bus = GameEventBus()
-    bus.subscribe(TravelEnded, received.append)
-    d = _decider(bus)
+def test_off_route_hash_advances_optimistically():
+    # Room hashes are unreliable (many live rooms aren't in the corpus), so an
+    # arrival that matches no route step is TRUSTED as a successful move (advance
+    # via the planned dest) rather than ending the route. Genuine dead-ends surface
+    # as nav failures ("no exit") -> on_move_failed, not as a hash mismatch.
+    d = _decider()
     gs = GameState()
-    d.set_route([_step("n", "BBBB0002")])
-    d.decide(gs)
+    d.set_route([_step("n", "BBBB0002"), _step("e", "CCCC0003")])
+    assert d.decide(gs) == "n"
     d.on_arrival(gs, "ZZZZ9999")             # nowhere on the route
-    assert not d.active
-    assert received[0].reason == "lost"
+    assert gs.current_hex == "BBBB0002"      # advanced via planned dest (chosen)
+    assert d.decide(gs) == "e"
 
 
 def test_move_failed_retries_then_ends():
