@@ -591,6 +591,9 @@ class MudBot:
             name=name, count=count,
             exp_each=rec.exp_value if rec else 0,
             record_id=rec.record_id if rec else -1,
+            # MONSTERS.MD kill-type tier (the combat_rating field @ disk 0x25);
+            # gates whether the bot will initiate an attack. 0 if unknown.
+            kill_type=rec.combat_rating if rec else 0,
         )
 
     def _parse_room(self, line: str) -> None:

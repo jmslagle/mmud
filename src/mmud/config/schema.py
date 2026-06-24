@@ -52,6 +52,9 @@ class CombatConfig:
     run_backwards: bool = False    # retrace recent moves instead of 'flee'
     run_if_bs_fails: bool = False  # run away when a backstab attempt fails
     monster_priority: list[str] = field(default_factory=list)  # attack these first
+    attack_neutral: bool = False   # also attack kill-type-3 (neutral) monsters;
+                                   # MegaMud's "AttackNeutral" toggle. Off = only
+                                   # attack hostile (kill-type 4); never NPCs (2/5).
 
 
 @dataclass
