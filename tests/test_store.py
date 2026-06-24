@@ -2,6 +2,24 @@ import json
 from mmud.data.store import GameStore, STORE_VERSION
 
 
+def test_prune_learned_resolvable_drops_adjective_variants(tmp_path):
+    from mmud.data.store import prune_learned_resolvable
+    s = GameStore(tmp_path / "gamedb.json")
+    # a real md monster + a bogus learned adjective variant of it + a genuine unknown
+    s.data["monsters"]["14"] = {"record_id": 14, "name": "guardsman",
+        "combat_rating": 2, "level": 10, "exp_value": 200, "alignment": 80,
+        "hp_estimate": 0, "short_name1": "", "short_name2": "", "flags": 0,
+        "origin": "md", "md_hash": ""}
+    s.learn_monster("happy guardsman")     # bogus learned (resolves to guardsman)
+    s.learn_monster("weird thing")         # genuine unknown (no real base)
+    removed = prune_learned_resolvable(s)
+    names = {v["name"] for v in s.data["monsters"].values()}
+    assert removed == 1
+    assert "happy guardsman" not in names   # pruned (resolves to real guardsman)
+    assert "weird thing" in names           # kept (no real base)
+    assert "guardsman" in names
+
+
 def test_fresh_store_has_empty_schema(tmp_path):
     s = GameStore(tmp_path / "gamedb.json")
     assert s.data["version"] == STORE_VERSION
