@@ -26,6 +26,16 @@ def test_equips_carried_equippable():
     assert gs.task.priority == PRIO_EQUIP
 
 
+def test_only_items_allow_list_restricts_equip():
+    gs = GameState()
+    gs.inventory = Inventory(carried_counts={"leather helm": 1, "fine broadsword": 1})
+    d = EquipDecider(ItemDB([_item("leather helm", slot=3),
+                             _item("fine broadsword", slot=1)]),
+                     enabled=True, only_items=["broadsword"], now=lambda: 7.0)
+    # only the allow-listed item is equipped; the helm is left alone
+    assert d.decide(gs) == "equip fine broadsword"
+
+
 def test_skips_already_worn():
     gs = GameState()
     gs.inventory = Inventory(carried_counts={"leather helm": 1},

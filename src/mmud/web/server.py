@@ -178,7 +178,8 @@ class WebPanelServer:
             if svc is None:
                 return JSONResponse({"detail": "config service unavailable"}, status_code=503)
             try:
-                svc.patch(patch["section"], patch["field"], patch["value"])
+                svc.patch(patch["section"], patch["field"], patch["value"],
+                          persist=svc.can_persist)
             except KeyError as exc:
                 return JSONResponse({"detail": f"unknown field: {exc}"}, status_code=400)
             except ValueError as exc:

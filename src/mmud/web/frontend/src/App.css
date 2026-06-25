@@ -30,3 +30,21 @@ body { margin: 0; font-family: "Courier New", monospace; background: #0b0b0b; co
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { text-align: left; border-bottom: 1px solid #222; padding: 1px 4px; }
 section h4 { margin: 6px 0 2px; border-bottom: 1px solid #333; }
+
+/* Settings item-list editor */
+.settings .list-editor { margin: 0 0 1rem; }
+.settings .list-editor h4 { margin: 0.4rem 0 0.1rem; }
+.settings .hint { margin: 0 0 0.3rem; font-size: 0.8rem; opacity: 0.7; }
+.settings .list-editor ul { list-style: none; padding: 0; margin: 0.2rem 0; }
+.settings .list-editor li { display: flex; justify-content: space-between;
+  align-items: center; padding: 0.15rem 0.4rem; background: rgba(255,255,255,0.05);
+  border-radius: 3px; margin-bottom: 2px; }
+.settings .list-editor li.empty { opacity: 0.5; background: none; }
+.settings .list-editor li button { border: none; background: none; color: #e66;
+  cursor: pointer; font-size: 0.9rem; }
+.settings .add-row { display: flex; gap: 0.3rem; margin-top: 0.2rem; }
+.settings .add-row input { flex: 1; }
+.settings .toggle { display: block; margin: 0.2rem 0; cursor: pointer; }
+.settings .toggle input { margin-right: 0.4rem; }
+.settings-error { color: #e66; }
+.settings-raw { margin-top: 1rem; opacity: 0.8; }
