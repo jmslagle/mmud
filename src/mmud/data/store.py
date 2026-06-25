@@ -227,3 +227,8 @@ def store_monsters(store: GameStore) -> list:
 def store_items(store: GameStore) -> list:
     from mmud.data.binary import Item
     return [_to_dataclass(Item, r) for r in store.data["items"].values()]
+
+
+def store_spells(store: GameStore) -> list:
+    from mmud.data.binary import Spell
+    return [_to_dataclass(Spell, r) for r in store.data["spells"].values()]

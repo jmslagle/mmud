@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import time
 from typing import Callable
 from mmud.automation.decision import PRIO_SPELLS
@@ -20,6 +21,7 @@ class SpellEngine:
     def __init__(self, config: SpellsConfig, monster_priority: list[str] | None = None,
                  attack_order: str = "first", attack_neutral: bool = False,
                  mana_attack_pct: float = 0.0,
+                 bless_durations: dict[str, float] | None = None,
                  now: Callable[[], float] = time.monotonic) -> None:
         self._cfg = config
         # Target selection mirrors melee so the nuke and the swing share a target.
@@ -30,8 +32,23 @@ class SpellEngine:
         # below it -> melee (combat engine swings).
         self._mana_attack_pct = mana_attack_pct
         self._now = now
-        # Initialize to -BLESS_COOLDOWN_TICKS so the first cast is always allowed
-        self._bless_cooldowns: list[int] = [-BLESS_COOLDOWN_TICKS] * len(config.bless)
+        # Per-bless re-cast timing (time-based, MegaMud-style): last-cast time + an
+        # immediate-refresh flag set when the buff's fade line is seen. None = never
+        # cast yet -> due now.
+        self._bless_last: list[float | None] = [None] * len(config.bless)
+        self._bless_due: list[bool] = [False] * len(config.bless)
+        self._bless_fade = [re.compile(b.refresh_on, re.IGNORECASE) if b.refresh_on
+                            else None for b in config.bless]
+        # Per-slot re-cast interval (seconds): explicit interval_s wins; else derive
+        # from the spell's SPELLS.MD duration (minutes) at 85% to avoid gaps; else
+        # MegaMud's flat 600s.
+        durs = bless_durations or {}
+        self._bless_interval = [
+            b.interval_s if b.interval_s and b.interval_s > 0
+            else (durs[k] * 60 * 0.85 if (k := b.cmd.strip().lower().split()[-1]
+                                          if b.cmd.strip() else "") in durs
+                  else float(BLESS_COOLDOWN_TICKS))
+            for b in config.bless]
         self._ticks = 0
         self._attack_casts = 0
         self._swapped_to_melee = False
@@ -40,6 +57,13 @@ class SpellEngine:
     def tick(self) -> None:
         """Advance one game tick (call once per ~1Hz timer)."""
         self._ticks += 1
+
+    def on_line(self, line: str) -> None:
+        """Detect a buff's fade line (per-bless `refresh_on`) and mark it for an
+        immediate re-cast — true 'always-on', better than MegaMud's blind timer."""
+        for i, pat in enumerate(self._bless_fade):
+            if pat is not None and pat.search(line):
+                self._bless_due[i] = True
 
     def _attack_on_target(self, state: GameState) -> str | None:
         """The primary attack spell is single-target offensive: MegaMud sends
@@ -123,15 +147,22 @@ class SpellEngine:
         if (self._cfg.pre_attack and not state.in_combat and attackable):
             return self._cfg.pre_attack
 
-        # Bless spells (check each slot)
+        # Bless spells: re-cast each slot when its interval has elapsed, or at once
+        # if its fade line was seen (on_line). Gated by mana%. Reached only when not
+        # attacking (buffs are maintained between fights).
+        now = self._now()
         for i, bless in enumerate(self._cfg.bless):
             if not bless.cmd:
                 continue
-            if mp_pct < bless.mana_pct:
+            if state.max_mana > 0 and mp_pct < bless.mana_pct:
                 continue
-            if self._ticks - self._bless_cooldowns[i] < BLESS_COOLDOWN_TICKS:
+            last = self._bless_last[i]
+            due = (self._bless_due[i] or last is None
+                   or (now - last) >= self._bless_interval[i])
+            if not due:
                 continue
-            self._bless_cooldowns[i] = self._ticks
+            self._bless_last[i] = now
+            self._bless_due[i] = False
             return bless.cmd
 
         return None

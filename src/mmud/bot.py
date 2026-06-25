@@ -182,6 +182,7 @@ class MudBot:
             attack_order=self._config.combat.attack_order,
             attack_neutral=self._config.combat.attack_neutral,
             mana_attack_pct=self._config.combat.mana_attack_pct,
+            bless_durations=self._spell_durations(),
         )
         self._engine = DecisionEngine()
         self._safety = SafetyMonitor(self._config.safety)
@@ -507,6 +508,7 @@ class MudBot:
         self._safety.process_line(clean)
         self._backstab.on_line(clean)
         self._combat.on_line(clean)
+        self._spell_engine.on_line(clean)   # buff fade detection -> recast bless
         self._commerce.on_line(clean)
         self._party_parser.feed(clean, self._state)
         self._party_decider.on_line(clean)
@@ -1035,6 +1037,23 @@ class MudBot:
                           code_route=self._code_route,
                           current_code=self._state.current_room,
                           current_hex=self._resolved_current_hex())
+
+    def _spell_durations(self) -> dict[str, float]:
+        """mnemonic/name -> SPELLS.MD duration (minutes), for auto-timing bless
+        re-casts. Sourced from the store (imported SPELLS.MD)."""
+        out: dict[str, float] = {}
+        try:
+            from mmud.data.store import store_spells
+            spells = store_spells(self._store) if self._store else []
+        except Exception:
+            spells = []
+        for sp in spells:
+            dur = getattr(sp, "duration", 0)
+            if dur:
+                for key in (getattr(sp, "short_name", ""), getattr(sp, "full_name", "")):
+                    if key:
+                        out[key.strip().lower()] = float(dur)
+        return out
 
     def _code_route(self, from_code: str, to_code: str):
         """Walkable route between two room codes by chaining .MP paths (reliable),
