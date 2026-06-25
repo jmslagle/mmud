@@ -181,6 +181,7 @@ class MudBot:
             monster_priority=self._config.combat.monster_priority,
             attack_order=self._config.combat.attack_order,
             attack_neutral=self._config.combat.attack_neutral,
+            mana_attack_pct=self._config.combat.mana_attack_pct,
         )
         self._engine = DecisionEngine()
         self._safety = SafetyMonitor(self._config.safety)

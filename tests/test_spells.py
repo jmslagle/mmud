@@ -138,6 +138,28 @@ def test_attack_spell_casts_on_hostile():
     assert SpellEngine(cfg).decide(gs) == "magic missile kobold thief"
 
 
+def test_attack_spell_skips_cast_below_mana_floor():
+    # MegaMud: cast only if mana% >= ManaAttack% (floor); below it -> melee
+    # (SpellEngine declines so the combat engine swings).
+    cfg = SpellsConfig(attack="magic missile")
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(5, 100); gs.set_combat(True)
+    gs.monsters_present = [MonsterSighting(name="orc", kill_type=4)]
+    assert SpellEngine(cfg, mana_attack_pct=0.20).decide(gs) is None    # 5% < 20%
+    gs.set_mana(80, 100)
+    assert SpellEngine(cfg, mana_attack_pct=0.20).decide(gs) == "magic missile orc"
+
+
+def test_attack_spell_stops_after_max_cast_count_then_melee():
+    cfg = SpellsConfig(attack="magic missile", max_cast_count=2)
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(True)
+    gs.monsters_present = [MonsterSighting(name="orc", kill_type=4)]
+    eng = SpellEngine(cfg, mana_attack_pct=0.20)
+    assert eng.decide(gs) == "magic missile orc"   # cast 1
+    assert eng.decide(gs) == "magic missile orc"   # cast 2
+    cmd = eng.decide(gs)                            # cap reached -> melee
+    assert cmd in (None, cfg.melee_weapon_cmd or None)
+
+
 def test_attack_spell_fights_back_in_combat_even_npc():
     cfg = SpellsConfig(attack="magic missile")
     gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(True)

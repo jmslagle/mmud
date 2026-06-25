@@ -117,8 +117,9 @@ class CombatEngine:
         if state.in_combat or attackable_sightings(state, self.attack_neutral):
             if state.in_combat and hp_pct <= self.flee_threshold:
                 return "flee"
-            if state.max_mana > 0 and mp_pct < self.mana_attack_pct:
-                return None
+            # MegaMud melees below ManaAttack% (it doesn't wait) — the spell engine
+            # (higher priority) declines to cast there, so the combat engine just
+            # swings. No mana gate here.
             # Sneak before first attack if configured
             if self.sneak_cmd and not self._sneaked_this_encounter:
                 self._sneaked_this_encounter = True

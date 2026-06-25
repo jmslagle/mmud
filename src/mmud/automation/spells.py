@@ -19,12 +19,16 @@ class SpellEngine:
 
     def __init__(self, config: SpellsConfig, monster_priority: list[str] | None = None,
                  attack_order: str = "first", attack_neutral: bool = False,
+                 mana_attack_pct: float = 0.0,
                  now: Callable[[], float] = time.monotonic) -> None:
         self._cfg = config
         # Target selection mirrors melee so the nuke and the swing share a target.
         self._monster_priority = [p.lower() for p in (monster_priority or [])]
         self._attack_order = attack_order
         self._attack_neutral = attack_neutral
+        # MegaMud's "ManaAttack%" floor: cast the attack spell only at/above it;
+        # below it -> melee (combat engine swings).
+        self._mana_attack_pct = mana_attack_pct
         self._now = now
         # Initialize to -BLESS_COOLDOWN_TICKS so the first cast is always allowed
         self._bless_cooldowns: list[int] = [-BLESS_COOLDOWN_TICKS] * len(config.bless)
@@ -88,20 +92,25 @@ class SpellEngine:
         attackable = attackable_sightings(state, self._attack_neutral)
         if self._cfg.attack and (attackable or state.in_combat):
             limit = self._cfg.max_cast_count
-            if limit <= 0 or self._attack_casts < limit:
-                self._attack_casts += 1
-                if self._cfg.multi_attack:
-                    if self._cast_primary_next:
-                        self._cast_primary_next = False
-                        return self._begin_cast(state, self._attack_on_target(state))
-                    self._cast_primary_next = True
-                    # AoE: cast bare (no target), still paced as a round
-                    return self._begin_cast(state, self._cfg.multi_attack)
-                return self._begin_cast(state, self._attack_on_target(state))
-            if not self._swapped_to_melee and self._cfg.melee_weapon_cmd:
+            cap_reached = limit > 0 and self._attack_casts >= limit
+            # MegaMud: cast only if mana% >= ManaAttack% AND under the cast cap.
+            # Below the mana floor it melees PER ROUND (re-casts if mana recovers);
+            # the cap is sticky for the encounter (swap to the melee weapon once).
+            has_mana = (state.max_mana <= 0 or mp_pct >= self._mana_attack_pct)
+            if cap_reached and not self._swapped_to_melee and self._cfg.melee_weapon_cmd:
                 self._swapped_to_melee = True
                 return self._cfg.melee_weapon_cmd
-            return None
+            if self._swapped_to_melee or cap_reached or not has_mana:
+                return None   # melee: the combat engine swings
+            self._attack_casts += 1
+            if self._cfg.multi_attack:
+                if self._cast_primary_next:
+                    self._cast_primary_next = False
+                    return self._begin_cast(state, self._attack_on_target(state))
+                self._cast_primary_next = True
+                # AoE: cast bare (no target), still paced as a round
+                return self._begin_cast(state, self._cfg.multi_attack)
+            return self._begin_cast(state, self._attack_on_target(state))
 
         # Pre-attack spell — cast just before engaging (only for attackable targets)
         if (self._cfg.pre_attack and not state.in_combat and attackable):
