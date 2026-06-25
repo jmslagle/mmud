@@ -248,6 +248,8 @@ class MudBot:
         self._last_seen_hex = ""
         self._room_block: list[str] = []   # recent display lines -> room-hash title
         self._wait_reason = ""             # current intentional-wait status (UI)
+        self._objective = ""               # macro status (Looping/Traveling/...)
+        self._travel_dest = ""             # "FROM->TO" for an active goto
         self._pending_move = ""
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
         # True once an "Also here:" line is parsed in the current room display;
@@ -968,9 +970,27 @@ class MudBot:
             self._wait_reason = reason
             self._emit(SessionStatUpdated(key="activity", value=reason))
             if reason:
-                s = self._state
                 self._session_log.event(
                     f"status: {reason} (HP={s.hp}/{s.max_hp} MA={s.mana}/{s.max_mana})")
+        objective = self._macro_status()
+        if objective != self._objective:
+            self._objective = objective
+            self._emit(SessionStatUpdated(key="objective", value=objective))
+            self._session_log.event(f"objective: {objective}")
+
+    def _macro_status(self) -> str:
+        """High-level goal: Looping/Routing/Wandering/Traveling/Idle."""
+        lr = self._loop_runner
+        name = self._config.navigation.loop_path
+        if lr and lr.running:
+            if self._travel.wandering:
+                return f"Wandering -> {name}"
+            if self._travel.in_approach:
+                return f"Routing -> {name}"
+            return f"Looping {name} (lap {lr.lap})"
+        if self._travel.active:
+            return f"Traveling {self._travel_dest or '?'}"
+        return "Idle"
 
     def _check_task_timeout(self, now: float) -> None:
         if self._state.task.expired(now):
@@ -1134,6 +1154,7 @@ class MudBot:
             return f"Already at {to_code}"
         while self._state.dequeue() is not None:
             pass
+        self._travel_dest = f"{from_code}->{to_code}"
         self._travel.set_route(steps)
         self._log_route(f"goto {to_code}", steps)
         return f"Navigating to {to_code} ({len(steps)} steps)"
@@ -1154,4 +1175,5 @@ class MudBot:
             loop = f" | Loop:{name} lap:{self._loop_runner.lap}"
         combat = " | IN COMBAT" if s.in_combat else ""
         wait = f" | {self._wait_reason}" if self._wait_reason else ""
-        return f"Room:{room} {hp_str} {mp_str}{loop}{combat}{wait}"
+        obj = f" | {self._macro_status()}"
+        return f"Room:{room} {hp_str} {mp_str}{loop}{combat}{wait}{obj}"
