@@ -63,6 +63,7 @@ class GameState:
         self.players_present: list[str] = []
         self.move_history: deque[str] = deque(maxlen=20)  # recent movement cmds
         self.current_hex: str = ""        # room hex id when known
+        self.last_room_hexes: set[str] = set()  # candidate hashes of the current room
         self.last_exits: list[str] = []   # commands from the last exits line
         self.party: list = []             # list[PartyMember]
         self.party_leader: str = ""

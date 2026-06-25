@@ -907,6 +907,9 @@ class MudBot:
         block = self._room_block
         self._room_block = []
         seen_hexes = {h for c in block if (h := room_id(c, line))}
+        # Remember the current room's candidate hashes so travel can recognise a
+        # departure-room re-display even when current_hex is stale/wrong.
+        self._state.last_room_hexes = seen_hexes
         code = self._room_parser.detect_room_from_block(block, line)
         if code:
             room = self._rooms.get(code)
