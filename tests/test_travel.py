@@ -148,6 +148,23 @@ def test_resync_jumps_cursor():
     assert d.decide(gs) == "s"               # cursor resumed at step 3
 
 
+def test_resync_does_not_jump_backward_on_hash_collision():
+    # Live bug: deep in a loop (step ~30), the arrived room's BROAD candidate-hash
+    # set (a long room description yields ~25 colliding hashes) intersects an early
+    # step's expected dest, and the old resync scanned from index 0 and jumped the
+    # cursor backward onto it ("step 30 -> step 3"). Resync must only recover
+    # forward overshoots; a backward/far collision falls through to optimistic +1.
+    d = _decider()
+    gs = GameState()
+    steps = [_step(c, f"H{i}") for i, c in enumerate("abcdefghij")]
+    steps[2] = _step("c", "COLLIDE")       # an early step's dest collides
+    d.set_route(steps, start_at=7)          # deep in the route (step 8, idx 7)
+    assert d.decide(gs) == "h"
+    d.on_arrival(gs, {"COLLIDE", "ZZ"})     # collides only with idx 2, not idx 7
+    assert d._cursor == 8                    # advanced, NOT thrown back to idx 3
+    assert d.decide(gs) == "i"
+
+
 def test_off_route_hash_advances_optimistically():
     # Room hashes are unreliable (many live rooms aren't in the corpus), so an
     # arrival that matches no route step is TRUSTED as a successful move (advance
