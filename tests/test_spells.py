@@ -138,6 +138,15 @@ def test_attack_spell_casts_on_hostile():
     assert SpellEngine(cfg).decide(gs) == "magic missile kobold thief"
 
 
+def test_no_bare_cast_when_in_combat_but_no_monster():
+    # in_combat can linger for a beat after the last kill with an empty roster;
+    # the spell engine must NOT cast a targetless "magic missile".
+    cfg = SpellsConfig(attack="magic missile")
+    gs = GameState(); gs.set_hp(80, 100); gs.set_mana(80, 100); gs.set_combat(True)
+    gs.monsters_present = []
+    assert SpellEngine(cfg).decide(gs) is None
+
+
 def test_attack_spell_skips_cast_below_mana_floor():
     # MegaMud: cast only if mana% >= ManaAttack% (floor); below it -> melee
     # (SpellEngine declines so the combat engine swings).
