@@ -622,6 +622,7 @@ class MudBot:
             self._state.ground_items.clear()
             self._state.ground_coins.clear()
             self._backstab.reset()
+            self._doors.reset()   # new room: forget door open/bash attempt counts
             if self._state.task.type is TaskType.RUNNING:
                 self._state.complete_task()
             room = self._rooms.get(code)

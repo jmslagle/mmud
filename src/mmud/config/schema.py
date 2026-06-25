@@ -99,7 +99,9 @@ class NavigationConfig:
     auto_search: bool = False   # search for hidden exits in each new room
     search_max: int = 3         # search attempts per room
     roam: bool = False          # wander random exits when idle
-    bash_doors: bool = False    # bash closed doors when open fails
+    bash_doors: bool = False    # bash closed doors/gates when open/pick fails
+    bash_max: int = 5           # bash attempts before giving up (MegaMud BashMax)
+    pick_max: int = 5           # pick attempts before falling back to bash (PickMax)
 
 
 @dataclass
