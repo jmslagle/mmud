@@ -84,14 +84,16 @@ def test_no_attack_without_target():
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
     assert ce.decide(gs) is None
 
-def test_respects_mana_attack_pct():
+def test_melees_when_mana_below_attack_pct():
+    # MegaMud: ManaAttack% is a floor — below it, MELEE (don't wait). The spell
+    # engine declines to cast at low mana; the combat engine then swings.
     gs = GameState()
     gs.set_combat(True)
     gs.set_hp(80, 100)
     gs.set_mana(10, 100)
-    gs.monsters_present = [MonsterSighting(name="orc")]
+    gs.monsters_present = [MonsterSighting(name="orc", kill_type=4)]
     ce = CombatEngine(CombatConfig(mana_attack_pct=0.20))
-    assert ce.decide(gs) is None  # 10% mana < 20% threshold
+    assert ce.decide(gs) == "kill orc"   # 10% < 20% -> melee, not idle
 
 def test_config_flee_threshold():
     gs = GameState()
