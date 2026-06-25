@@ -64,6 +64,18 @@ class TravelDecider:
         """Following the one-time lead-in to a loop's start (before the loop body)."""
         return bool(self._steps) and self._loop and self._cursor < self._loop_from
 
+    @property
+    def loop_step(self) -> tuple[int, int]:
+        """(1-based position, total) within the loop body, or (0, 0) if not in it.
+        e.g. (35, 68) = on step 35 of a 68-step loop."""
+        if not self._loop or not self._steps:
+            return (0, 0)
+        total = len(self._steps) - self._loop_from
+        pos = self._cursor - self._loop_from
+        if total <= 0 or pos < 0:
+            return (0, 0)
+        return (pos + 1, total)
+
     def set_wander(self, targets: set[str], on_reach) -> None:
         """Enter wander mode: pick an exit each arrival until the room's hash is in
         `targets`, then call on_reach(hex) (which typically arms the real route).

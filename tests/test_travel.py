@@ -63,6 +63,32 @@ def test_ignores_departure_room_redisplay():
     assert d.decide(gs) == "n"          # advanced to the next step
 
 
+def test_loop_step_reports_position_and_total():
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("n", "B"), _step("e", "C"), _step("s", "A")], loop=True)
+    assert d.loop_step == (1, 3)            # at the first step
+    assert d.lap == 0
+    assert d.decide(gs) == "n"; d.on_arrival(gs, {"B"})
+    assert d.loop_step == (2, 3)
+    d.decide(gs); d.on_arrival(gs, {"C"})
+    assert d.loop_step == (3, 3)
+    d.decide(gs); d.on_arrival(gs, {"A"})   # completed a lap -> wraps
+    assert d.lap == 1
+    assert d.loop_step == (1, 3)
+
+
+def test_loop_step_counts_body_only_during_approach():
+    d = _decider()
+    gs = GameState()
+    # 1 approach step + 2 loop-body steps
+    d.set_route([_step("e", "X"), _step("n", "B"), _step("s", "X")],
+                loop=True, loop_from=1)
+    assert d.in_approach and d.loop_step == (0, 0)   # not in the body yet
+    assert d.decide(gs) == "e"; d.on_arrival(gs, {"X"})
+    assert not d.in_approach and d.loop_step == (1, 2)   # body: step 1 of 2
+
+
 def test_loop_from_resets_to_offset_not_zero():
     # 1 approach step ("e") + 2 loop steps ("n","s"); loop_from=1 means a completed
     # lap restarts at the loop body, never replaying the approach.
