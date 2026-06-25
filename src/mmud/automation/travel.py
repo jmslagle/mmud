@@ -7,7 +7,6 @@ from mmud.state.game_state import GameState
 
 _ANNOTATION_RE = re.compile(r"^(.*?)\[(.+)\]$")
 _MAX_RETRIES = 2
-_RESYNC_WINDOW = 3   # how many steps ahead an overshoot may resync (collision-safe)
 
 
 def expand_annotated(command: str) -> list[str]:
@@ -217,25 +216,15 @@ class TravelDecider:
                     self._cursor = idx + 1
                     self._finish_if_done()
                     return
-        # Overshoot recovery: did we land a FEW steps ahead? Only look forward a
-        # short way. Room hashes collide heavily — a long room description yields
-        # ~25 candidate hashes — so an unbounded scan from index 0 would "resync"
-        # backward onto a far-earlier step whose dest happens to collide (the live
-        # "step 30 -> step 3" loop jump). A real overshoot is only a step or two.
-        end = min(self._cursor + 1 + _RESYNC_WINDOW, len(self._steps))
-        for idx in range(self._cursor + 1, end):
-            hit = self._steps[idx].expect & seen_hexes
-            if hit:
-                self._bus.post(TravelResynced(from_step=self._cursor + 1,
-                                              to_step=idx + 1))
-                state.current_hex = next(iter(hit))
-                self._cursor = idx + 1
-                self._finish_if_done()
-                return
-        # No hash placed us on the route (only the room's description/junk lines
-        # hashed, or we're genuinely off-route): trust that the move worked and
-        # advance via the planned destination. A real dead-end surfaces as a nav
-        # failure ("no exit") -> on_move_failed -> blocked, so we don't loop forever.
+        # No CONFIDENT placement: advance exactly one step (follow the command).
+        # We deliberately do NOT hash-resync to a nearby step here — room hashes
+        # collide heavily (runs of identical rooms: Temple St, the cemetery), so a
+        # later step's dest hash routinely shows up in an earlier room's candidate
+        # set, and jumping on it desynced the cursor and turned the route early into
+        # a dead end ("lost in chains"). Re-anchoring is reserved for confidently
+        # name-detected rooms (handled above). Trust the move worked and advance via
+        # the planned destination; a real dead-end surfaces as a nav failure ("no
+        # exit") -> on_move_failed -> blocked, so we don't loop forever.
         state.current_hex = step.chosen
         self._cursor += 1
         self._finish_if_done()
