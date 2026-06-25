@@ -1,25 +1,26 @@
 from mmud.parser.who_parser import WhoParser
 
-def test_parse_who_entry_full():
+def test_parse_who_entry_plain():
     parser = WhoParser()
-    result = parser.parse_line("Spawn DaPrawn        L21  Criminal  The Lords of T.")
-    assert result is not None
-    assert result.name == "Spawn DaPrawn"
-    assert "21" in result.level
-    assert result.rep == "Criminal"
+    r = parser.parse_line("Aurther      -  Squire")
+    assert r is not None and r.name == "Aurther" and r.alignment == "" and r.title == "Squire"
 
-def test_parse_who_entry_no_gang():
+def test_parse_who_entry_with_alignment():
     parser = WhoParser()
-    result = parser.parse_line("BumbleBee            L5-9 Neutral")
-    assert result is not None
-    assert result.name == "BumbleBee"
-    assert "5" in result.level
+    r = parser.parse_line("Lawful Bloodrock    -  Sensei")
+    assert r is not None and r.alignment == "Lawful" and r.name == "Bloodrock" and r.title == "Sensei"
+
+def test_parse_who_entry_two_word_name():
+    parser = WhoParser()
+    r = parser.parse_line("Wrex Alot    -  Seeker")
+    assert r is not None and r.name == "Wrex Alot" and r.alignment == "" and r.title == "Seeker"
 
 def test_parse_non_who_line():
     parser = WhoParser()
     assert parser.parse_line("Obvious exits: north") is None
     assert parser.parse_line("") is None
-    assert parser.parse_line("Online Players") is None
+    assert parser.parse_line("Current Adventurers") is None
+    assert parser.parse_line("===================") is None
 
 def test_xp_line_detection():
     parser = WhoParser()

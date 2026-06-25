@@ -11,6 +11,25 @@ from mmud.state.tasks import TaskType
 
 TRAIN_TIMEOUT_S = 15.0
 
+# Bank deposit confirmation: "You deposit 61 gold crowns, 292 silver nobles,
+# 999 copper farthings." -> copper-equivalent (for the Deposited session stat).
+_DEPOSIT_RE = re.compile(r"^You deposit (.+?)\.?$", re.IGNORECASE)
+_DEPOSIT_COIN_RE = re.compile(r"(\d[\d,]*)\s+(copper|silver|gold|platinum|runic)",
+                              re.IGNORECASE)
+
+
+def deposit_copper(line: str) -> int | None:
+    """Copper-equivalent of a 'You deposit ...' confirmation, or None if the line
+    isn't one. Uses WEALTH_RATES so it agrees with wealth_total."""
+    m = _DEPOSIT_RE.match(line.strip())
+    if not m:
+        return None
+    total = 0
+    for amt, denom in _DEPOSIT_COIN_RE.findall(m.group(1)):
+        total += int(amt.replace(",", "")) * WEALTH_RATES.get(denom.lower(), 0)
+    return total or None
+
+
 # Tune against the live server; record real wording in docs/testing-plan.md.
 _TRAIN_READY_RE = re.compile(
     r"enough experience to advance|you may now advance|ready to train",

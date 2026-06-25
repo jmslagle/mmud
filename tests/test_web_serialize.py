@@ -12,7 +12,7 @@ CASES = [
     (ev.EffectRemoved("bless"), {"type": "EffectRemoved", "name": "bless"}),
     (ev.CombatChanged(True), {"type": "CombatChanged", "in_combat": True}),
     (ev.ConversationReceived("tell", "Bob", "hi"), {"type": "ConversationReceived", "channel": "tell", "sender": "Bob", "text": "hi"}),
-    (ev.PlayerSeen("Bob", "L5", "Neutral", "Gang"), {"type": "PlayerSeen", "name": "Bob", "level": "L5", "rep": "Neutral", "gang": "Gang"}),
+    (ev.PlayerSeen("Bob", "Lawful", "Sensei"), {"type": "PlayerSeen", "name": "Bob", "alignment": "Lawful", "title": "Sensei"}),
     (ev.PathStarted("loop1"), {"type": "PathStarted", "name": "loop1"}),
     (ev.PathStepped("n", 2), {"type": "PathStepped", "command": "n", "lap": 2}),
     (ev.SessionStatUpdated("kills", "3"), {"type": "SessionStatUpdated", "key": "kills", "value": "3"}),

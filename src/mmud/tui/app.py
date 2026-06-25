@@ -161,7 +161,7 @@ class MegaMudApp(App):
         self._bus.subscribe(
             PlayerSeen,
             lambda e: self.query_one("#players", PlayersPane).post_message(
-                PlayersPane.PlayerUpdate(name=e.name, level=e.level, rep=e.rep, gang=e.gang)
+                PlayersPane.PlayerUpdate(name=e.name, alignment=e.alignment, title=e.title)
             ),
         )
         self._bus.subscribe(

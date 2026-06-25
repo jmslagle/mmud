@@ -21,6 +21,7 @@ from mmud.automation.decision import (
 )
 from mmud.state.tasks import TaskType
 from mmud.automation.cures import CureDecider
+from mmud.automation.commerce import deposit_copper
 from mmud.automation.safety import SafetyMonitor
 from mmud.automation.remote import RemoteCommandHandler
 from mmud.state.conditions import scan_onset, scan_recovery
@@ -262,6 +263,8 @@ class MudBot:
         # lines); stitched with the continuation line before parsing.
         self._also_here_pending = ""
         self._stat_requested = False   # send `stat` once per session to learn maxes
+        self._in_who = False           # inside a "Current Adventurers" WHO block
+        self._who_next = 0.0           # monotonic time of the next periodic `who`
         self._loop_runner = None   # set by toggle_loop()
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()
@@ -435,6 +438,11 @@ class MudBot:
             self._last_refresh = now
             self._session_log.tx("(idle refresh)")
             await self._conn.send("")   # bare Enter (\r) — re-print prompt/room
+        # Periodic WHO to keep the Players tab fresh as people log in/out.
+        iv = self._config.session.who_interval_s
+        if iv > 0 and self._stat_requested and now >= self._who_next:
+            self._who_next = now + iv
+            self._state.enqueue("who")
 
     def _check_afk(self) -> None:
         cfg = self._config.afk
@@ -494,6 +502,9 @@ class MudBot:
         if clean.lower().startswith("also here:") and not clean.endswith("."):
             self._also_here_pending = clean
             return
+        # WHO block -> Players tab. Consume block lines so they aren't misparsed.
+        if self._parse_who(clean):
+            return
         # Accumulate display lines so _parse_exits can recover the room title for
         # MegaMud's room-hash lookup (reset when an exits line closes the block).
         if clean:
@@ -512,6 +523,8 @@ class MudBot:
         self._combat.on_line(clean)
         self._spell_engine.on_line(clean)   # buff fade detection -> recast bless
         self._commerce.on_line(clean)
+        if (dep := deposit_copper(clean)) is not None:   # live "Deposited" stat
+            self._session.on_deposit(dep)
         self._party_parser.feed(clean, self._state)
         self._party_decider.on_line(clean)
         if join_cmd := self._invites.check(clean):
@@ -551,6 +564,8 @@ class MudBot:
             if not self._stat_requested:
                 self._stat_requested = True
                 self._state.enqueue("stat")
+                self._state.enqueue("who")   # populate the Players tab on login
+                self._who_next = time.monotonic() + self._config.session.who_interval_s
             # Prompts without a max (e.g. "[HP=49 /MA=20 ]") keep the last known
             # max — learned from a previous full prompt or the `stat` line.
             max_hp = int(m.group(2)) if m.group(2) else self._state.max_hp
@@ -741,15 +756,28 @@ class MudBot:
         if cmd is not None:
             self._state.enqueue(cmd)
 
-    def _parse_who_and_exp(self, line: str) -> None:
-        # WHO list entry
+    def _parse_who(self, line: str) -> bool:
+        """WHO block ("Current Adventurers" / "===" then "[Align ]Name - Title").
+        Returns True if the line was consumed as part of the block. Gated by state
+        so stray '  -  ' lines elsewhere aren't misread as players."""
+        if "Current Adventurers" in line:
+            self._in_who = True
+            return True
+        if not self._in_who:
+            return False
+        stripped = line.strip()
+        if not stripped or set(stripped) <= set("=-"):
+            return True   # header underline / blank: stay in the block
         entry = self._who_parser.parse_line(line)
-        if entry:
-            self._note_player_seen(entry.name, level=entry.level,
-                                   rep=entry.rep, gang=entry.gang)
-            self._emit(PlayerSeen(name=entry.name, level=entry.level,
-                                  rep=entry.rep, gang=entry.gang))
-            return
+        if entry is None:
+            self._in_who = False   # block ended (prompt or other text)
+            return False
+        self._note_player_seen(entry.name, alignment=entry.alignment, title=entry.title)
+        self._emit(PlayerSeen(name=entry.name, alignment=entry.alignment,
+                              title=entry.title))
+        return True
+
+    def _parse_who_and_exp(self, line: str) -> None:
         # Per-kill experience: "You gain N experience." This is MegaMud's kill
         # signal (combat_event_parse @ 0x004176b0): accumulate the delta, count
         # the kill, and remove the monster we were fighting (the current target,
@@ -761,6 +789,18 @@ class MudBot:
             self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
             self._emit(SessionStatUpdated(key="exp_gained",
                                           value=str(self._session.exp_gained)))
+            # Live exp/level progress from the kill (baseline from the login `stat`),
+            # so the Experience pane ticks without re-issuing `exp`/`stat`.
+            self._state.set_exp(self._state.exp + gain)
+            self._emit(SessionStatUpdated(key="exp", value=str(self._state.exp)))
+            if self._state.exp_needed > 0:
+                need = max(0, self._state.exp_needed - gain)
+                self._state.set_exp_needed(need)
+                self._emit(SessionStatUpdated(key="exp_needed", value=str(need)))
+                eta = self._session.time_to_level_hours(need)
+                self._emit(SessionStatUpdated(
+                    key="will_level_in",
+                    value=(f"{eta:.1f} hr" if eta > 0 else "?")))
             target = select_attack_target(
                 self._state,
                 [p.lower() for p in self._config.combat.monster_priority],

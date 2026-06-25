@@ -39,7 +39,7 @@ def test_all_event_types_constructible():
     EffectRemoved(name="chain")
     CombatChanged(in_combat=True)
     ConversationReceived(channel="tell", sender="BumbleBee", text="hi")
-    PlayerSeen(name="BumbleBee", level="L5-9", rep="Neutral", gang="")
+    PlayerSeen(name="BumbleBee", alignment="Lawful", title="Sensei")
     PathStarted(name="RHU2LOOP")
     PathStepped(command="e", lap=58)
     SessionStatUpdated(key="kills", value="694")

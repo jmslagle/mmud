@@ -8,19 +8,17 @@ class PlayersPane(DataTable):
     """Online player list as a sortable DataTable."""
 
     class PlayerUpdate(Message):
-        def __init__(self, name: str, level: str, rep: str, gang: str) -> None:
+        def __init__(self, name: str, alignment: str = "", title: str = "") -> None:
             super().__init__()
             self.name = name
-            self.level = level
-            self.rep = rep
-            self.gang = gang
+            self.alignment = alignment
+            self.title = title
 
     def on_mount(self) -> None:
         self.add_columns(
             ("Name", "name"),
-            ("Level", "level"),
-            ("Rep.", "rep"),
-            ("Gang", "gang"),
+            ("Align", "alignment"),
+            ("Title", "title"),
         )
         self.cursor_type = "row"
 
@@ -28,8 +26,7 @@ class PlayersPane(DataTable):
         # Upsert: update existing row if name matches, else add new row
         for row_key in self.rows:
             if str(self.get_row(row_key)[0]) == message.name:
-                self.update_cell(row_key, "level", message.level)
-                self.update_cell(row_key, "rep", message.rep)
-                self.update_cell(row_key, "gang", message.gang)
+                self.update_cell(row_key, "alignment", message.alignment)
+                self.update_cell(row_key, "title", message.title)
                 return
-        self.add_row(message.name, message.level, message.rep, message.gang)
+        self.add_row(message.name, message.alignment, message.title)

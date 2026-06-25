@@ -5,19 +5,22 @@ from dataclasses import dataclass
 @dataclass
 class WhoEntry:
     name: str
-    level: str
-    rep: str
-    gang: str = ""
+    alignment: str = ""   # WHO's leading alignment column (may be empty)
+    title: str = ""       # class/rank title shown after " - "
 
-# "Spawn DaPrawn        L21  Criminal  The Lords of T."
-# "BumbleBee            L5-9 Neutral"
-_WHO_RE = re.compile(
-    r"^(.+?)\s{2,}"                 # name (followed by 2+ spaces)
-    r"(L[\d][\d\-]*)\s+"            # level e.g. L21 or L5-9
-    r"(Neutral|Criminal|Law Abiding|Outlaw|Hero|Villain)"  # rep
-    r"(?:\s+(.+))?$",               # optional gang
-    re.IGNORECASE,
-)
+# This server's WHO is a block ("Current Adventurers" / "===") of:
+#   "Aurther      -  Squire"
+#   "Lawful Bloodrock    -  Sensei"   (leading alignment word)
+#   "Wrex Alot    -  Seeker"          (two-word name)
+# Split on the "  -  " separator; peel a leading known-alignment word off the left.
+_WHO_RE = re.compile(r"^([A-Za-z].*?)\s+-\s+(\S.*?)\s*$")
+# Known alignment descriptors that may prefix the name. May need tuning per server
+# (this realm uses "Lawful"); peeled only when followed by a real name.
+_ALIGNMENTS = {
+    "lawful", "neutral", "chaotic", "good", "evil", "saintly", "fiendish",
+    "kind", "cruel", "angelic", "demonic", "amiable", "nice", "mean", "noble",
+    "heroic", "villainous", "outlaw", "criminal",
+}
 _EXP_RE = re.compile(r"Exp(?:erience)?[:\s]+(\d[\d,]*)", re.IGNORECASE)
 _LEVEL_RE = re.compile(r"Level[:\s]+(\d+)", re.IGNORECASE)
 # Per-kill delta: "You gain 26 experience." (megamud.exe combat_event_parse adds
@@ -30,17 +33,21 @@ _EXP_NEEDED_RE = re.compile(
 
 class WhoParser:
     def parse_line(self, line: str) -> WhoEntry | None:
-        line = line.rstrip()
-        if not line or len(line) < 10:
+        """Parse one WHO-block entry. Call only within the block (the bot gates on
+        the 'Current Adventurers' header) — the '  -  ' shape is permissive."""
+        m = _WHO_RE.match(line.rstrip())
+        if not m:
             return None
-        if m := _WHO_RE.match(line):
-            return WhoEntry(
-                name=m.group(1).strip(),
-                level=m.group(2).strip(),
-                rep=m.group(3).strip(),
-                gang=(m.group(4) or "").strip().rstrip("."),
-            )
-        return None
+        left, title = m.group(1).strip(), m.group(2).strip()
+        words = left.split()
+        alignment = ""
+        if len(words) > 1 and words[0].lower() in _ALIGNMENTS:
+            alignment, name = words[0], " ".join(words[1:])
+        else:
+            name = left
+        if not name:
+            return None
+        return WhoEntry(name=name, alignment=alignment, title=title)
 
     def parse_exp_line(self, line: str) -> int | None:
         if m := _EXP_RE.search(line):
