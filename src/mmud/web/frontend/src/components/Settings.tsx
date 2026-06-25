@@ -35,6 +35,7 @@ export function Settings() {
 
   const items = config.items ?? {};
   const nav = config.navigation ?? {};
+  const combat = config.combat ?? {};
 
   return (
     <div className="settings">
@@ -61,6 +62,32 @@ export function Settings() {
               onChange={(c) => patchField("navigation", "bash_doors", c)} />
       <Toggle label="Pick locks" checked={!!nav.can_pick_locks}
               onChange={(c) => patchField("navigation", "can_pick_locks", c)} />
+
+      <h4>Combat &amp; Rest</h4>
+      <PercentField
+        label="Rest below HP %"
+        hint="Out of combat, rest and recover when HP drops under this."
+        value={combat.rest_threshold ?? 0}
+        onChange={(v) => patchField("combat", "rest_threshold", v)}
+      />
+      <PercentField
+        label="Rest below Mana %"
+        hint="Out of combat, rest to recover mana under this (0 = off). Good for casters."
+        value={combat.rest_mana_pct ?? 0}
+        onChange={(v) => patchField("combat", "rest_mana_pct", v)}
+      />
+      <PercentField
+        label="Flee below HP %"
+        hint="In combat, flee when HP drops under this."
+        value={combat.flee_threshold ?? 0}
+        onChange={(v) => patchField("combat", "flee_threshold", v)}
+      />
+      <PercentField
+        label="Cast above Mana %"
+        hint="Only cast the attack spell when mana is above this; below it, melee."
+        value={combat.mana_attack_pct ?? 0}
+        onChange={(v) => patchField("combat", "mana_attack_pct", v)}
+      />
 
       <details className="settings-raw">
         <summary>Raw config</summary>
@@ -100,6 +127,33 @@ function ListEditor({ label, hint, values, onChange }: {
         />
         <button onClick={add}>+ add</button>
       </div>
+    </div>
+  );
+}
+
+function PercentField({ label, hint, value, onChange }: {
+  label: string; hint: string; value: number; onChange: (v: number) => void;
+}) {
+  // Stored as a 0..1 fraction; shown/edited as a 0..100 percentage.
+  const [draft, setDraft] = useState(Math.round((value ?? 0) * 100).toString());
+  useEffect(() => { setDraft(Math.round((value ?? 0) * 100).toString()); }, [value]);
+  const commit = () => {
+    const pct = Math.max(0, Math.min(100, parseInt(draft, 10) || 0));
+    onChange(pct / 100);
+  };
+  return (
+    <div className="num-field">
+      <label>
+        {label}
+        <input
+          type="number" min={0} max={100} value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+        />
+        <span className="unit">%</span>
+      </label>
+      <p className="hint">{hint}</p>
     </div>
   );
 }

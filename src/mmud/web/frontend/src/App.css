@@ -46,5 +46,10 @@ section h4 { margin: 6px 0 2px; border-bottom: 1px solid #333; }
 .settings .add-row input { flex: 1; }
 .settings .toggle { display: block; margin: 0.2rem 0; cursor: pointer; }
 .settings .toggle input { margin-right: 0.4rem; }
+.settings .num-field { margin: 0.35rem 0; }
+.settings .num-field label { display: flex; align-items: center; gap: 0.4rem; }
+.settings .num-field input { width: 4rem; }
+.settings .num-field .unit { opacity: 0.7; }
+.settings .num-field .hint { margin: 0.1rem 0 0; }
 .settings-error { color: #e66; }
 .settings-raw { margin-top: 1rem; opacity: 0.8; }

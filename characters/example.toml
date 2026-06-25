@@ -41,7 +41,9 @@ auto_login = false   # set to true to enable automatic login on connect
 [combat]
 attack_cmd      = "kill"
 flee_threshold  = 0.15
-rest_threshold  = 0.40
+rest_threshold  = 0.40    # rest (out of combat) when HP drops below this fraction
+rest_mana_pct   = 0.0     # also rest to recover mana below this fraction (0 = off;
+                          # casters: set ~0.30 to pause and regen mana between fights)
 backstab        = false
 polite_attacks  = false
 attack_order    = "first"

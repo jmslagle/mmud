@@ -1,26 +1,36 @@
 from __future__ import annotations
 import re
+import time
 from mmud.config.schema import CombatConfig
 from mmud.state.game_state import GameState
+from mmud.state.tasks import TaskType
+from mmud.automation.decision import PRIO_REST
+
+_REST_FULL = 0.95       # recover HP/mana to ~this fraction before resuming
+_REST_TIMEOUT_S = 180.0  # safety net so a misparsed max can't pin us resting forever
 
 _SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
 _SNEAK_FAIL_RE = re.compile(r"fail to sneak|make a noise", re.IGNORECASE)
 
 
 def activity_reason(state: GameState, cmd, mana_attack_pct: float,
-                    rest_threshold: float) -> str:
+                    rest_threshold: float, rest_mana_pct: float = 0.0) -> str:
     """Why the bot is intentionally idle this tick (so a wait doesn't look frozen).
     "" when it's acting or has nothing to wait on."""
     if cmd is not None:
         return ""
     mp_pct = state.mana / state.max_mana if state.max_mana > 0 else 1.0
     hp_pct = state.hp / state.max_hp if state.max_hp > 0 else 1.0
+    if state.task.is_active and state.task.type is TaskType.RESTING:
+        return "resting"
     if ((state.in_combat or state.monsters_present)
             and state.max_mana > 0 and mp_pct < mana_attack_pct):
         return "waiting for mana"
-    if (not state.in_combat and not state.monsters_present
-            and hp_pct < rest_threshold):
-        return "resting"
+    if not state.in_combat and not state.monsters_present:
+        if hp_pct < rest_threshold:
+            return "resting"
+        if rest_mana_pct > 0 and state.max_mana > 0 and mp_pct < rest_mana_pct:
+            return "resting"
     return ""
 
 
@@ -81,6 +91,7 @@ class CombatEngine:
         self.attack_cmd = cfg.attack_cmd
         self.flee_threshold = cfg.flee_threshold
         self.rest_threshold = cfg.rest_threshold
+        self.rest_mana_pct = cfg.rest_mana_pct
         self.mana_attack_pct = cfg.mana_attack_pct
         self.attack_order = cfg.attack_order
         self.polite_attacks = cfg.polite_attacks
@@ -150,8 +161,26 @@ class CombatEngine:
         self._sneak_confirmed = False
         self._engaged_target = ""
 
-        if hp_pct < self.rest_threshold and not self._resting:
-            return "rest"
+        # Rest to recover (out of combat). Like MegaMud, HOLD position and rest
+        # until HP/mana are back up — a looping bot otherwise rests one tick and
+        # walks off without recovering. The RESTING task (PRIO_REST) blocks travel
+        # but lets flee/combat preempt if something wanders in (the engine aborts
+        # the lower-priority task when a higher slot returns a command).
+        recovering = state.task.is_active and state.task.type is TaskType.RESTING
+        if recovering:
+            hp_done = hp_pct >= _REST_FULL
+            mana_done = state.max_mana <= 0 or mp_pct >= _REST_FULL
+            if hp_done and mana_done:
+                state.complete_task()      # recovered -> let the loop resume
+                return None
+            return "rest" if not self._resting else None
+        hp_low = hp_pct < self.rest_threshold
+        mana_low = (self.rest_mana_pct > 0 and state.max_mana > 0
+                    and mp_pct < self.rest_mana_pct)
+        if hp_low or mana_low:
+            state.begin_task(TaskType.RESTING, priority=PRIO_REST,
+                             timeout_s=_REST_TIMEOUT_S, now=time.monotonic())
+            return "rest" if not self._resting else None
         return None
 
     def _pick_target(self, state: GameState) -> str:
