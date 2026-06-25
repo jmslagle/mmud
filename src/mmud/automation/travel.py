@@ -7,6 +7,7 @@ from mmud.state.game_state import GameState
 
 _ANNOTATION_RE = re.compile(r"^(.*?)\[(.+)\]$")
 _MAX_RETRIES = 2
+_RESYNC_WINDOW = 3   # how many steps ahead an overshoot may resync (collision-safe)
 
 
 def expand_annotated(command: str) -> list[str]:
@@ -190,8 +191,14 @@ class TravelDecider:
             self._cursor += 1
             self._finish_if_done()
             return
-        for idx, other in enumerate(self._steps):      # resync against any step
-            hit = other.expect & seen_hexes
+        # Overshoot recovery: did we land a FEW steps ahead? Only look forward a
+        # short way. Room hashes collide heavily — a long room description yields
+        # ~25 candidate hashes — so an unbounded scan from index 0 would "resync"
+        # backward onto a far-earlier step whose dest happens to collide (the live
+        # "step 30 -> step 3" loop jump). A real overshoot is only a step or two.
+        end = min(self._cursor + 1 + _RESYNC_WINDOW, len(self._steps))
+        for idx in range(self._cursor + 1, end):
+            hit = self._steps[idx].expect & seen_hexes
             if hit:
                 self._bus.post(TravelResynced(from_step=self._cursor + 1,
                                               to_step=idx + 1))
