@@ -18,7 +18,11 @@ class FakeConnection:
         self._lines = lines
         self.sent: list[str] = []
         self.sent_raw: list[str] = []
+        self.size: tuple[int, int] | None = None
         self.closed = False
+
+    def set_size(self, cols: int, rows: int) -> None:
+        self.size = (cols, rows)
 
     async def connect(self) -> None:
         pass
