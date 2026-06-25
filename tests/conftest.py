@@ -17,6 +17,7 @@ class FakeConnection:
     def __init__(self, lines: list[str]) -> None:
         self._lines = lines
         self.sent: list[str] = []
+        self.sent_raw: list[str] = []
         self.closed = False
 
     async def connect(self) -> None:
@@ -24,6 +25,9 @@ class FakeConnection:
 
     async def send(self, command: str) -> None:
         self.sent.append(command)
+
+    async def send_raw(self, data: str) -> None:
+        self.sent_raw.append(data)
 
     async def readlines(self):
         for line in self._lines:
