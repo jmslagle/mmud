@@ -108,6 +108,17 @@ class LoopRunner:
         idx = loop_hexes.index(hexid.upper()) if hexid.upper() in loop_hexes else 0
         self._travel.set_route(loop_steps, loop=True, loop_from=0, start_at=idx)
 
+    def recover(self) -> str:
+        """We took a bad direction (desynced — rife in hash-colliding areas like the
+        graveyard). Drop the recorded route and WANDER until we step onto a known
+        loop room, then resume — MegaMud-style 'find a known room to reset'."""
+        if self._path is None:
+            return "no loop to recover"
+        loop_hexes = [s.hex_id.upper() for s in self._path.steps]
+        self._travel.set_wander(set(loop_hexes), self._engage_at)
+        self._running = True
+        return f"wandering to relocate loop {self._nav.loop_path}"
+
     def stop(self) -> None:
         self._running = False
         self._travel.clear(reason="stopped")

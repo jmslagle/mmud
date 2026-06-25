@@ -33,6 +33,20 @@ def test_matches_corpus_expect_hash_for_room_not_in_roomsmd():
     assert d.decide(gs) == "e"                    # advanced via corpus match
 
 
+def test_redisplay_guard_is_one_shot_under_hash_collision():
+    # Graveyard collision: the destination room hash-collides with the departure
+    # (from_hex). The guard must ignore the re-display only ONCE, then advance —
+    # not deadlock in_flight forever (the bug that froze the bot in the graveyard).
+    d = _decider()
+    gs = GameState(); gs.current_hex = "2B000055"
+    d.set_route([_step("e", "DEST0001"), _step("n", "DEST0002")])
+    assert d.decide(gs) == "e"               # from_hex = 2B000055
+    d.on_arrival(gs, {"2B000055"})           # 1st: looks like a re-display -> ignore
+    assert d.decide(gs) is None              # still waiting
+    d.on_arrival(gs, {"2B000055"})           # 2nd: persists -> it really moved, advance
+    assert d.decide(gs) == "n"               # not deadlocked
+
+
 def test_ignores_departure_room_redisplay():
     # Reproduces the live hang: after issuing a move, the room we're LEAVING
     # re-displays its exits (an idle refresh racing the move). on_arrival must not

@@ -139,6 +139,24 @@ def test_wanders_when_position_unknown_then_engages_loop():
     assert travel.decide(gs) == "n"                      # real loop engaged at idx 0
 
 
+def test_recover_wanders_to_relocate_the_loop():
+    # A bad direction means we've desynced -> wander to find a loop room again.
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "e")])
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
+                        code_route=lambda f, t: [], current_code="HOME",
+                        current_hex="AAAA0001")
+    runner.start()
+    assert travel.route                       # following the loop
+    msg = runner.recover()
+    assert "wander" in msg.lower()
+    assert not travel.route                    # switched to wander (no fixed steps)
+    gs = GameState(); gs.last_exits = ["s", "e"]
+    assert travel.decide(gs) in ("s", "e")     # wandering
+    travel.on_arrival(gs, {"AAAA0001"})        # found a loop room
+    assert travel.decide(gs) == "n"            # loop re-engaged
+
+
 def test_missing_path_does_not_arm():
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
     runner = LoopRunner(NavigationConfig(loop_path="XXXX"), [], ROOMS, travel)
