@@ -37,6 +37,7 @@ class TravelDecider:
         self._loop = False
         self._loop_from = 0
         self._from_hex = ""   # hex we issued the in-flight move FROM
+        self._from_seen: set[str] = set()  # candidate hashes of the room we left
         self._redisplay_ignored = False   # one-shot departure-re-display guard
         self._wander_targets: set[str] | None = None   # hexes that end wandering
         self._on_reach = None                          # callback(hex) when reached
@@ -142,6 +143,7 @@ class TravelDecider:
         for extra in cmds[1:]:
             state.enqueue(extra)
         self._from_hex = (state.current_hex or "").upper()
+        self._from_seen = {h.upper() for h in getattr(state, "last_room_hexes", ()) if h}
         self._redisplay_ignored = False
         self._in_flight = True
         return cmds[0]
@@ -175,13 +177,16 @@ class TravelDecider:
             seen_hexes = {seen.upper()} if seen else set()
         step = self._steps[self._cursor]
         on_track = step.expect & seen_hexes
-        if (seen_hexes and self._from_hex in seen_hexes and not on_track
-                and not self._redisplay_ignored):
-            # The room we're leaving re-displayed (e.g. an idle refresh racing the
-            # move). Ignore it ONCE; if it persists, the move did resolve (often to
-            # a different room that hash-COLLIDES with the departure — common in the
-            # graveyard where many rooms share a hash) so we must advance, not
-            # deadlock waiting forever.
+        is_redisplay = bool(seen_hexes) and not on_track and (
+            self._from_hex in seen_hexes or bool(seen_hexes & self._from_seen))
+        if is_redisplay and not self._redisplay_ignored:
+            # The room we're leaving re-displayed (e.g. the sneak prefix or an idle
+            # refresh racing the move). Recognise it by the departure room's hash SET
+            # (`_from_seen`), not just `current_hex` — at route start current_hex is
+            # often stale, so the old from_hex-only check missed the re-display and
+            # optimistic advance desynced the whole route by one (goto stuck after a
+            # premature turn). Ignore ONCE; if it persists, the move really resolved
+            # (often to a hash-COLLIDING room) so we advance rather than deadlock.
             self._redisplay_ignored = True
             return
         self._in_flight = False

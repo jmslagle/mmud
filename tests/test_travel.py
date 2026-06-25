@@ -47,6 +47,24 @@ def test_redisplay_guard_is_one_shot_under_hash_collision():
     assert d.decide(gs) == "n"               # not deadlocked
 
 
+def test_departure_redisplay_caught_even_when_current_hex_is_stale():
+    # Live bug (goto WALT stuck at Silver St): at route start the departure room
+    # re-displays its exits (triggered by the sneak prefix) BEFORE the move resolves.
+    # current_hex was stale, so the from_hex guard missed it and optimistic advance
+    # consumed step 0 -> the whole route desynced by one -> premature turn -> dead end.
+    # The guard must recognise the departure room by its hash SET, not the stale hex.
+    d = _decider()
+    gs = GameState()
+    gs.current_hex = "STALE000"                     # wrong/stale: from_hex won't match
+    gs.last_room_hexes = {"AAAA0050", "BBBB0050"}   # the departure room's real hashes
+    d.set_route([_step("e", "DEST0001"), _step("e", "DEST0002")])
+    assert d.decide(gs) == "e"                       # issue step 0 (captures from-room set)
+    d.on_arrival(gs, {"AAAA0050", "CCCC0050"})       # departure re-display (overlaps from-set)
+    assert d.decide(gs) is None                      # still in flight — cursor NOT advanced
+    d.on_arrival(gs, {"DEST0001"})                   # the real arrival
+    assert d.decide(gs) == "e"                       # now advanced to step 1
+
+
 def test_ignores_departure_room_redisplay():
     # Reproduces the live hang: after issuing a move, the room we're LEAVING
     # re-displays its exits (an idle refresh racing the move). on_arrival must not
