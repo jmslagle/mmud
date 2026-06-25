@@ -256,6 +256,7 @@ class MudBot:
         self._room_block: list[str] = []   # recent display lines -> room-hash title
         self._wait_reason = ""             # current intentional-wait status (UI)
         self._objective = ""               # macro status (Looping/Traveling/...)
+        self._objective_phase = ""         # objective minus the step, for log throttle
         self._travel_dest = ""             # "FROM->TO" for an active goto
         self._pending_move = ""
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
@@ -1024,7 +1025,12 @@ class MudBot:
         if objective != self._objective:
             self._objective = objective
             self._emit(SessionStatUpdated(key="objective", value=objective))
-            self._session_log.event(f"objective: {objective}")
+            # Log only on a phase/lap change, not every step ("35/68" -> "36/68"),
+            # so the loop doesn't spam the session log once per move.
+            phase = re.sub(r":\s*\d+/\d+", "", objective)
+            if phase != self._objective_phase:
+                self._objective_phase = phase
+                self._session_log.event(f"objective: {objective}")
 
     def _macro_status(self) -> str:
         """High-level goal: Looping/Routing/Wandering/Traveling/Idle."""
@@ -1035,7 +1041,9 @@ class MudBot:
                 return f"Wandering -> {name}"
             if self._travel.in_approach:
                 return f"Routing -> {name}"
-            return f"Looping {name} (lap {lr.lap})"
+            pos, total = self._travel.loop_step
+            # lap is 0-based internally; display 1-based ("Lap 1" on the first pass).
+            return f"Looping {name} (Lap {lr.lap + 1}: {pos}/{total})"
         if self._travel.active:
             return f"Traveling {self._travel_dest or '?'}"
         return "Idle"
