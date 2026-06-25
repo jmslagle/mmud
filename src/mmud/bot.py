@@ -216,7 +216,9 @@ class MudBot:
             on_mark=(lambda n: self._store.add_mark("ungettable", n)) if self._store else None)
         from mmud.automation.equip import EquipDecider
         self._equip_decider = EquipDecider(
-            self._item_db, enabled=self._config.items.auto_get,
+            self._item_db,
+            enabled=self._config.items.auto_get or bool(self._config.items.equip_items),
+            only_items=self._config.items.equip_items,
             on_mark=(lambda n: self._store.add_mark("no_auto_equip", n)) if self._store else None)
         if self._store is not None:
             for n in self._store.marks("ungettable"):

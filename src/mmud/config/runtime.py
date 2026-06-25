@@ -38,15 +38,26 @@ class ConfigService:
         self._path = path
 
     def patch(self, section: str, field: str, value: Any, persist: bool = False) -> Any:
+        import typing
         target = introspect.field_type(section, field)   # raises KeyError if unknown
-        if not introspect.is_scalar_field(section, field):
-            raise KeyError(f"{section}.{field} is not a scalar field")
-        coerced = _coerce(value, target)
+        if introspect.is_scalar_field(section, field):
+            coerced: Any = _coerce(value, target)
+        elif field in introspect.scalar_list_fields(section):
+            if not isinstance(value, (list, tuple)):
+                raise ValueError(f"{section}.{field} expects a list")
+            elem = typing.get_args(target)[0]
+            coerced = [_coerce(v, elem) for v in value]
+        else:
+            raise KeyError(f"{section}.{field} is not an editable field")
         setattr(getattr(self.config, section), field, coerced)
+        self._bus.post(ConfigChanged(section=section, field=field, value=coerced))
         if persist:
             self.save()
-        self._bus.post(ConfigChanged(section=section, field=field, value=coerced))
         return coerced
+
+    @property
+    def can_persist(self) -> bool:
+        return self._path is not None
 
     def save(self) -> None:
         if self._path is None:

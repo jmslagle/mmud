@@ -13,10 +13,14 @@ class EquipDecider:
     """PRIO_EQUIP slot: equip carried, equippable, not-yet-worn items."""
 
     def __init__(self, item_db: ItemDB, enabled: bool = True,
+                 only_items: list[str] | None = None,
                  now: Callable[[], float] = time.monotonic,
                  on_mark: Callable[[str], None] | None = None) -> None:
         self._db = item_db
         self._enabled = enabled
+        # When non-empty, only auto-equip carried items whose name matches one of
+        # these (case-insensitive substring) — an allow-list. Empty = any equippable.
+        self._only = [s.lower() for s in (only_items or [])]
         self._now = now
         self._on_mark = on_mark
         self._failed: set[str] = set()   # cursed/failed items: don't retry
@@ -32,6 +36,8 @@ class EquipDecider:
         worn = set(state.inventory.worn)
         for name in state.inventory.carried:
             if name in worn or name in self._failed:
+                continue
+            if self._only and not any(w in name.lower() for w in self._only):
                 continue
             rec = self._db.find(name)
             if rec is None or rec.equip_slot <= 0:

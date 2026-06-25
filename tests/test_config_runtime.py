@@ -29,6 +29,27 @@ def test_patch_coerces_string_to_field_type():
     assert isinstance(svc.config.server.port, int)
 
 
+def test_patch_scalar_list_field():
+    svc, seen = _service()
+    svc.patch("items", "get_items", ["black star key", "runed pendant"])
+    assert svc.config.items.get_items == ["black star key", "runed pendant"]
+    assert seen[-1].field == "get_items"
+
+
+def test_patch_list_field_rejects_non_list():
+    svc, _ = _service()
+    with pytest.raises(ValueError):
+        svc.patch("items", "get_items", "black star key")
+
+
+def test_patch_and_persist_list_to_toml(tmp_path):
+    svc, _ = _service(tmp_path)
+    assert svc.can_persist
+    svc.patch("items", "get_items", ["black star key"], persist=True)
+    reloaded = tomllib.loads((tmp_path / "config.toml").read_text())
+    assert reloaded["items"]["get_items"] == ["black star key"]
+
+
 def test_patch_coerces_bool_strings():
     svc, _ = _service()
     svc.patch("stealth", "auto_sneak", "on")
