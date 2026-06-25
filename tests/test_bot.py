@@ -242,17 +242,18 @@ from conftest import make_transcript_bot
 async def test_transcript_bot_rests_on_low_hp():
     # HP 10/100 out of combat -> CombatEngine rest_threshold (0.40) says "rest".
     # First prompt sends the one-time `stat`; the action follows on the next.
-    bot = make_transcript_bot(["[HP=10/100]:\n", "[HP=10/100]:\n"])
+    bot = make_transcript_bot(["[HP=10/100]:\n", "[HP=10/100]:\n",
+                               "[HP=10/100]:\n", "[HP=10/100]:\n"])
     await bot.run()
     assert "rest" in bot._conn.sent
 
 
 @pytest.mark.asyncio
 async def test_transcript_bot_sends_nothing_when_healthy():
-    # Healthy: only the one-time `stat` (to learn max HP/MA), no action commands.
+    # Healthy: only the one-time login `stat` + `who`, no action commands.
     bot = make_transcript_bot(["[HP=100/100]:\n", "[HP=100/100]:\n"])
     await bot.run()
-    assert bot._conn.sent == ["stat"]
+    assert bot._conn.sent == ["stat", "who"]
 
 
 from mmud.automation.decision import PRIO_COMBAT
@@ -360,7 +361,10 @@ def test_stat_sent_once_on_first_ingame_prompt():
     # flag (which fired too early, during the pager).
     bot = make_transcript_bot([])
     bot._parse_vitals("[HP=46/MA=12]:")
-    assert bot._state.dequeue() == "stat"
+    drained = []
+    while (c := bot._state.dequeue()) is not None:
+        drained.append(c)
+    assert drained == ["stat", "who"]   # learn maxes + populate Players
     # Idempotent: not re-sent on every subsequent prompt.
     bot._parse_vitals("[HP=46/MA=12]:")
     assert bot._state.dequeue() is None
@@ -383,11 +387,15 @@ def test_stat_not_sent_for_bbs_pager_lines():
 def test_levelup_triggers_restat():
     bot = make_transcript_bot([])
     bot._parse_vitals("[HP=46/MA=12]:")
-    assert bot._state.dequeue() == "stat"        # initial
+    while bot._state.dequeue() is not None:       # drain initial stat + who
+        pass
     bot._state.set_level(5)
     bot._parse_who_and_exp("Level: 6")           # leveled up
     bot._parse_vitals("[HP=60/MA=20]:")          # next prompt re-stats
-    assert bot._state.dequeue() == "stat"
+    drained = []
+    while (c := bot._state.dequeue()) is not None:
+        drained.append(c)
+    assert "stat" in drained
 
 
 def test_combat_markers_toggle_in_combat():
@@ -822,7 +830,8 @@ async def test_party_heal_e2e():
     bot = make_transcript_bot(
         ["The following people are in your party:\n",
          "Beeze          [Cleric]    [ 40] [100]\n",   # 40: heal yes, wait no
-         "[HP=100/100]:\n",           # first prompt: one-time `stat`
+         "[HP=100/100]:\n",           # first prompt: one-time `stat` + `who`
+         "[HP=100/100]:\n",           # drain queued who
          "[HP=100/100]:\n"],          # next prompt: heal decider fires
         config=config)
     await bot.run()

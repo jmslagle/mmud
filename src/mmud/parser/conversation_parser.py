@@ -25,6 +25,29 @@ _OLD_TELL_RE = re.compile(r"^(\w[\w\s]+?)\s+tells?\s+you,?\s+['\"](.+)['\"]$", r
 # "Someone shouts, 'help!'"  — anonymous, skip the sender mystery
 _SHOUT_RE = re.compile(r"^(\w[\w\s]+?)\s+shouts?,?\s+['\"](.+)['\"]$", re.IGNORECASE)
 
+# Unbracketed channels this server uses: "TheSysop gossips: msg",
+# "Conan broadcasts: msg", "Merchant auctions: msg", "Krang yells, 'msg'",
+# "Bob tells you ...". Verb-specific so bare "says" (shop signage) never matches.
+_CHANNEL_RE = re.compile(
+    r"^([\w'-]+(?: [\w'-]+)?)\s+"
+    r"(gossips?|broadcasts?|auctions?|yells?|tells the group|tells you)"
+    r"(?::|,)?\s*['\"]?(.+?)['\"]?$",
+    re.IGNORECASE,
+)
+
+
+def _channel_for(verb: str) -> str:
+    v = verb.lower()
+    if v.startswith("gossip"):
+        return "gossip"
+    if v.startswith("broadcast"):
+        return "broadcast"
+    if v.startswith("auction"):
+        return "auction"
+    if v.startswith("yell"):
+        return "shout"
+    return "tell"   # "tells you" / "tells the group"
+
 # Skip own echoes
 _OWN_ECHO_RE = re.compile(r"^You\s+(say|shout|tell|yell|sing)\b", re.IGNORECASE)
 
@@ -58,5 +81,12 @@ class ConversationParser:
             sender = m.group(1).strip()
             if sender.lower() != "someone":
                 return ConversationMessage(channel="shout", sender=sender, text=m.group(2).strip())
+
+        # "Name gossips: text" / "Name broadcasts: text" / "Name yells, 'text'" / ...
+        if m := _CHANNEL_RE.match(line):
+            sender = m.group(1).strip()
+            if sender.lower() != "you":   # not our own echo
+                return ConversationMessage(channel=_channel_for(m.group(2)),
+                                           sender=sender, text=m.group(3).strip())
 
         return None

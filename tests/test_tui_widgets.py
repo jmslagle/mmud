@@ -40,7 +40,7 @@ async def test_players_shows_player_row():
         widget = app.query_one(PlayersPane)
         widget.post_message(
             PlayersPane.PlayerUpdate(
-                name="BumbleBee", level="L5-9", rep="Neutral", gang=""
+                name="BumbleBee", alignment="Lawful", title="Sensei"
             )
         )
         await pilot.pause(0.1)
@@ -52,9 +52,9 @@ async def test_players_upserts_existing_row():
     app = _PlayersApp()
     async with app.run_test() as pilot:
         widget = app.query_one(PlayersPane)
-        widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", level="L5-9", rep="Neutral", gang=""))
+        widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", alignment="Lawful", title="Sensei"))
         await pilot.pause(0.1)
-        widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", level="L10", rep="Criminal", gang="Dragons"))
+        widget.post_message(PlayersPane.PlayerUpdate(name="BumbleBee", alignment="Chaotic", title="Master"))
         await pilot.pause(0.1)
         assert widget.row_count == 1   # still 1 row, not 2
 

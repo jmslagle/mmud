@@ -44,9 +44,8 @@ class ConversationReceived:
 @dataclass
 class PlayerSeen:
     name: str
-    level: str
-    rep: str
-    gang: str
+    alignment: str = ""   # WHO alignment column
+    title: str = ""        # WHO class/rank title
 
 @dataclass
 class PathStarted:

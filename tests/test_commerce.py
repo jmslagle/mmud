@@ -1,8 +1,22 @@
-from mmud.automation.commerce import CommerceEngine
+from mmud.automation.commerce import CommerceEngine, deposit_copper
 from mmud.config.schema import CommerceConfig, ItemsConfig
 from mmud.state.game_state import GameState
 from mmud.state.inventory import Inventory
 from mmud.state.tasks import TaskType
+
+
+def test_deposit_copper_sums_denominations():
+    line = "You deposit 61 gold crowns, 292 silver nobles, 999 copper farthings."
+    assert deposit_copper(line) == 61 * 100 + 292 * 10 + 999
+
+
+def test_deposit_copper_single_denomination():
+    assert deposit_copper("You deposit 5 copper farthings.") == 5
+
+
+def test_deposit_copper_ignores_non_deposit_lines():
+    assert deposit_copper("On deposit: 68157 copper farthings [681.57 gold crowns]") is None
+    assert deposit_copper("withdraw or deposit their hard-earned cash.") is None
 
 
 class _Harness:

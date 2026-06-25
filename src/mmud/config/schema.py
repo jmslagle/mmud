@@ -214,6 +214,7 @@ class SessionConfig:
     grace_minutes: int = 15         # no rate enforcement during warmup
     low_rate_action: str = "hangup" # "hangup" | "relog"
     logout_cmd: str = "x"           # command that exits the game cleanly
+    who_interval_s: float = 300.0   # re-send `who` this often to refresh Players (0 = off)
 
 
 @dataclass
