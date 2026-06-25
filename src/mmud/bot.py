@@ -57,8 +57,11 @@ IDLE_REFRESH_S = 10.0   # idle keepalive: bare Enter every 10s (MegaMud parity)
 _COMBAT_ENGAGED_RE = re.compile(r"\*Combat Engaged\*", re.IGNORECASE)
 _COMBAT_OFF_RE = re.compile(r"\*Combat Off\*|breaks off combat", re.IGNORECASE)
 _NAV_FAIL_RE = re.compile(
+    # Genuine "can't move that way" replies. NOT "closed"/"locked" — those are
+    # door/gate obstacles owned by DoorMonitor (_handle_doors); treating them as
+    # nav failures hijacked the move into lost-recovery before we could open/bash.
     r"(?:you can'?t go that way|alas|there is no exit|"
-    r"you cannot go that direction|no exit|blocked|closed)",
+    r"you cannot go that direction|no exit)",
     re.IGNORECASE,
 )
 # Melee hit: optional adverb (e.g. "critically") before the verb, then "... for N damage".
