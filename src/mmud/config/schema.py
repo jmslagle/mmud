@@ -60,7 +60,9 @@ class CombatConfig:
 @dataclass
 class BlessSpell:
     cmd: str = ""
-    mana_pct: float = 0.80
+    mana_pct: float = 0.80          # only (re)cast at/above this mana %
+    interval_s: float = 600.0       # re-cast every N seconds (MegaMud's flat ~600)
+    refresh_on: str = ""            # regex of the buff's fade line -> recast at once
 
 
 @dataclass

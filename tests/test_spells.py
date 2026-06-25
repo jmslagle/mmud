@@ -21,26 +21,56 @@ def test_bless_skipped_when_mana_low():
     assert engine.decide(gs) is None
 
 
-def test_bless_cooldown_respected():
-    cfg = SpellsConfig(bless=[BlessSpell(cmd="bless", mana_pct=0.50)])
-    gs = GameState()
-    gs.set_mana(90, 100)
-    engine = SpellEngine(cfg)
-    engine.decide(gs)       # cast once — sets cooldown
-    engine.tick()           # advance 1 tick (<<600)
-    assert engine.decide(gs) is None  # still on cooldown
+class _Clock:
+    def __init__(self): self.t = 1000.0
+    def __call__(self): return self.t
 
 
-def test_bless_cooldown_expires():
-    cfg = SpellsConfig(bless=[BlessSpell(cmd="bless", mana_pct=0.50)])
-    gs = GameState()
-    gs.set_mana(90, 100)
-    engine = SpellEngine(cfg)
-    engine.decide(gs)            # cast
-    for _ in range(600):         # advance 600 ticks
-        engine.tick()
-    cmd = engine.decide(gs)      # should cast again
-    assert cmd == "bless"
+def test_bless_interval_respected():
+    cfg = SpellsConfig(bless=[BlessSpell(cmd="bless", mana_pct=0.50, interval_s=600)])
+    gs = GameState(); gs.set_mana(90, 100)
+    clk = _Clock()
+    engine = SpellEngine(cfg, now=clk)
+    assert engine.decide(gs) == "bless"   # first cast
+    clk.t += 60                            # 60s < 600s interval
+    assert engine.decide(gs) is None       # not due yet
+
+
+def test_bless_recast_after_interval():
+    cfg = SpellsConfig(bless=[BlessSpell(cmd="bless", mana_pct=0.50, interval_s=600)])
+    gs = GameState(); gs.set_mana(90, 100)
+    clk = _Clock()
+    engine = SpellEngine(cfg, now=clk)
+    engine.decide(gs)
+    clk.t += 600                           # interval elapsed
+    assert engine.decide(gs) == "bless"
+
+
+def test_bless_interval_auto_derived_from_spell_duration():
+    # interval_s=0 -> derive from SPELLS.MD duration (minutes) at 85%: blur=4min
+    # -> 204s.
+    cfg = SpellsConfig(bless=[BlessSpell(cmd="blur", mana_pct=0.50, interval_s=0)])
+    gs = GameState(); gs.set_mana(90, 100)
+    clk = _Clock()
+    engine = SpellEngine(cfg, bless_durations={"blur": 4}, now=clk)
+    assert engine.decide(gs) == "blur"
+    clk.t += 180                           # 180s < 204s
+    assert engine.decide(gs) is None
+    clk.t += 40                            # 220s > 204s
+    assert engine.decide(gs) == "blur"
+
+
+def test_bless_recast_immediately_on_fade_message():
+    cfg = SpellsConfig(bless=[BlessSpell(cmd="c blur", mana_pct=0.50, interval_s=600,
+                                         refresh_on=r"vision (?:returns|clears)")])
+    gs = GameState(); gs.set_mana(90, 100)
+    clk = _Clock()
+    engine = SpellEngine(cfg, now=clk)
+    assert engine.decide(gs) == "c blur"   # cast
+    clk.t += 30                            # well within the interval
+    assert engine.decide(gs) is None       # not due on the timer
+    engine.on_line("Your vision returns to normal.")   # buff faded
+    assert engine.decide(gs) == "c blur"   # recast at once
 
 
 def test_heal_spell_cast_below_threshold():

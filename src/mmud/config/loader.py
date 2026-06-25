@@ -75,7 +75,9 @@ def load_config(path: pathlib.Path | None) -> MudConfig:
     if sp := data.get("spells"):
         cfg.spells = unpack_dataclass(SpellsConfig, sp, skip={"bless"})
         cfg.spells.bless = [
-            BlessSpell(cmd=b.get("cmd", ""), mana_pct=b.get("mana_pct", 0.80))
+            BlessSpell(cmd=b.get("cmd", ""), mana_pct=b.get("mana_pct", 0.80),
+                       interval_s=b.get("interval_s", 600.0),
+                       refresh_on=b.get("refresh_on", ""))
             for b in sp.get("bless", [])
         ]
     if p := data.get("party"):
