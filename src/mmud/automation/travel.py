@@ -150,12 +150,18 @@ class TravelDecider:
 
     # ---- signals from the bot -------------------------------------------------
 
-    def on_arrival(self, state: GameState, seen="") -> None:
+    def on_arrival(self, state: GameState, seen="", confident_hex: str = "") -> None:
         """`seen` is the SET of candidate room hashes computed from the arrived
         room's display (room title x exits). We match it against the corpus-recorded
         destinations (step.expect / step.chosen are .MP hashes), which is how we
         place ourselves even in rooms absent from ROOMS.MD. A bare hex string is
-        accepted too (tests/back-compat)."""
+        accepted too (tests/back-compat).
+
+        `confident_hex` is the hex of a room the bot NAME-DETECTED in ROOMS.MD (high
+        confidence, not a colliding computed hash). When set, we resync to the
+        matching route waypoint even if it's far ahead — that recovers when the
+        recorded path takes a detour the live map doesn't have (e.g. a phantom
+        Silver St loop before Town Square on Temple->WALT)."""
         if self._wander_targets is not None:
             self._in_flight = False
             seen_hexes = ({h.upper() for h in seen if h}
@@ -196,6 +202,21 @@ class TravelDecider:
             self._cursor += 1
             self._finish_if_done()
             return
+        # Confident (name-detected) waypoint: resync to the matching step even far
+        # ahead, FORWARD ONLY. This is a reliable position (a ROOMS.MD name match,
+        # not a colliding hash), so it can safely skip a phantom detour the recorded
+        # path has but the live map doesn't. Forward-only keeps the loop-30->3 guard.
+        ch = confident_hex.upper() if confident_hex else ""
+        if ch:
+            for idx in range(self._cursor, len(self._steps)):
+                if ch in self._steps[idx].expect:
+                    if idx != self._cursor:
+                        self._bus.post(TravelResynced(from_step=self._cursor + 1,
+                                                      to_step=idx + 1))
+                    state.current_hex = ch
+                    self._cursor = idx + 1
+                    self._finish_if_done()
+                    return
         # Overshoot recovery: did we land a FEW steps ahead? Only look forward a
         # short way. Room hashes collide heavily — a long room description yields
         # ~25 candidate hashes — so an unbounded scan from index 0 would "resync"

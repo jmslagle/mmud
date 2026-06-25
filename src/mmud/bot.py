@@ -919,10 +919,12 @@ class MudBot:
         # departure-room re-display even when current_hex is stale/wrong.
         self._state.last_room_hexes = seen_hexes
         code = self._room_parser.detect_room_from_block(block, line)
+        confident_hex = ""   # hex of a NAME-DETECTED ROOMS.MD room (high confidence)
         if code:
             room = self._rooms.get(code)
             if room and room.hex_id:
                 self._state.current_hex = room.hex_id.upper()
+                confident_hex = room.hex_id.upper()
             if code != self._state.current_room:
                 self._state.set_room(code)
                 self._emit(RoomChanged(code=code, name=(room.name if room else code)))
@@ -938,7 +940,7 @@ class MudBot:
             self._session_log.event(
                 f"arrive room={code or '?'} hex={self._state.current_hex or '?'} "
                 f"seen={sorted(seen_hexes)}")
-        self._travel.on_arrival(self._state, seen_hexes)
+        self._travel.on_arrival(self._state, seen_hexes, confident_hex=confident_hex)
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()

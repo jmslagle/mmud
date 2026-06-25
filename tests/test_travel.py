@@ -152,6 +152,37 @@ def test_sneak_prefix():
     assert gs.dequeue() == "n"
 
 
+def test_confident_detection_resyncs_past_bogus_detour():
+    # Live bug (Temple -> WALT): the recorded .MP path has a detour that doesn't
+    # exist on this server's map (7 easts to "Town Square" when it's really 2). The
+    # bot NAME-DETECTS the Town Square waypoint early; a confident (ROOMS.MD) hit
+    # must resync past the phantom detour even though it's far beyond the window.
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelResynced, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("e", "D1"), _step("e", "D2"), _step("e", "D3"),
+                 _step("e", "D4"), _step("e", "D5"), _step("e", "WP"),
+                 _step("n", "N1")])               # idx5 = waypoint WP, idx6 = north
+    assert d.decide(gs) == "e"
+    d.on_arrival(gs, {"ZZZ"}, confident_hex="WP")  # detected the waypoint early
+    assert gs.current_hex == "WP"
+    assert received and received[-1].to_step == 6  # jumped to the WP step
+    assert d.decide(gs) == "n"                      # continues from the waypoint
+
+
+def test_confident_detection_does_not_jump_backward():
+    # A confident hit only resyncs FORWARD (idx >= cursor) so a re-detected earlier
+    # room can't throw the cursor back (keeps the loop-30->3 protection).
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("e", "B"), _step("e", "C")], start_at=2)
+    assert d.decide(gs) == "e"
+    d.on_arrival(gs, {"x"}, confident_hex="A")     # 'A' is behind us (idx0)
+    assert d._cursor == 3                            # advanced optimistically, not back to 1
+
+
 def test_resync_jumps_cursor():
     received = []
     bus = GameEventBus()
