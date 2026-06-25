@@ -863,11 +863,17 @@ class MudBot:
             self._travel.on_move_failed()  # can't open: normal failure path
 
     def _parse_nav_failure(self, line: str) -> None:
-        if _NAV_FAIL_RE.search(line):
-            if self._travel.active:
-                self._travel.on_move_failed()
-            elif self._loop_runner and self._loop_runner.running:
-                self._loop_runner.on_nav_failure()
+        if not _NAV_FAIL_RE.search(line):
+            return
+        # A bad direction while following a recorded loop means we've desynced
+        # (common in hash-colliding areas like the graveyard). Retrying the dead
+        # exit is futile -> assume lost and wander to relocate the loop.
+        if self._loop_runner and self._loop_runner.running and self._travel.active:
+            self._travel.clear(reason="lost")
+            msg = self._loop_runner.recover()
+            self._session_log.event(f"lost (bad direction) -> {msg}")
+        elif self._travel.active:
+            self._travel.on_move_failed()   # goto: retry then block
 
     def _parse_combat_stats(self, line: str) -> None:
         if m := _PLAYER_HIT_RE.search(line):
@@ -945,12 +951,19 @@ class MudBot:
         return cmd
 
     def _update_activity(self, cmd) -> None:
-        """Surface an intentional wait (mana regen / resting) so it doesn't look
-        frozen — to the StatsBar, :status, and the session log."""
+        """Surface what the bot is doing (or waiting on) so it never looks frozen —
+        to the StatsBar, :status, and the session log."""
         from mmud.combat.combat import activity_reason
-        reason = activity_reason(self._state, cmd,
-                                 self._config.combat.mana_attack_pct,
+        s = self._state
+        reason = activity_reason(s, cmd, self._config.combat.mana_attack_pct,
                                  self._config.combat.rest_threshold)
+        if not reason:
+            if s.in_combat or s.monsters_present:
+                reason = "fighting"
+            elif self._travel.active:
+                reason = "navigating"
+            elif self._loop_runner and self._loop_runner.running:
+                reason = "looping"
         if reason != self._wait_reason:
             self._wait_reason = reason
             self._emit(SessionStatUpdated(key="activity", value=reason))
