@@ -319,12 +319,34 @@ class MudBot:
         if self._bus is not None:
             self._bus.post(event)
 
+    _DSR_REQUEST = "\x1b[6n"   # Device Status Report: "report cursor position"
+
+    def _dsr_reply(self, data: str) -> str | None:
+        """If the server probed our screen size (ESC[6n — usually right after homing
+        the cursor to a huge position so it clamps to the grid corner), build the
+        cursor-position report ESC[row;colR from the emulator's clamped cursor —
+        exactly as MegaMud does (ansi_cursor_pos_report @0x40eb10). This is how the
+        full-screen editor learns our real size; without a reply the server assumes
+        a default and the editor is laid out off by a line. Cursor is 1-based in
+        the report (pyte gives 0-based)."""
+        if self._DSR_REQUEST not in data:
+            return None
+        x, y = self._terminal.cursor()
+        return f"\x1b[{y + 1};{x + 1}R"
+
     def _feed_raw(self, data: str) -> None:
         """Connection raw-stream tap: drive the terminal emulator (DISPLAY) and
         broadcast the raw chunk to xterm.js. Independent of _process_line, which
         keeps driving SEMANTICS (events/stats/automation) from framed lines.
         """
         self._terminal.feed(data)
+        reply = self._dsr_reply(data)   # answer the server's screen-size probe
+        if reply is not None:
+            self._session_log.event(f"screen-size probe (DSR) -> {reply[2:-1]}")
+            try:
+                asyncio.create_task(self._conn.send_raw(reply))
+            except RuntimeError:
+                pass   # no running loop (non-async test / standalone feed)
         self._emit(RawOutput(data=data))
         self._emit(ScreenUpdated())
 

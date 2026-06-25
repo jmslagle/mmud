@@ -386,6 +386,35 @@ async def test_received_line_refreshes_rx_timestamp():
     assert bot._last_rx > 0.0
 
 
+def test_dsr_reply_reports_clamped_grid_cursor():
+    # The server detects screen size by homing the cursor to a huge position
+    # (clamped to our grid corner) then asking ESC[6n. We must reply with the
+    # clamped cursor ESC[row;colR, exactly like MegaMud's ansi_cursor_pos_report
+    # -> the editor is laid out for our real size (no off-by-one).
+    bot = make_transcript_bot([])
+    bot._terminal.feed("\x1b[99;99H")            # home to corner; pyte clamps to 24x80
+    assert bot._dsr_reply("\x1b[6n") == "\x1b[24;80R"
+    assert bot._dsr_reply("plain text, no query") is None
+
+
+def test_dsr_reply_reflects_resized_grid():
+    # With the grid sized to the pane, we report the bigger size, so the editor
+    # is formatted for the whole pane.
+    bot = make_transcript_bot([])
+    bot._terminal.resize(46)
+    bot._terminal.feed("\x1b[99;99H")
+    assert bot._dsr_reply("\x1b[6n") == "\x1b[46;80R"
+
+
+@pytest.mark.asyncio
+async def test_feed_raw_answers_screen_size_probe():
+    import asyncio as _a
+    bot = make_transcript_bot([])
+    bot._feed_raw("\x1b[99;99H\x1b[6n")          # corner-home + DSR in one chunk
+    await _a.sleep(0)                             # let the scheduled reply run
+    assert bot._conn.sent_raw == ["\x1b[24;80R"]
+
+
 def test_flush_stats_emits_panel_fields():
     from mmud.events import GameEventBus, SessionStatUpdated
     seen = {}
