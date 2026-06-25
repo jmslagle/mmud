@@ -8,17 +8,18 @@ Screen {
     height: 1fr;
 }
 
+/* Border is ALWAYS present (its own cells, outside the content), so it never
+   occludes column 0 and the content size is stable — focusing just recolours it,
+   which avoids resizing the grid mid-edit. */
 #game-output {
     width: 65%;
-    border-right: solid $panel;
+    border: round $panel;
 }
 
-/* Character mode: when the main window has focus, every keystroke goes raw
-   to the server (for the in-game editor). Highlight it so the mode is obvious.
-   Use `outline` (drawn over the edge) not `border` so focusing doesn't steal a
-   content row and resize the grid mid-edit. */
+/* Character mode: when the main window has focus, every keystroke goes raw to the
+   server (for the in-game editor). Highlight the same border so the mode is obvious. */
 #game-output:focus {
-    outline: round $accent;
+    border: round $accent;
 }
 
 #right-panel {
