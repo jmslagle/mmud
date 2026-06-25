@@ -233,6 +233,23 @@ async def test_terminal_view_grid_fills_pane_height():
 
 
 @pytest.mark.asyncio
+async def test_terminal_grid_stable_across_focus_in_app():
+    # The focus highlight must be an always-present border (recoloured on focus),
+    # NOT an overlay outline (which occluded column 0) and NOT a focus-only border
+    # (which would resize the grid mid-edit). So focusing leaves the grid size and
+    # the content origin unchanged.
+    app = MegaMudApp(config=MudConfig(), host="h", port=23)
+    async with app.run_test(size=(120, 50)) as pilot:
+        view = app.query_one(TerminalView)
+        await pilot.pause(0.1)
+        before = view._emulator.lines
+        assert before > 24                      # grid filled the pane
+        view.focus()
+        await pilot.pause(0.1)
+        assert view._emulator.lines == before   # focusing did NOT resize the grid
+
+
+@pytest.mark.asyncio
 async def test_terminal_view_mouse_wheel_scrolls_history():
     app = _TermApp()
     async with app.run_test(size=(100, 50)) as pilot:
