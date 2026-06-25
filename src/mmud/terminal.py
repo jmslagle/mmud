@@ -55,6 +55,23 @@ class TerminalEmulator:
         """Feed raw ANSI text (already IAC-stripped) into the screen."""
         self._stream.feed(text)
 
+    def resize(self, lines: int | None = None, columns: int | None = None) -> None:
+        """Resize the screen grid to fill the TUI pane.
+
+        Only `lines` typically varies: the bot declines telnet NAWS, so the
+        server keeps formatting for 80 columns. Sizing the grid to the pane both
+        uses the whole box for scrolling game text AND fixes the in-game editor's
+        "off by one" — a grid at least as tall as the server's assumed screen
+        means its top-aligned full-screen redraw never scrolls off the top.
+        """
+        new_lines = self.lines if lines is None else lines
+        new_cols = self.columns if columns is None else columns
+        if new_lines == self.lines and new_cols == self.columns:
+            return
+        self.lines = new_lines
+        self.columns = new_cols
+        self._screen.resize(new_lines, new_cols)
+
     def display(self) -> list[str]:
         """Clean visible rows (length == lines, each padded to columns)."""
         return list(self._screen.display)

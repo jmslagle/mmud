@@ -219,6 +219,39 @@ def test_terminal_view_raw_for_key_matches_game_output():
 
 
 @pytest.mark.asyncio
+async def test_terminal_view_grid_fills_pane_height():
+    # The emulator grid should grow to the pane's height (not a fixed 24) so the
+    # game text fills the whole box and the full-screen editor never scrolls off
+    # the top. Columns stay 80 (the width the NAWS-declined server formats for).
+    app = _TermApp()
+    async with app.run_test(size=(100, 50)) as pilot:
+        view = app.query_one(TerminalView)
+        await pilot.pause(0.1)
+        assert view._emulator.lines == view.content_size.height
+        assert view._emulator.lines > 24
+        assert view._emulator.columns == 80
+
+
+@pytest.mark.asyncio
+async def test_terminal_view_mouse_wheel_scrolls_history():
+    app = _TermApp()
+    async with app.run_test(size=(100, 50)) as pilot:
+        view = app.query_one(TerminalView)
+        await pilot.pause(0.1)
+        calls = []
+        view._emulator.prev_page = lambda: calls.append("up")
+        view._emulator.next_page = lambda: calls.append("down")
+        view.on_mouse_scroll_up(_FakeStop())
+        view.on_mouse_scroll_down(_FakeStop())
+        assert calls == ["up", "down"]
+
+
+class _FakeStop:
+    def stop(self): pass
+    def prevent_default(self): pass
+
+
+@pytest.mark.asyncio
 async def test_terminal_view_char_mode_sends_raw():
     class _StubConn:
         def __init__(self): self.raw = []

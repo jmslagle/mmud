@@ -1,8 +1,9 @@
 """Pyte-backed full-screen terminal widget for the TUI.
 
 Replaces the append-only RichLog GameOutput. Renders the TerminalEmulator's
-80x24 screen buffer with per-cell colour from pyte, supports scrollback
-(PageUp/PageDown), and preserves character mode: Tab focuses it, then each
+screen buffer (sized to the pane, 80 cols x pane height) with per-cell colour
+from pyte, supports scrollback (PageUp/PageDown + mouse wheel), and preserves
+character mode: Tab focuses it, then each
 keystroke is forwarded raw to the server (RawInput -> send_raw) for the in-game
 full-screen editor. The DISPLAY comes from the emulator; SEMANTICS still flow
 through the bot's line parser independently.
@@ -21,6 +22,19 @@ class TerminalView(Static):
     """Live terminal screen with scrollback and character-mode raw input."""
 
     can_focus = True
+
+    # Fill the pane vertically. A Static defaults to auto height (sizing to its
+    # 24-line content), which left the bottom of the pane empty — fill it so the
+    # grid can grow to use the whole box.
+    DEFAULT_CSS = """
+    TerminalView {
+        height: 1fr;
+    }
+    """
+
+    # Never shrink the grid below the BBS default the server assumes; growing it
+    # to the pane height fills the box and keeps the editor from scrolling off.
+    _MIN_LINES = 24
 
     # Identical to the old GameOutput mapping — keep the char-mode contract.
     _RAW_KEYS = {
@@ -51,6 +65,16 @@ class TerminalView(Static):
     def attach_emulator(self, emulator: TerminalEmulator) -> None:
         """Bind to the bot's emulator instance so re-renders show live state."""
         self._emulator = emulator
+        self._fit_emulator()
+
+    def on_resize(self, event) -> None:
+        self._fit_emulator()
+
+    def _fit_emulator(self) -> None:
+        """Grow the emulator grid to the pane's content height (columns stay 80)."""
+        rows = max(self._MIN_LINES, self.content_size.height)
+        if rows != self._emulator.lines:
+            self._emulator.resize(rows)
         self.refresh_screen()
 
     def raw_for_key(self, event: Key) -> str | None:
@@ -86,6 +110,20 @@ class TerminalView(Static):
         if data is None:
             return
         self.post_message(self.RawInput(data))
+        event.stop()
+        event.prevent_default()
+
+    def on_mouse_scroll_up(self, event) -> None:
+        """Mouse wheel up -> scroll back into history (same as PageUp)."""
+        self._emulator.prev_page()
+        self.refresh_screen()
+        event.stop()
+        event.prevent_default()
+
+    def on_mouse_scroll_down(self, event) -> None:
+        """Mouse wheel down -> scroll forward toward live (same as PageDown)."""
+        self._emulator.next_page()
+        self.refresh_screen()
         event.stop()
         event.prevent_default()
 

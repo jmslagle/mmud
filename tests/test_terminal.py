@@ -59,3 +59,31 @@ def test_rich_lines_returns_one_text_per_row():
     assert len(lines) == 24
     assert all(isinstance(t, Text) for t in lines)
     assert lines[0].plain.startswith("abc")
+
+
+def test_resize_changes_line_count_keeps_columns():
+    # The grid follows the TUI pane height (declining NAWS, the server still
+    # formats for 80 columns, so only `lines` varies). A taller grid means the
+    # server's top-aligned full-screen editor never scrolls off the top.
+    term = TerminalEmulator()
+    term.resize(40)
+    rows = term.display()
+    assert len(rows) == 40
+    assert all(len(r) == 80 for r in rows)
+    assert term.lines == 40 and term.columns == 80
+
+
+def test_resize_grid_is_usable_to_the_new_bottom_row():
+    term = TerminalEmulator()
+    term.resize(40)
+    term.feed("\x1b[40;1Hbottom")     # write to the new last row (1-based)
+    assert term.display()[39].startswith("bottom")
+
+
+def test_prev_page_scrolls_into_history():
+    term = TerminalEmulator()
+    for i in range(60):
+        term.feed(f"line{i}\r\n")
+    before = term.display()
+    term.prev_page()
+    assert term.display() != before    # scrolled back into scrollback history
