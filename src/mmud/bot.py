@@ -54,6 +54,9 @@ _STAT_MANA_RE = re.compile(r"\bMana(?:/Kai)?:\s*(\d+)/(\d+)")
 # between rounds mid-fight, so it only toggles the flag — it does NOT clear the
 # roster (combat_event_parse @ 0x004176b0).
 IDLE_REFRESH_S = 10.0   # idle keepalive: bare Enter every 10s (MegaMud parity)
+STALL_TIMEOUT_S = 35.0  # in-game RX silence past this => dead/half-open socket.
+                        # Idle refresh (10s) always draws a prompt from a live
+                        # server, so ~3 missed prompts means the connection died.
 _COMBAT_ENGAGED_RE = re.compile(r"\*Combat Engaged\*", re.IGNORECASE)
 _COMBAT_OFF_RE = re.compile(r"\*Combat Off\*|breaks off combat", re.IGNORECASE)
 _NAV_FAIL_RE = re.compile(
@@ -273,6 +276,8 @@ class MudBot:
         self._login_handler = LoginHandler(self._config.login)
         self._who_parser = WhoParser()
         self._last_activity = time.monotonic()
+        self._last_rx = time.monotonic()   # last time the server sent us anything
+        self._stalled = False              # one-shot guard for the stall watchdog
         self._auto_started = False
         self._redial_delay_s = 5.0
         self._was_low = False   # edge-detect for health_low stat
@@ -355,6 +360,8 @@ class MudBot:
 
     async def _run_session(self) -> None:
         await self._conn.connect()
+        self._last_rx = time.monotonic()   # fresh heartbeat; arm the stall watchdog
+        self._stalled = False
         self._session.on_connect()
         self._emit(SessionStatUpdated(key="connected",
                                       value=str(self._session.connected)))
@@ -389,6 +396,7 @@ class MudBot:
             self._scheduler.tick(time.monotonic())
             self._flush_stats()
             await self._maybe_idle_refresh()
+            await self._check_stall(time.monotonic())
 
     def _flush_stats(self) -> None:
         """Emit the full MegaMud stat set for the Player/Session panes. Runs at
@@ -448,6 +456,26 @@ class MudBot:
             self._who_next = now + iv
             self._state.enqueue("who")
 
+    async def _check_stall(self, now: float) -> None:
+        """Watchdog for a dead/half-open connection. In-game we send an idle
+        refresh every 10s and a live server always answers (at least a prompt),
+        so prolonged RX silence means the socket died with no TCP RST — the read
+        loop would otherwise await forever and the bot looks hung (must be killed).
+        Force-close so readlines() ends and run() takes the carrier-loss path
+        (redial if configured, else a clean stop instead of an infinite hang)."""
+        if self._stalled or not self._login_handler.in_game:
+            return
+        if now - self._last_rx < STALL_TIMEOUT_S:
+            return
+        self._stalled = True
+        self._session_log.event(
+            f"connection stalled: no server data for {now - self._last_rx:.0f}s "
+            f"-> closing")
+        self._session.on_carrier_lost()
+        self._emit(SessionStatUpdated(key="carrier_lost",
+                                      value=str(self._session.carrier_lost)))
+        await self._conn.close()   # -> readlines() ends -> run() handles recovery
+
     def _check_afk(self) -> None:
         cfg = self._config.afk
         if not cfg.enabled or self._state.in_combat:
@@ -488,6 +516,7 @@ class MudBot:
         # 22. _handle_login    login state machine; auto_start loop on entry
         # 23. _parse_who_and_exp  WHO entries, exp/level, kill counting
         # 24. matcher.match    generic message patterns -> effects / combat flag
+        self._last_rx = time.monotonic()   # heartbeat for the stall watchdog
         self._session.on_line(line)   # raw capture before any rendering
         # Replay MajorMud's in-line cursor moves so hotkey/redraw artefacts
         # ("nNorth") resolve. Display keeps colour; parsing uses plain text.

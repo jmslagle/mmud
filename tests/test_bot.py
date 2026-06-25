@@ -345,6 +345,47 @@ async def test_idle_refresh_skips_when_active_or_not_in_game():
     assert bot._conn.sent == []
 
 
+@pytest.mark.asyncio
+async def test_stall_watchdog_closes_dead_connection():
+    # Half-open/stalled connection: in-game, we keep sending idle-refresh Enters
+    # but MajorMUD (which always answers with at least a prompt) sends nothing back
+    # for a long time -> the socket is dead. The bot used to loop on readlines()
+    # forever (must be killed). The watchdog force-closes so the session ends and
+    # reconnect/clean-stop kicks in.
+    import time as _t
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    now = _t.monotonic()
+    bot._last_rx = now - 40.0          # no server data for 40s
+    await bot._check_stall(now)
+    assert bot._conn.closed
+    assert bot._session.carrier_lost >= 1
+
+
+@pytest.mark.asyncio
+async def test_stall_watchdog_quiet_when_fresh_or_not_in_game():
+    import time as _t
+    bot = make_transcript_bot([])
+    now = _t.monotonic()
+    # Not in game (login/menus legitimately wait on us) -> never trip.
+    bot._last_rx = now - 100.0
+    await bot._check_stall(now)
+    assert not bot._conn.closed
+    # In game but data arrived recently -> healthy.
+    bot._login_handler.in_game = True
+    bot._last_rx = now - 1.0
+    await bot._check_stall(now)
+    assert not bot._conn.closed
+
+
+@pytest.mark.asyncio
+async def test_received_line_refreshes_rx_timestamp():
+    bot = make_transcript_bot([])
+    bot._last_rx = 0.0
+    await bot._process_line("[HP=100/MA=50]:\n")
+    assert bot._last_rx > 0.0
+
+
 def test_flush_stats_emits_panel_fields():
     from mmud.events import GameEventBus, SessionStatUpdated
     seen = {}

@@ -17,6 +17,7 @@ class FakeConnection:
     def __init__(self, lines: list[str]) -> None:
         self._lines = lines
         self.sent: list[str] = []
+        self.closed = False
 
     async def connect(self) -> None:
         pass
@@ -29,7 +30,7 @@ class FakeConnection:
             yield line
 
     async def close(self) -> None:
-        pass
+        self.closed = True
 
 
 def make_transcript_bot(lines: list[str], **bot_kwargs):
