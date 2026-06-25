@@ -261,6 +261,37 @@ from mmud.state.tasks import TaskType
 from mmud.events import TaskChanged
 
 
+def test_closed_door_or_gate_is_not_a_nav_failure():
+    # Regression: "closed" must NOT count as a nav failure, or the lost-recovery
+    # wander hijacks the move before DoorMonitor can open/bash.
+    from mmud.bot import _NAV_FAIL_RE
+    assert _NAV_FAIL_RE.search("The gate is closed!") is None
+    assert _NAV_FAIL_RE.search("The door is closed!") is None
+    assert _NAV_FAIL_RE.search("You can't go that way!") is not None
+    assert _NAV_FAIL_RE.search("There is no exit in that direction!") is not None
+
+
+def test_closed_gate_during_travel_bashes_not_wanders():
+    from mmud.config.schema import MudConfig
+    from mmud.navigation.graph import RouteStep
+    config = MudConfig()
+    config.navigation.bash_doors = True
+    bot = make_transcript_bot([], config=config)
+    bot._travel.set_route([RouteStep("n", frozenset({"X"}), "X")])
+    bot._pending_move = "n"
+    # 1st closed -> open; 2nd closed -> bash. Neither clears the route (no wander).
+    bot._handle_doors("The gate is closed!")
+    bot._parse_nav_failure("The gate is closed!")
+    assert bot._travel.active
+    bot._handle_doors("The gate is closed!")
+    bot._parse_nav_failure("The gate is closed!")
+    assert bot._travel.active
+    cmds = []
+    while (c := bot._state.dequeue()) is not None:
+        cmds.append(c)
+    assert "open n" in cmds and "bash n" in cmds
+
+
 def test_must_sneak_wires_sneak_cmd_without_auto_sneak():
     # Regression: must_sneak=True with auto_sneak=False must still hand the
     # CombatEngine a non-empty sneak_cmd, else decide() deadlocks on None.
