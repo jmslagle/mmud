@@ -299,6 +299,34 @@ async def test_tab_from_command_line_focuses_terminal_view():
 
 
 @pytest.mark.asyncio
+async def test_ctrl_q_quits_even_in_char_mode():
+    # Live pain: a stalled bot left the user unable to quit (no Ctrl-Q binding) so
+    # they had to kill the process. Ctrl-Q must quit, and as a priority binding it
+    # must work even when the TerminalView holds focus (character mode).
+    app = MegaMudApp(config=MudConfig(), host="h", port=23)
+    async with app.run_test() as pilot:
+        called = []
+        app.exit = lambda *a, **k: called.append(True)
+        app.query_one(TerminalView).focus()
+        await pilot.pause()
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        assert called   # reached action_quit -> exit, despite char-mode focus
+
+
+@pytest.mark.asyncio
+async def test_quit_command_exits():
+    # Reliable quit that doesn't depend on the Ctrl-Q keystroke reaching the app
+    # (terminals can swallow Ctrl+Q/S as XON/XOFF flow control).
+    app = MegaMudApp(config=MudConfig(), host="h", port=23)
+    async with app.run_test() as pilot:
+        called = []
+        app.exit = lambda *a, **k: called.append(True)
+        await app._handle_bot_command("quit")
+        assert called
+
+
+@pytest.mark.asyncio
 async def test_ctrl_g_opens_menu_and_escape_closes():
     from mmud.tui.help_screen import HelpScreen
     app = MegaMudApp(config=MudConfig(), host="h", port=23)

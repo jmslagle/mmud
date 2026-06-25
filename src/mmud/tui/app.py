@@ -27,6 +27,8 @@ class MegaMudApp(App):
     TITLE = "MegaMud TUI"
 
     BINDINGS = [
+        # Priority so it quits even when the TerminalView holds focus (char mode).
+        Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
         Binding("ctrl+r", "toggle_right_panel", "Toggle Panel", show=False, priority=True),
         Binding("ctrl+b", "toggle_stats_bar", "Toggle Stats", show=False, priority=True),
         Binding("ctrl+1", "switch_tab_conversations", "Conversations", show=False, priority=True),
@@ -285,6 +287,9 @@ class MegaMudApp(App):
                 self._bot_task = None
                 self.sub_title = f"{self._host}:{self._port}"
 
+        elif verb in ("quit", "q", "exit"):
+            await self.action_quit()
+
         elif verb in ("help", "h", "?"):
             help_lines = [
                 "[bot] Bot commands (prefix with :):",
@@ -296,12 +301,22 @@ class MegaMudApp(App):
                 "  :status        — show HP/MP/room/loop status",
                 "  :connect       — connect to server",
                 "  :disconnect    — disconnect",
+                "  :quit          — exit the client (or Ctrl+Q)",
             ]
             for line in help_lines:
                 self._echo(line)
 
         else:
             self._echo(f"[bot] Unknown command: {verb}. Try :help")
+
+    async def action_quit(self) -> None:
+        """Quit cleanly, cancelling the bot/web tasks. Bound to Ctrl+Q (priority,
+        so it fires even in character mode) and available as :quit for when the
+        keystroke is swallowed by the terminal (Ctrl+Q/S flow control)."""
+        for task in (self._bot_task, self._web_task):
+            if task is not None:
+                task.cancel()
+        self.exit()
 
     def action_toggle_right_panel(self) -> None:
         panel = self.query_one("#right-panel")
