@@ -90,13 +90,17 @@ class GetDecider:
                     # is "GET {Amount} {Currency}" (amount required). Ref §3.
                     return f"get {amount} {denom}"
                 del state.ground_coins[denom]   # unwanted: forget it
-        if self._cfg.auto_get:
-            while state.ground_items:
-                name = state.ground_items.pop(0)
+        # Pick up loot: everything (auto_get) or just the configured items
+        # (get_items — name substring, case-insensitive; e.g. "black star key").
+        want = [w.lower() for w in self._cfg.get_items]
+        if self._cfg.auto_get or want:
+            for name in list(state.ground_items):
                 if name in self._ungettable:
                     continue
-                self._begin(state, name)
-                return f"get {name}"
+                if self._cfg.auto_get or any(w in name.lower() for w in want):
+                    state.ground_items.remove(name)
+                    self._begin(state, name)
+                    return f"get {name}"
         return None
 
     def _begin(self, state: GameState, name: str, coin: bool = False) -> None:

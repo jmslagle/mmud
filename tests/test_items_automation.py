@@ -42,6 +42,25 @@ def test_get_decider_respects_auto_get_off():
     assert GetDecider(ItemsConfig(auto_get=False), now=lambda: 5.0).decide(gs) is None
 
 
+def test_get_decider_picks_configured_item_even_when_auto_get_off():
+    # Selective pickup: grab named items (e.g. quest keys) without auto-getting all.
+    gs = GameState()
+    gs.ground_items.append("a black star key")
+    gs.ground_items.append("rusty sword")
+    d = GetDecider(ItemsConfig(auto_get=False, get_items=["black star key"]),
+                   now=lambda: 5.0)
+    assert d.decide(gs) == "get a black star key"   # case-insensitive substring
+    assert "rusty sword" in gs.ground_items          # non-listed item left alone
+
+
+def test_get_items_match_is_case_insensitive_substring():
+    gs = GameState()
+    gs.ground_items.append("Ancient Black Star Key of Doom")
+    d = GetDecider(ItemsConfig(auto_get=False, get_items=["black star key"]),
+                   now=lambda: 5.0)
+    assert d.decide(gs) == "get Ancient Black Star Key of Doom"
+
+
 def test_get_decider_collects_configured_coins():
     gs = GameState()
     gs.ground_coins["copper"] = 23

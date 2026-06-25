@@ -116,6 +116,10 @@ class ItemsConfig:
     collect_runic: bool = False
     dont_go_heavy: bool = True
     dont_go_medium: bool = False
+    get_items: list[str] = field(default_factory=list)    # always pick these up
+                                                          # (name substring), even
+                                                          # when auto_get is off
+    equip_items: list[str] = field(default_factory=list)  # auto-equip these when held
     max_wealth: int = 0    # bank when copper-equiv wealth exceeds (Phase 8 consumes)
     min_wealth: int = 0    # withdraw when below (Phase 8 consumes)
 
