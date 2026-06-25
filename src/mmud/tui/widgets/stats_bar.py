@@ -72,9 +72,9 @@ class StatsBar(Widget):
         self.query_one("#mp-label", Static).update(f"MP: {message.mp}/{message.max_mp}")
 
     # Curated headline fields with friendly labels (no raw snake_case in the UI).
-    _NAV_LABELS = {"kills": "Kills", "exp": "Exp", "exp_rate": "Exp/hr",
-                   "people_seen": "Seen", "loop": "Loop", "lap": "Lap",
-                   "activity": "⏳"}
+    _NAV_LABELS = {"objective": "▶", "kills": "Kills", "exp": "Exp",
+                   "exp_rate": "Exp/hr", "people_seen": "Seen",
+                   "loop": "Loop", "lap": "Lap", "activity": "⏳"}
     _COMBAT_LABELS = {"hit_pct": "Hit", "crit_pct": "Crit", "backstab_pct": "BS",
                       "miss_pct": "Miss", "sneak_pct": "Sneak", "dodge_pct": "Dodge"}
 
