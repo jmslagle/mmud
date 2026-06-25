@@ -14,9 +14,11 @@ Screen {
 }
 
 /* Character mode: when the main window has focus, every keystroke goes raw
-   to the server (for the in-game editor). Highlight it so the mode is obvious. */
+   to the server (for the in-game editor). Highlight it so the mode is obvious.
+   Use `outline` (drawn over the edge) not `border` so focusing doesn't steal a
+   content row and resize the grid mid-edit. */
 #game-output:focus {
-    border: round $accent;
+    outline: round $accent;
 }
 
 #right-panel {
