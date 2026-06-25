@@ -183,18 +183,23 @@ def test_confident_detection_does_not_jump_backward():
     assert d._cursor == 3                            # advanced optimistically, not back to 1
 
 
-def test_resync_jumps_cursor():
+def test_chain_collision_does_not_jump_forward():
+    # Live bug ("gets lost in chains of the same room", like the cemetery): a run of
+    # identical rooms shares colliding hashes, so a room's candidate-hash set can
+    # contain a LATER step's dest. The cursor must advance by ONE (follow commands),
+    # never jump ahead on a bare hash match — jumping turned goto north too early and
+    # dead-ended. Only a confident name-detected room may re-anchor (separate test).
     received = []
     bus = GameEventBus()
     bus.subscribe(TravelResynced, received.append)
     d = _decider(bus)
     gs = GameState()
-    d.set_route([_step("n", "BBBB0002"), _step("e", "CCCC0003"),
-                 _step("s", "DDDD0004")])
-    d.decide(gs)
-    d.on_arrival(gs, "CCCC0003")             # overshot: landed after step 2
-    assert received and received[0].to_step == 2
-    assert d.decide(gs) == "s"               # cursor resumed at step 3
+    d.set_route([_step("e", "A"), _step("n", "B"), _step("w", "C"), _step("s", "D")])
+    assert d.decide(gs) == "e"               # cursor 0
+    d.on_arrival(gs, {"C"})                  # 'C' (step-2 dest) collides into step-0's room
+    assert not received                      # no hash-jump
+    assert d.decide(gs) == "n"               # advanced ONE step (to step 1), not to step 3
+    assert gs.current_hex == "A"             # optimistic: step 0's planned dest
 
 
 def test_resync_does_not_jump_backward_on_hash_collision():
