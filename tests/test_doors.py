@@ -26,3 +26,34 @@ def test_locked_door_no_capability_gives_up():
 def test_non_door_line_returns_none():
     m = DoorMonitor(NavigationConfig())
     assert m.handle("You can't go that way!", last_move="n") is None
+
+
+def test_closed_gate_opens():
+    m = DoorMonitor(NavigationConfig())
+    assert m.handle("The gate is closed!", last_move="w") == ["open w"]
+
+
+def test_locked_gate_bashes_when_configured():
+    m = DoorMonitor(NavigationConfig(bash_doors=True))
+    assert m.handle("The iron gate is locked.", last_move="w") == ["bash w"]
+
+
+def test_closed_escalates_to_bash_after_open_fails():
+    # closed -> open; still closed -> bash (open didn't work, e.g. a barred gate)
+    m = DoorMonitor(NavigationConfig(bash_doors=True))
+    assert m.handle("The gate is closed!", last_move="w") == ["open w"]
+    assert m.handle("The gate is closed!", last_move="w") == ["bash w"]
+
+
+def test_bash_gives_up_after_max():
+    m = DoorMonitor(NavigationConfig(bash_doors=True, bash_max=2))
+    assert m.handle("The gate is locked.", last_move="w") == ["bash w"]
+    assert m.handle("The gate is locked.", last_move="w") == ["bash w"]
+    assert m.handle("The gate is locked.", last_move="w") == []   # gave up
+
+
+def test_now_open_resets_and_passes_through():
+    m = DoorMonitor(NavigationConfig(bash_doors=True))
+    m.handle("The gate is closed!", last_move="w")     # open tried
+    assert m.handle("The gate is now open.", last_move="w") is None
+    assert m.handle("The gate is closed!", last_move="w") == ["open w"]  # reset
