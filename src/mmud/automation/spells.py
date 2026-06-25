@@ -41,13 +41,16 @@ class SpellEngine:
         """Advance one game tick (call once per ~1Hz timer)."""
         self._ticks += 1
 
-    def _attack_on_target(self, state: GameState) -> str:
+    def _attack_on_target(self, state: GameState) -> str | None:
         """The primary attack spell is single-target offensive: MegaMud sends
-        "{spell} {target}" (combat_spell_cast @ 0x00407b7d). Without the target
-        the server rejects it ("You must specify a target for that spell!")."""
+        "{spell} {target}" (combat_spell_cast @ 0x00407b7d). Returns None when
+        there's no target — never cast a bare "{spell}" (the server rejects it, and
+        in_combat can linger for a beat after the last kill with an empty roster)."""
         target = select_attack_target(state, self._monster_priority,
                                       self._attack_order, self._attack_neutral)
-        return f"{self._cfg.attack} {target}".strip()
+        if not target:
+            return None
+        return f"{self._cfg.attack} {target}"
 
     def _begin_cast(self, state: GameState, command: str) -> str:
         """Pace casts: hold the spell slot (and melee below it) for one combat
@@ -102,15 +105,19 @@ class SpellEngine:
                 return self._cfg.melee_weapon_cmd
             if self._swapped_to_melee or cap_reached or not has_mana:
                 return None   # melee: the combat engine swings
-            self._attack_casts += 1
-            if self._cfg.multi_attack:
-                if self._cast_primary_next:
-                    self._cast_primary_next = False
-                    return self._begin_cast(state, self._attack_on_target(state))
+            # AoE round (alternating) — only when there's actually something to hit.
+            if self._cfg.multi_attack and not self._cast_primary_next:
+                if not attackable:
+                    return None
                 self._cast_primary_next = True
-                # AoE: cast bare (no target), still paced as a round
+                self._attack_casts += 1
                 return self._begin_cast(state, self._cfg.multi_attack)
-            return self._begin_cast(state, self._attack_on_target(state))
+            cmd = self._attack_on_target(state)
+            if cmd is None:
+                return None   # no monster to target -> never bare-cast the spell
+            self._cast_primary_next = False
+            self._attack_casts += 1
+            return self._begin_cast(state, cmd)
 
         # Pre-attack spell — cast just before engaging (only for attackable targets)
         if (self._cfg.pre_attack and not state.in_combat and attackable):
