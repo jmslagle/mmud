@@ -1069,7 +1069,8 @@ class MudBot:
         from mmud.combat.combat import activity_reason
         s = self._state
         reason = activity_reason(s, cmd, self._config.combat.mana_attack_pct,
-                                 self._config.combat.rest_threshold)
+                                 self._config.combat.rest_threshold,
+                                 self._config.combat.rest_mana_pct)
         if not reason:
             if s.in_combat or s.monsters_present:
                 reason = "fighting"

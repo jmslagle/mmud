@@ -42,7 +42,8 @@ class LoginConfig:
 class CombatConfig:
     attack_cmd: str = "kill"
     flee_threshold: float = 0.15
-    rest_threshold: float = 0.40
+    rest_threshold: float = 0.40   # HP fraction below which we rest (out of combat)
+    rest_mana_pct: float = 0.0     # mana fraction below which we rest (0 = off)
     backstab: bool = False
     polite_attacks: bool = False
     attack_order: str = "first"   # "first" | "last" | "reverse"

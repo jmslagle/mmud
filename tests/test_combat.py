@@ -52,6 +52,45 @@ def test_uses_config_attack_cmd():
     ce = CombatEngine(CombatConfig(attack_cmd="kill"))
     assert ce.decide(gs) == "kill orc warrior"
 
+
+def test_rests_when_mana_low_and_holds_until_recovered():
+    # Warlock-style: out of combat with low mana -> rest, and HOLD the loop (a
+    # RESTING task) until mana recovers, instead of resting one tick and walking off.
+    from mmud.state.tasks import TaskType
+    gs = GameState()
+    gs.set_combat(False)
+    gs.set_hp(100, 100)
+    gs.set_mana(10, 50)                 # 20% mana
+    ce = CombatEngine(CombatConfig(rest_mana_pct=0.30))
+    assert ce.decide(gs) == "rest"
+    assert gs.task.type is TaskType.RESTING   # holds (blocks travel)
+    ce.on_line("[HP=100/MA=10]: (Resting)")
+    assert ce.decide(gs) is None              # resting -> don't re-spam
+    gs.set_mana(49, 50)                        # recovered (98%)
+    assert ce.decide(gs) is None              # done
+    assert not gs.task.is_active               # loop resumes
+
+
+def test_no_mana_rest_by_default():
+    gs = GameState()
+    gs.set_combat(False)
+    gs.set_hp(100, 100)
+    gs.set_mana(2, 50)                  # very low mana, but mana-rest disabled
+    ce = CombatEngine(CombatConfig())  # rest_mana_pct defaults to 0
+    assert ce.decide(gs) is None
+    assert not gs.task.is_active
+
+
+def test_monster_preempts_mana_rest():
+    gs = GameState()
+    gs.set_combat(False)
+    gs.set_hp(100, 100)
+    gs.set_mana(2, 50)
+    gs.monsters_present = [MonsterSighting(name="bat", kill_type=4)]
+    ce = CombatEngine(CombatConfig(rest_mana_pct=0.30, attack_cmd="kill"))
+    assert ce.decide(gs) == "kill bat"   # fights rather than resting
+
+
 def test_engages_target_once_not_every_round():
     # Re-sending the melee attack restarts the round and wastes swings; engage
     # once per target, re-engage only when the target changes.
