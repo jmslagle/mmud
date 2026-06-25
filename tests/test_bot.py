@@ -386,6 +386,15 @@ async def test_received_line_refreshes_rx_timestamp():
     assert bot._last_rx > 0.0
 
 
+def test_set_terminal_size_resizes_grid_and_reports_via_naws():
+    # The TUI resizes the grid to its pane; the bot resizes the emulator AND tells
+    # the server the new size (NAWS) so the full-screen editor lays out for it.
+    bot = make_transcript_bot([])
+    bot.set_terminal_size(80, 50)
+    assert bot._terminal.lines == 50
+    assert bot._conn.size == (80, 50)
+
+
 def test_dsr_reply_reports_clamped_grid_cursor():
     # The server detects screen size by homing the cursor to a huge position
     # (clamped to our grid corner) then asking ESC[6n. We must reply with the

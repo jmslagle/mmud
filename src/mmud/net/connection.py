@@ -37,6 +37,30 @@ class MudConnection:
         self._writer: asyncio.StreamWriter | None = None
         self.on_raw: Callable[[str], None] | None = None
         self._iac_pending = b""   # incomplete IAC sequence carried across chunks
+        self._size = (80, 24)     # (cols, rows) reported to the server via NAWS
+        self._naws_active = False  # server agreed to receive our window size
+
+    def set_size(self, cols: int, rows: int) -> None:
+        """Update the window size reported to the server (NAWS). Re-sends once NAWS
+        has been negotiated — so the full-screen editor re-lays-out when the grid
+        is resized to the TUI pane."""
+        size = (cols, rows)
+        if size == self._size:
+            return
+        self._size = size
+        if self._naws_active:
+            self._write_naws()
+
+    def _write_naws(self) -> None:
+        if self._writer is None:
+            return
+        cols, rows = self._size
+        body = bytearray()
+        for v in ((cols >> 8) & 0xFF, cols & 0xFF, (rows >> 8) & 0xFF, rows & 0xFF):
+            body.append(v)
+            if v == IAC:
+                body.append(IAC)   # 0xFF inside a subnegotiation must be doubled
+        self._writer.write(bytes([IAC, SB, OPT_NAWS]) + bytes(body) + bytes([IAC, SE]))
 
     async def connect(self) -> None:
         self._reader, self._writer = await asyncio.open_connection(self.host, self.port)
@@ -185,7 +209,13 @@ class MudConnection:
             return
         if cmd == DO and opt == OPT_TERM_TYPE:
             self._writer.write(bytes([IAC, WILL, OPT_TERM_TYPE]))
-        elif cmd == DO and opt in (OPT_ECHO, OPT_SGA, OPT_NAWS):
+        elif cmd == DO and opt == OPT_NAWS:
+            # Accept NAWS and report our real grid size so the server formats the
+            # full-screen editor for our actual screen (it never probes via ESC[6n).
+            self._writer.write(bytes([IAC, WILL, OPT_NAWS]))
+            self._naws_active = True
+            self._write_naws()
+        elif cmd == DO and opt in (OPT_ECHO, OPT_SGA):
             self._writer.write(bytes([IAC, WONT, opt]))
         elif cmd == WILL and opt in (OPT_ECHO, OPT_SGA):
             self._writer.write(bytes([IAC, DO, opt]))

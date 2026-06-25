@@ -334,6 +334,13 @@ class MudBot:
         x, y = self._terminal.cursor()
         return f"\x1b[{y + 1};{x + 1}R"
 
+    def set_terminal_size(self, cols: int, rows: int) -> None:
+        """Resize the display grid (to the TUI pane) and report it to the server via
+        NAWS, so the full-screen editor formats for our actual screen size."""
+        self._terminal.resize(rows, cols)
+        if self._conn is not None:
+            self._conn.set_size(cols, rows)
+
     def _feed_raw(self, data: str) -> None:
         """Connection raw-stream tap: drive the terminal emulator (DISPLAY) and
         broadcast the raw chunk to xterm.js. Independent of _process_line, which
@@ -382,6 +389,7 @@ class MudBot:
 
     async def _run_session(self) -> None:
         await self._conn.connect()
+        self._conn.set_size(self._terminal.columns, self._terminal.lines)  # arm NAWS
         self._last_rx = time.monotonic()   # fresh heartbeat; arm the stall watchdog
         self._stalled = False
         self._session.on_connect()

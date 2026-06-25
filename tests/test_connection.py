@@ -5,7 +5,7 @@ import pytest
 from mmud.net.connection import (
     MudConnection,
     IAC, WILL, WONT, DO, DONT, SB, SE,
-    OPT_ECHO, OPT_TERM_TYPE,
+    OPT_ECHO, OPT_TERM_TYPE, OPT_NAWS,
 )
 
 
@@ -85,6 +85,35 @@ def test_do_echo_triggers_wont_reply():
     c = _conn(writer=w)
     c._strip_iac(bytes([IAC, DO, OPT_ECHO]))
     assert bytes(w.written) == bytes([IAC, WONT, OPT_ECHO])
+
+
+def test_do_naws_triggers_will_and_sends_window_size():
+    # The full-screen editor only lays out correctly when the server knows our real
+    # screen size. Accept NAWS (WILL) and send the current grid size, so the door
+    # formats for our actual (pane-sized) grid instead of a default.
+    w = FakeWriter()
+    c = _conn(writer=w)
+    c.set_size(80, 50)
+    c._strip_iac(bytes([IAC, DO, OPT_NAWS]))
+    assert bytes(w.written) == (
+        bytes([IAC, WILL, OPT_NAWS])
+        + bytes([IAC, SB, OPT_NAWS, 0, 80, 0, 50, IAC, SE]))
+
+
+def test_set_size_resends_naws_once_active():
+    w = FakeWriter()
+    c = _conn(writer=w)
+    c._strip_iac(bytes([IAC, DO, OPT_NAWS]))   # activate NAWS (default 80x24)
+    w.written.clear()
+    c.set_size(80, 40)                          # window grew -> re-report
+    assert bytes(w.written) == bytes([IAC, SB, OPT_NAWS, 0, 80, 0, 40, IAC, SE])
+
+
+def test_set_size_before_naws_negotiated_sends_nothing():
+    w = FakeWriter()
+    c = _conn(writer=w)
+    c.set_size(80, 40)                          # server hasn't asked yet
+    assert bytes(w.written) == b""
 
 
 def test_negotiation_without_writer_does_not_crash():

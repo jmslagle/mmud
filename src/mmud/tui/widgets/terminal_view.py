@@ -71,10 +71,20 @@ class TerminalView(Static):
         self._fit_emulator()
 
     def _fit_emulator(self) -> None:
-        """Grow the emulator grid to the pane's content height (columns stay 80)."""
+        """Grow the emulator grid to the pane's content height (columns stay 80).
+        Route through the bot when connected so it reports the new size to the
+        server (NAWS) — that's what keeps the full-screen editor aligned."""
         rows = max(self._MIN_LINES, self.content_size.height)
         if rows != self._emulator.lines:
-            self._emulator.resize(rows)
+            bot = None
+            try:
+                bot = getattr(self.app, "_bot", None)
+            except Exception:
+                bot = None
+            if bot is not None and hasattr(bot, "set_terminal_size"):
+                bot.set_terminal_size(self._emulator.columns, rows)
+            else:
+                self._emulator.resize(rows)
         self.refresh_screen()
 
     def raw_for_key(self, event: Key) -> str | None:
