@@ -33,6 +33,12 @@ def test_get_path_finds_registered_path():
     assert nav.get_path("AAAA", "BBBB") is p
 
 
+def test_get_path_is_case_insensitive():
+    nav = Navigator([_path("SLMC", "A070", ["e"])])
+    assert nav.get_path("slmc", "a070") is not None     # lowercase query
+    assert nav.get_path("SLMC", "A070") is not None
+
+
 def test_get_path_unknown_returns_none():
     nav = Navigator([_path("AAAA", "BBBB", ["n"])])
     assert nav.get_path("AAAA", "ZZZZ") is None

@@ -33,6 +33,19 @@ def test_route_for_path_expectations():
     assert steps[1].expect == frozenset({"AAAA0001"})   # final edge -> home
 
 
+def test_find_loop_by_filename_or_description_case_insensitively():
+    # A custom "slm2loop.mp" whose code is SLMC must resolve by code, by the filename
+    # stem, AND by header description — all case-insensitive.
+    path = GamePath(from_code="SLMC", from_region="", from_name="Slum Crossroads",
+                    to_code="SLMC", to_region="", to_name="", npc="",
+                    steps=[PathStep(hex_id="AAAA0001", command="e")],
+                    source_file="slm2loop", description="Slum Loop")
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    for name in ("SLMC", "slmc", "slm2loop", "SLM2LOOP", "slum loop"):
+        runner = LoopRunner(NavigationConfig(loop_path=name), [path], ROOMS, travel)
+        assert runner._path is path, name
+
+
 def test_start_arms_looping_route():
     path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])
     runner, travel, gs = _runner(path)
