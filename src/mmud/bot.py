@@ -1103,26 +1103,53 @@ class MudBot:
             self._objective = objective
             self._emit(SessionStatUpdated(key="objective", value=objective))
             # Log only on a phase/lap change, not every step ("35/68" -> "36/68"),
-            # so the loop doesn't spam the session log once per move.
-            phase = re.sub(r":\s*\d+/\d+", "", objective)
+            # so the loop doesn't spam the session log once per move. The per-step
+            # detail lives in a trailing "(...)" — strip it for the phase key.
+            phase = re.sub(r"\s*\([^()]*\)\s*$", "", objective)
             if phase != self._objective_phase:
                 self._objective_phase = phase
                 self._session_log.event(f"objective: {objective}")
 
+    def _code_for_hex(self, hexid: str) -> str:
+        """Reverse ROOMS.MD lookup hex->4-letter code (for readable status), or ''."""
+        h = (hexid or "").upper()
+        if not h:
+            return ""
+        if getattr(self, "_hex_to_code", None) is None:
+            self._hex_to_code = {r.hex_id.upper(): c
+                                 for c, r in self._rooms.items() if r.hex_id}
+        return self._hex_to_code.get(h, "")
+
+    def _step_detail(self) -> str:
+        """' (pos/total: cmd->dest)' for the active route — the current path step,
+        for debugging in the status bar. '' when there's no current step."""
+        cur = self._travel.current
+        if cur is None:
+            return ""
+        pos, total = self._travel.step
+        dest = self._code_for_hex(cur.chosen) or (cur.chosen[:8] if cur.chosen else "?")
+        return f" ({pos}/{total}: {cur.command}->{dest})"
+
     def _macro_status(self) -> str:
-        """High-level goal: Looping/Routing/Wandering/Traveling/Idle."""
+        """High-level goal: Looping/Routing/Wandering/Traveling/Idle, with the path
+        step (cmd->dest) so travel is debuggable from the status bar."""
         lr = self._loop_runner
         name = self._config.navigation.loop_path
         if lr and lr.running:
             if self._travel.wandering:
                 return f"Wandering -> {name}"
             if self._travel.in_approach:
-                return f"Routing -> {name}"
+                return f"Routing -> {name}{self._step_detail()}"
             pos, total = self._travel.loop_step
-            # lap is 0-based internally; display 1-based ("Lap 1" on the first pass).
-            return f"Looping {name} (Lap {lr.lap + 1}: {pos}/{total})"
+            cur = self._travel.current
+            # lap is 0-based internally; display 1-based ("lap 1" on the first pass).
+            detail = ""
+            if cur is not None:
+                dest = self._code_for_hex(cur.chosen) or (cur.chosen[:8] or "?")
+                detail = f": {cur.command}->{dest}"
+            return f"Looping {name} lap {lr.lap + 1} ({pos}/{total}{detail})"
         if self._travel.active:
-            return f"Traveling {self._travel_dest or '?'}"
+            return f"Traveling {self._travel_dest or '?'}{self._step_detail()}"
         return "Idle"
 
     def _check_task_timeout(self, now: float) -> None:

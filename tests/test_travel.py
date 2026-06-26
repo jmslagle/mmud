@@ -96,6 +96,17 @@ def test_loop_step_reports_position_and_total():
     assert d.loop_step == (1, 3)
 
 
+def test_step_and_current_report_route_progress():
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("n", "B"), _step("e", "C"), _step("s", "D")])
+    assert d.step == (1, 3)
+    assert d.current.command == "n"
+    assert d.decide(gs) == "n"; d.on_arrival(gs, {"B"})
+    assert d.step == (2, 3)
+    assert d.current.command == "e"
+
+
 def test_loop_step_counts_body_only_during_approach():
     d = _decider()
     gs = GameState()

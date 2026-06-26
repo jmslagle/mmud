@@ -80,6 +80,21 @@ class TravelDecider:
             return (0, 0)
         return (pos + 1, total)
 
+    @property
+    def step(self) -> tuple[int, int]:
+        """(1-based cursor position, total) over the WHOLE active route — for any
+        route, not just loops. (0, 0) when no route is armed."""
+        if not self._steps:
+            return (0, 0)
+        return (min(self._cursor + 1, len(self._steps)), len(self._steps))
+
+    @property
+    def current(self) -> RouteStep | None:
+        """The step about to be executed (the cursor's step), or None."""
+        if self._steps and 0 <= self._cursor < len(self._steps):
+            return self._steps[self._cursor]
+        return None
+
     def set_wander(self, targets: set[str], on_reach, limit: int = 0,
                    on_giveup=None) -> None:
         """Enter wander mode: pick an exit each arrival until the room's hash is in
