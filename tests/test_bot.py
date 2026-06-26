@@ -271,6 +271,22 @@ def test_closed_door_or_gate_is_not_a_nav_failure():
     assert _NAV_FAIL_RE.search("There is no exit in that direction!") is not None
 
 
+def test_off_route_known_room_repaths_a_goto():
+    # Recovery must work for NORMAL travel too: a goto that wanders to a KNOWN room
+    # not on its route should re-path from there to the destination, not blunder on.
+    from mmud.navigation.graph import RouteStep
+    bot = make_transcript_bot([])
+    bot._travel.set_route([RouteStep("n", frozenset({"ONROUTE1"}), "ONROUTE1")])
+    bot._travel_dest = "FROM->WALT"
+    calls = []
+    bot.navigate_to_room = lambda t: calls.append(t) or "re-pathing"
+    bot._maybe_relocate("SOME", "OFFROUTE9")      # known room, NOT on the route
+    assert calls == ["WALT"]                       # re-pathed to the goto destination
+    calls.clear()
+    bot._maybe_relocate("ONR", "ONROUTE1")         # known room that IS on the route
+    assert calls == []                             # no needless re-path
+
+
 @pytest.mark.asyncio
 async def test_room_block_resets_on_prompt_not_accumulating_combat():
     # The room-hash candidate set was built from the last 30 lines of ALL output
