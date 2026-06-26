@@ -48,6 +48,16 @@ Orc Mansion (`ORCM`), a ~150-step detour around a ~65-step slum walk (STSQ → S
 SOAK → SNOB → SLMC → SLMG → SLMW → ORCM). Now it's **Dijkstra weighted by leg step
 count**, so it picks the fewest-*moves* route.
 
+**Item-gated legs are excluded from auto-routing (2026-06-26).** The `.MP` summary
+line carries a **required-item** field (field 5: `from_hex:to_hex:count:-1:0:ITEM::`).
+92/1198 legs need an item — boats (`wooden skiff`), keys to locked zones, `climbing
+harness`, `rope and grapple`, `swamp boots`, `potion of levitation`, `room ticket`,
+`waterskin`, … The river route to ORCM used `BOAT→ISLB` which needs the **wooden
+skiff** — crossing without it nearly drowned a low-level char. We don't model
+carrying/using transport items, so `GamePath.requires` is parsed and `build_code_edges`
+**skips any leg with `requires`** — land routes only. (Keyword-gated steps like
+`[use black star key e]` live inside loop BODIES, which are self-loops and unaffected.)
+
 `navigate_to_room` builds the route from `state.current_room` (the last
 **name-detected** room). If the bot is standing in an undetected room, that start is
 **stale** — see "Stale start position" below.

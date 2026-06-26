@@ -25,6 +25,11 @@ def build_code_edges(paths: list[GamePath]) -> dict[str, dict[str, GamePath]]:
         fc, tc = p.from_code.upper(), p.to_code.upper()
         if fc == tc:
             continue
+        if p.requires:
+            # Item-gated leg (a boat needs a "wooden skiff", etc.). We don't model
+            # carrying/using transport items, and crossing water without it drowns
+            # the bot — so never auto-route through these. Land routes only.
+            continue
         cur = edges[fc].get(tc)
         if cur is None or len(p.steps) < len(cur.steps):
             edges[fc][tc] = p

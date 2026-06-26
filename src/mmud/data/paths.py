@@ -22,6 +22,7 @@ class GamePath:
     to_name: str
     npc: str          # optional NPC associated with path
     steps: list[PathStep] = field(default_factory=list)
+    requires: str = ""  # item needed to traverse (e.g. "wooden skiff" for a boat leg)
 
 
 _BRACKET_RE = re.compile(r"\[([^\]]*)\]")
@@ -89,12 +90,14 @@ def _parse_block(lines: list[str], filename_stem: str = "") -> GamePath | None:
             to_code = loc2_parts[0].strip() if loc2_parts else ""
             to_region = loc2_parts[1].strip() if len(loc2_parts) > 1 else ""
             to_name = loc2_parts[2].strip() if len(loc2_parts) > 2 else ""
+            summary = lines[3] if len(lines) > 3 else ""
             step_lines = lines[4:]
         else:
             # Format B: single location line (loop path; from == to)
             from_code = to_code = loc1_parts[0].strip()
             from_region = to_region = loc1_parts[1].strip() if len(loc1_parts) > 1 else ""
             from_name = to_name = loc1_parts[2].strip() if len(loc1_parts) > 2 else ""
+            summary = line2
             step_lines = lines[3:]
     else:
         # Format C: no location lines — derive codes from filename
@@ -102,7 +105,12 @@ def _parse_block(lines: list[str], filename_stem: str = "") -> GamePath | None:
         from_code = stem[:4] if len(stem) >= 4 else stem
         to_code = stem[4:8] if len(stem) >= 8 else ""
         from_region = from_name = to_region = to_name = ""
+        summary = lines[1].strip() if len(lines) > 1 else ""
         step_lines = lines[2:]
+    # Summary line: from_hex:to_hex:count:-1:0:REQUIRED_ITEM:: — field 5 is the item
+    # needed to traverse this path (e.g. a boat's "wooden skiff").
+    summary_parts = summary.split(":")
+    requires = summary_parts[5].strip() if len(summary_parts) > 5 else ""
 
     # Step lines: HexID:flags:command  (command may contain spaces but no extra colons)
     steps = []
@@ -123,6 +131,7 @@ def _parse_block(lines: list[str], filename_stem: str = "") -> GamePath | None:
         to_name=to_name,
         npc=npc,
         steps=steps,
+        requires=requires,
     )
 
 
