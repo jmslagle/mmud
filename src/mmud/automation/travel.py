@@ -40,6 +40,9 @@ class TravelDecider:
         self._redisplay_ignored = False   # one-shot departure-re-display guard
         self._wander_targets: set[str] | None = None   # hexes that end wandering
         self._on_reach = None                          # callback(hex) when reached
+        self._on_giveup = None                         # callback() when wander limit hit
+        self._wander_limit = 0                         # max wander moves (0 = unbounded)
+        self._wander_moves = 0
         self._last_dir = ""                            # last wander move (avoid U-turn)
         self.lap = 0
 
@@ -77,16 +80,22 @@ class TravelDecider:
             return (0, 0)
         return (pos + 1, total)
 
-    def set_wander(self, targets: set[str], on_reach) -> None:
+    def set_wander(self, targets: set[str], on_reach, limit: int = 0,
+                   on_giveup=None) -> None:
         """Enter wander mode: pick an exit each arrival until the room's hash is in
         `targets`, then call on_reach(hex) (which typically arms the real route).
-        Used to recover an unknown start position — MegaMud wanders onto its loop."""
+        Used to recover an unknown start position — MegaMud wanders onto its loop.
+        `limit` caps the number of wander moves; on exceeding it `on_giveup()` fires
+        and wandering stops (so a lost bot doesn't wander a colliding maze forever)."""
         self._steps = []
         self._cursor = 0
         self._in_flight = False
         self._retries = 0
         self._wander_targets = {h.upper() for h in targets if h}
         self._on_reach = on_reach
+        self._on_giveup = on_giveup
+        self._wander_limit = limit
+        self._wander_moves = 0
         self._last_dir = ""
 
     def set_route(self, steps: list[RouteStep], loop: bool = False,
@@ -116,6 +125,16 @@ class TravelDecider:
     def _decide_wander(self, state: GameState) -> str | None:
         if self._in_flight:
             return None
+        if self._wander_limit and self._wander_moves >= self._wander_limit:
+            # Wandered the limit without relocating -> give up (don't loop a
+            # hash-colliding maze like the graveyard forever).
+            cb = self._on_giveup
+            self._wander_targets = None
+            self._on_reach = None
+            self._on_giveup = None
+            if cb:
+                cb()
+            return None
         exits = list(state.last_exits or [])
         if not exits:
             return None
@@ -124,6 +143,7 @@ class TravelDecider:
         self._last_dir = choice
         self._from_hex = (state.current_hex or "").upper()
         self._in_flight = True
+        self._wander_moves += 1
         return choice
 
     def decide(self, state: GameState) -> str | None:
@@ -171,6 +191,7 @@ class TravelDecider:
                 on_reach = self._on_reach
                 self._wander_targets = None
                 self._on_reach = None
+                self._on_giveup = None
                 if on_reach:
                     on_reach(next(iter(hit)))   # arms the real route (set_route)
             return

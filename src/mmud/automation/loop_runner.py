@@ -23,6 +23,11 @@ def route_for_path(path: GamePath, rooms: dict[str, Room]) -> list[RouteStep]:
     return steps
 
 
+_MAX_WANDER = 40   # wander moves before we declare the loop lost and stop (MegaMud's
+                   # "Lost!"): a hash-colliding maze like the graveyard can't be
+                   # wandered out of, so don't burn hours trying.
+
+
 class LoopRunner:
     """Thin adapter: arms a looping route on the shared TravelDecider."""
 
@@ -40,6 +45,7 @@ class LoopRunner:
         self._code_route = code_route         # callable(from_code, to_code)->[RouteStep]|None
         self._current_code = current_code.upper()
         self._current_hex = current_hex.upper()
+        self.on_lost = None   # optional callback() the bot sets to log/alert on give-up
 
     def _find_path(self, paths: list[GamePath]) -> GamePath | None:
         name = self._nav.loop_path.upper()
@@ -92,7 +98,8 @@ class LoopRunner:
                     self._running = True
                     return f"Loop started: {self._nav.loop_path}"
             # Unknown room, or no code route -> wander until we step onto the loop.
-            self._travel.set_wander(set(loop_hexes), self._engage_at)
+            self._travel.set_wander(set(loop_hexes), self._engage_at,
+                                    limit=_MAX_WANDER, on_giveup=self._giveup)
             self._running = True
             return f"Position unknown -> wandering until on loop {self._nav.loop_path}"
 
@@ -115,9 +122,18 @@ class LoopRunner:
         if self._path is None:
             return "no loop to recover"
         loop_hexes = [s.hex_id.upper() for s in self._path.steps]
-        self._travel.set_wander(set(loop_hexes), self._engage_at)
+        self._travel.set_wander(set(loop_hexes), self._engage_at,
+                                limit=_MAX_WANDER, on_giveup=self._giveup)
         self._running = True
         return f"wandering to relocate loop {self._nav.loop_path}"
+
+    def _giveup(self) -> None:
+        """Wander hit its move cap without relocating the loop — stop, don't wander a
+        colliding maze (e.g. the graveyard) for hours. The bot's on_lost alerts."""
+        self._running = False
+        self._travel.clear(reason="lost")
+        if self.on_lost:
+            self.on_lost()
 
     def stop(self) -> None:
         self._running = False

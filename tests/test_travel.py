@@ -183,6 +183,25 @@ def test_confident_detection_does_not_jump_backward():
     assert d._cursor == 3                            # advanced optimistically, not back to 1
 
 
+def test_wander_gives_up_after_limit():
+    # Live bug: lost near the crypt, the bot wandered the (hash-colliding) graveyard
+    # for HOURS without ever relocating the loop. Bound it: after `limit` wander moves
+    # with no target hit, give up (callback) and stop wandering, so the loop can stop
+    # and alert instead of wasting hours.
+    calls = []
+    d = _decider()
+    gs = GameState()
+    gs.last_exits = ["n", "s", "e", "w"]
+    d.set_wander({"NEVER0001"}, on_reach=lambda h: None,
+                 limit=3, on_giveup=lambda: calls.append("gaveup"))
+    for _ in range(3):                       # 3 wander moves, none hit the target
+        assert d.decide(gs) is not None
+        d.on_arrival(gs, {"ZZZ9999"})
+    assert d.decide(gs) is None              # limit reached -> give up
+    assert calls == ["gaveup"]
+    assert not d.wandering                    # wander cleared
+
+
 def test_chain_collision_does_not_jump_forward():
     # Live bug ("gets lost in chains of the same room", like the cemetery): a run of
     # identical rooms shares colliding hashes, so a room's candidate-hash set can
