@@ -99,3 +99,10 @@ command). Holds until HP & mana ≥ `_REST_FULL` (0.95), then `complete_task()` 
 
 We use `rest` for mana too (universal). `meditate` (faster mana regen) is a follow-up
 toggle — but a Warlock can't use it until the **Level 23 quest** unlocks the skill.
+
+**`rest` is debounced to once per prompt cycle.** `_next_command` runs on every
+received line, and `_resting` is only set when the "(Resting)" prompt arrives — so in
+the window before that confirmation we re-issued `rest` on every line (echoes, etc.)
+and **flooded the server** (30+ in 0.5 s → "Why don't you slow down?"). Fix: a
+`_rest_pending` flag set when we send `rest`, cleared on the next `[HP=..]` prompt; we
+won't re-send while resting OR pending. Issues exactly one `rest` per prompt cycle.
