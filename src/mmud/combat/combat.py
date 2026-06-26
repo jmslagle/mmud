@@ -104,6 +104,7 @@ class CombatEngine:
         self._engaged_target = ""   # monster we've already sent the attack at
         self._resting = False       # server has us resting (prompt shows (Resting))
         self._rest_pending = False  # sent 'rest', awaiting the next prompt to confirm
+        self._recovering = False    # recovering HP/mana -> keep resting until full
 
     def on_line(self, line: str) -> None:
         # The MajorMUD prompt authoritatively flags resting: "[HP=..]: (Resting)".
@@ -166,26 +167,30 @@ class CombatEngine:
         self._sneak_confirmed = False
         self._engaged_target = ""
 
-        # Rest to recover (out of combat). Like MegaMud, HOLD position and rest
-        # until HP/mana are back up — a looping bot otherwise rests one tick and
-        # walks off without recovering. The RESTING task (PRIO_REST) blocks travel
-        # but lets flee/combat preempt if something wanders in (the engine aborts
-        # the lower-priority task when a higher slot returns a command).
-        recovering = state.task.is_active and state.task.type is TaskType.RESTING
-        if recovering:
-            hp_done = hp_pct >= _REST_FULL
-            mana_done = state.max_mana <= 0 or mp_pct >= _REST_FULL
-            if hp_done and mana_done:
-                state.complete_task()      # recovered -> let the loop resume
-                self._rest_pending = False
-                return None
-            return self._rest_cmd()
+        # Rest to recover (out of combat). Like MegaMud (combat_rest_decide), HOLD
+        # and rest until HP & mana are back to FULL — and RESUME resting if a buff
+        # cast (or anything) interrupts. Recovery is tracked in our own `_recovering`
+        # flag, NOT the RESTING task: a cast is higher priority than rest, so the
+        # engine aborts the task when it casts; without the flag we'd stop resting
+        # the moment mana climbed back over the (lower) start threshold.
+        hp_done = hp_pct >= _REST_FULL
+        mana_done = state.max_mana <= 0 or mp_pct >= _REST_FULL
+        if self._recovering and hp_done and mana_done:
+            self._recovering = False        # fully recovered -> let the loop resume
+            self._rest_pending = False
+            if state.task.is_active and state.task.type is TaskType.RESTING:
+                state.complete_task()
+            return None
         hp_low = hp_pct < self.rest_threshold
         mana_low = (self.rest_mana_pct > 0 and state.max_mana > 0
                     and mp_pct < self.rest_mana_pct)
-        if hp_low or mana_low:
-            state.begin_task(TaskType.RESTING, priority=PRIO_REST,
-                             timeout_s=_REST_TIMEOUT_S, now=time.monotonic())
+        if self._recovering or hp_low or mana_low:
+            self._recovering = True
+            # Keep the RESTING task alive (blocks travel) — re-begin it if a cast
+            # aborted it, so we resume resting rather than walking off half-recovered.
+            if not (state.task.is_active and state.task.type is TaskType.RESTING):
+                state.begin_task(TaskType.RESTING, priority=PRIO_REST,
+                                 timeout_s=_REST_TIMEOUT_S, now=time.monotonic())
             return self._rest_cmd()
         return None
 
