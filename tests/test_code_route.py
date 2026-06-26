@@ -23,6 +23,19 @@ def test_chains_legs_into_one_walkable_route():
     assert steps[2].expect == frozenset({"C0000000"})            # final -> dest room hex
 
 
+def test_parses_required_item_from_summary():
+    from mmud.data.paths import _parse_block
+    p = _parse_block([
+        "[][]",
+        "[BOAT:Silvermere:Pier (Boatman)]",
+        "[ISLB:Island:Island Beach Landing]",
+        "41900005:27400054:3:-1:0:wooden skiff::",
+        "41900005:0000:n", "6B900005:0000:n", "C5800055:0000:n",
+    ])
+    assert p.requires == "wooden skiff"
+    assert [s.command for s in p.steps] == ["n", "n", "n"]
+
+
 def test_minimizes_steps_not_legs():
     # A->C directly is ONE leg but 6 steps; A->B->C is TWO legs but 2 steps. BFS
     # (fewest legs) wrongly takes the 6-step direct leg — that's the river/desert
@@ -42,6 +55,20 @@ def test_returns_none_when_unreachable():
 
 def test_empty_route_when_already_there():
     assert find_code_route("A", "A", [], {}) == []
+
+
+def test_routing_skips_item_required_legs():
+    # A leg that needs an item (boat/wooden skiff) must NOT be used for auto-routing:
+    # we don't handle boats, and crossing water without the item drowns us (near-death
+    # on the river route to the Orc Mansion). Route around it.
+    boat = _path("A", "C", ("X0000000", "n"))
+    boat.requires = "wooden skiff"
+    land1 = _path("A", "B", ("A0000000", "n"))
+    land2 = _path("B", "C", ("C0000000", "s"))
+    edges = build_code_edges([boat, land1, land2])
+    assert "C" not in edges.get("A", {})                  # boat leg excluded
+    steps = find_code_route("A", "C", [boat, land1, land2], _ROOMS)
+    assert [s.command for s in steps] == ["n", "s"]        # land route, no boat
 
 
 def test_self_loops_skipped_for_routing():
