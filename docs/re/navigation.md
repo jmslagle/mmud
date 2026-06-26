@@ -131,6 +131,51 @@ A proper-named "Also here" entry that is a catalogued monster (`monster_db.find`
 e.g. "Lady Sentara", kill-type 2) is an NPC, not a player → tracked as a
 non-attackable sighting, never looked-at/spied. Mirrors `room_entity_classify_all`.
 
+## Doors, locks, and traps
+
+**Bashable-vs-locked is NOT stored in any data file — it's discovered at runtime.**
+What the data *does* carry:
+
+- **`.MP` step flags** (the middle field of `HexID:flags:command`, a 16-bit hex value)
+  are NAVIGATION/exit flags, decoded by `path_follow_step_decide` / `path_exit_attempt`:
+  `0x02` stop-before-enter, `0x04` rest-before, `0x08` sneak-only, `0x10` rest-after,
+  `0x40` notify, `0x80` uncertain (runtime), `0x100` room-light, **`0x200` TRAP**.
+  So a *trapped* exit IS marked in the path data (bit `0x200`); a *locked* door is not.
+- **Keyword exits**: a `[keyword]` annotation in the command field handles exits that
+  need a special command (e.g. `say password`, comma-separated multi-commands).
+- **Live exit state** per direction lives at `gs+0x2ea0 + dir*4`: `5`=unlocked (needs
+  `open`), `2`/`0`=closed/locked, `3`=now-open. It's seeded from the room's "Obvious
+  exits" (the `open=1`/`closed=2` exit-bits) and updated by `room_door_response_parse`.
+
+### MegaMud's escalation (`path_exit_attempt @0x406920` — the decision point)
+1. **Trap** (step flag `0x200` AND CanDisarmTraps `gs+0x379c`): if not yet searched →
+   `search [dir]` (task SEARCHING); if searched and under max → `disarm trap [dir]`.
+2. **Unlocked (state 5)** or force-open → `open [dir]` (task OPENING).
+3. **Closed/locked (state 2 or 0)**: if CanPickLocks (`gs+0x3798`) and pick attempts
+   ≤ pick_max → `pi [dir]` (pick lock); **otherwise → `bash [dir]`**.
+4. **Keyword** exits issue the annotated command(s).
+
+`room_door_response_parse @0x425fe0` turns the result back into state: an `open` that
+returns "is locked" → mark exit `state=2` (so the next attempt picks/bashes); "is now
+open"/"was already open" → proceed; "is closed" → retry/undo; and a wall of
+hard-block messages ("You may not enter", "not healthy enough", "too heavy", "not
+permitted", "too good/evil to go", "no room ticket", "shimmering wall", "heat too
+intense") → **path blocked, stop** (it does not bash through these).
+
+### Our port (`automation/doors.py` `DoorMonitor`)
+Reactive open→pick→bash, driven by the same response text: a blocked move →
+`open [dir]` first → if it won't open, `pick` (if `can_pick_locks` and under
+`pick_max`) else `bash` (if `bash_doors` and under `bash_max`) else give up. Gates and
+doors share handling (`_OBSTACLE` = door|gate|portcullis|grate|drawbridge). Keyword
+exits are handled in travel via `expand_annotated` (e.g. `w[search w]`).
+
+**Gap:** we parse `.MP` steps as `(hex_id, command)` only — we **discard the flags
+field**, so we don't pre-`search`/`disarm` trapped exits (`0x200`) from path data; we'd
+only react if the server reports a trap after we trip it. (We also ignore the
+rest/sneak/stop step flags, though those come from config/other logic.) Wiring the
+flag field through `PathStep`/`RouteStep` would let us match MegaMud's proactive trap
+handling — see open follow-ups.
+
 ## Open follow-ups
 - **One room id from the title line** instead of hashing every block line (~25
   candidates) — the highest-leverage fix; aligns us with MegaMud and sharply cuts
