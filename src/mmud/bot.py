@@ -262,6 +262,7 @@ class MudBot:
         self._objective = ""               # macro status (Looping/Traveling/...)
         self._objective_phase = ""         # objective minus the step, for log throttle
         self._travel_dest = ""             # "FROM->TO" for an active goto
+        self._relocate_from = ""           # last hex we re-pathed from (anti-thrash)
         self._pending_move = ""
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
         # True once an "Also here:" line is parsed in the current room display;
@@ -968,13 +969,7 @@ class MudBot:
                 f"arrive room={code or '?'} hex={self._state.current_hex or '?'} "
                 f"seen={sorted(seen_hexes)}")
         self._travel.on_arrival(self._state, seen_hexes, confident_hex=confident_hex)
-        # Lost-wander recovery: if we're STILL wandering but just recognised a KNOWN
-        # room (ROOMS.MD name-detected), re-route to the loop from here instead of
-        # wandering blindly until we trip over a loop room.
-        if (code and self._travel.wandering
-                and self._loop_runner and self._loop_runner.running):
-            msg = self._loop_runner.relocate(code, confident_hex)
-            self._session_log.event(f"relocated at {code}: {msg}")
+        self._maybe_relocate(code, confident_hex)
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()
@@ -1345,6 +1340,30 @@ class MudBot:
             return [t.upper()]
         tl = t.lower()
         return [c for c, r in self._rooms.items() if tl and tl in r.name.lower()]
+
+    def _maybe_relocate(self, code: str, hexid: str) -> None:
+        """Off-route recovery for ANY active travel (goto OR loop): if we confidently
+        detect a KNOWN room (ROOMS.MD) that isn't on the planned route, re-path from
+        here to the destination instead of blindly continuing or wandering on. Covers
+        the lost-wander case too (a wander has no route, so any known room re-paths)."""
+        if not (code and hexid and self._travel.active):
+            return
+        if any(hexid in s.expect for s in self._travel.route):
+            self._relocate_from = ""        # on the route -> reset the thrash guard
+            return
+        if hexid == self._relocate_from:
+            return                          # already re-pathed here; don't thrash
+        self._relocate_from = hexid
+        if self._loop_runner and self._loop_runner.running:
+            msg = self._loop_runner.relocate(code, hexid)
+        elif self._travel_dest and "->" in self._travel_dest:
+            dest = self._travel_dest.split("->")[-1]
+            if dest == code:
+                return                      # already at the destination
+            msg = self.navigate_to_room(dest)
+        else:
+            return
+        self._session_log.event(f"off-route at {code} -> relocate: {msg}")
 
     def navigate_to_room(self, target: str) -> str:
         """Multi-hop navigate to a room by 4-letter code OR name substring, by
