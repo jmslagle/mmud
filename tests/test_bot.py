@@ -271,6 +271,19 @@ def test_closed_door_or_gate_is_not_a_nav_failure():
     assert _NAV_FAIL_RE.search("There is no exit in that direction!") is not None
 
 
+def test_extra_paths_dir_accepts_comma_separated_dirs(tmp_path):
+    from mmud.config.schema import MudConfig
+    d1 = tmp_path / "p1"; d1.mkdir()
+    d2 = tmp_path / "p2"; d2.mkdir()
+    (d1 / "AABB.MP").write_text("[][]\n[AABB:R:F]\n[BBCC:R:T]\nH0:H1:1:-1:0:::\nH0:0000:n\n")
+    (d2 / "XXYY.MP").write_text("[][]\n[XXYY:R:X]\n[YYZZ:R:Y]\nH0:H1:1:-1:0:::\nH0:0000:s\n")
+    config = MudConfig()
+    config.navigation.extra_paths_dir = f"{d1} , {d2}"      # comma-separated, with spaces
+    bot = make_transcript_bot([], config=config)
+    assert bot._navigator.get_path("AABB", "BBCC") is not None   # loaded from dir 1
+    assert bot._navigator.get_path("XXYY", "YYZZ") is not None   # loaded from dir 2
+
+
 def test_off_route_known_room_repaths_a_goto():
     # Recovery must work for NORMAL travel too: a goto that wanders to a KNOWN room
     # not on its route should re-path from there to the destination, not blunder on.

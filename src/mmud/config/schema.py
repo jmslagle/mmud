@@ -103,6 +103,7 @@ class NavigationConfig:
     bash_doors: bool = False    # bash closed doors/gates when open/pick fails
     bash_max: int = 5           # bash attempts before giving up (MegaMud BashMax)
     pick_max: int = 5           # pick attempts before falling back to bash (PickMax)
+    extra_paths_dir: str = ""   # extra dir of custom .MP files; overrides bundled ones
 
 
 @dataclass
