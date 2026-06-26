@@ -149,6 +149,14 @@ A bad direction ("no exit") while looping = desync → drop the route and
 `LoopRunner.recover()` wanders until back on a loop room. The decision engine blocks
 deciders at priority ≥ an active task's priority, so a stuck task freezes travel.
 
+**Relocate on any KNOWN room mid-wander (2026-06-26).** Wandering used to only recover
+if it stumbled onto a *loop* room. Now, if the bot name-detects ANY ROOMS.MD room
+while wandering, `bot._parse_exits` calls `LoopRunner.relocate(code)` → re-`start()`
+from that room (resume if it's on the loop, else `find_code_route` a fresh approach).
+So the instant the wander stumbles out of the maze into a recognised room (SRST, STSQ,
+…) it re-paths properly instead of wandering on. `set_route` cancels any active wander
+(decide() checks wander first). The `_MAX_WANDER` give-up is still the backstop.
+
 **The graveyard trap (lost for hours, bounded 2026-06-26).** CRY1's approach crosses
 the Graveyard Bridge to the crypt. The graveyard is a maze of identically-titled
 rooms whose ids collide on `2B000055` — which is also a CRY1 approach step. So when

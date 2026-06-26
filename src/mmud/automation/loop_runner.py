@@ -127,6 +127,16 @@ class LoopRunner:
         self._running = True
         return f"wandering to relocate loop {self._nav.loop_path}"
 
+    def relocate(self, code: str, hexid: str = "") -> str:
+        """Lost-wander recovery: we recognised a KNOWN room while wandering. Re-route
+        to the loop FROM HERE — resume if we're on it, else re-path over the code
+        graph — instead of wandering blindly until we stumble onto a loop room."""
+        code = code.upper()
+        room = self._rooms.get(code)
+        self._current_code = code
+        self._current_hex = (hexid or (room.hex_id if room and room.hex_id else "")).upper()
+        return self.start()
+
     def _giveup(self) -> None:
         """Wander hit its move cap without relocating the loop — stop, don't wander a
         colliding maze (e.g. the graveyard) for hours. The bot's on_lost alerts."""

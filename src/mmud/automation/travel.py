@@ -126,6 +126,11 @@ class TravelDecider:
         self._loop = loop
         self._loop_from = loop_from
         self.lap = 0
+        # Arming a route cancels any active wander (decide() checks wander first, so a
+        # leftover wander would otherwise shadow the new route).
+        self._wander_targets = None
+        self._on_reach = None
+        self._on_giveup = None
 
     def clear(self, reason: str = "stopped") -> None:
         if self._steps or self._wander_targets is not None:
