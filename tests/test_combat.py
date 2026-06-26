@@ -88,6 +88,26 @@ def test_rest_not_respammed_before_resting_confirmation():
     assert ce.decide(gs) is None             # resting -> stays quiet
 
 
+def test_resumes_resting_after_a_cast_until_full():
+    # Sitting idle resting, a bless cast stands us up. We must RESUME resting until
+    # full (like MegaMud, which rests through buff casts) — not stop just because
+    # mana climbed back over the *start* threshold. The RESTING task gets aborted by
+    # the (higher-priority) cast, so recovery must be tracked in our own flag.
+    gs = GameState()
+    gs.set_combat(False)
+    gs.set_hp(100, 100)
+    gs.set_mana(10, 50)                        # 20% mana < 30% start
+    ce = CombatEngine(CombatConfig(rest_mana_pct=0.30))
+    assert ce.decide(gs) == "rest"
+    ce.on_line("[HP=100/MA=10]: (Resting)")    # resting
+    assert ce.decide(gs) is None               # holding
+    gs.set_mana(20, 50)                         # recovered to 40% (over start, under full)
+    gs.abort_task()                             # the cast preempted -> RESTING task gone
+    ce.on_line("You cast blur on Raist!")       # the cast itself
+    ce.on_line("[HP=100/MA=18]:")               # stood up -> no "(Resting)" in prompt
+    assert ce.decide(gs) == "rest"             # RESUME resting (still recovering to full)
+
+
 def test_no_mana_rest_by_default():
     gs = GameState()
     gs.set_combat(False)

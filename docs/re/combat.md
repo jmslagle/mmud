@@ -92,9 +92,17 @@ Offsets: curHP `0x5384`, maxHP `0x538c`, curMana `0x5390`, maxMana `0x5398`.
 the loop walked off → "not resting"). Now hold-to-recover: out of combat, if
 HP < `rest_threshold` OR mana < `rest_mana_pct` (config; 0 = off), send `rest` and begin
 a **RESTING task at PRIO_REST (50)** — which blocks travel (110) but lets flee(20)/
-combat(40) preempt (the engine aborts the lower task when a higher slot returns a
-command). Holds until HP & mana ≥ `_REST_FULL` (0.95), then `complete_task()` resumes;
-180 s timeout safety net. `activity_reason` reports "resting". Web Settings exposes
+combat(40)/spells(30) preempt. Holds until HP & mana ≥ `_REST_FULL` (0.95); 180 s
+timeout safety net. `activity_reason` reports "resting".
+
+**Recovery is tracked in a `_recovering` flag, not the task** — and we **resume
+resting after a buff cast** (like MegaMud, which rests *through* its bless casts).
+A cast is higher priority than rest, so the engine **aborts** the RESTING task when
+SpellEngine casts; if we keyed "still resting?" off the task we'd stop the moment mana
+climbed back over the (lower) start threshold. Instead `_recovering` persists until HP
+& mana hit `_REST_FULL`, re-begins the task if a cast aborted it, and re-issues `rest`
+after the stand-up — so an idle bot that casts a bless mid-rest sits back down and
+finishes recovering. `rest` itself is debounced once per `[HP=..]` prompt cycle. Web Settings exposes
 `rest_threshold` / `rest_mana_pct` / `flee_threshold` / `mana_attack_pct`.
 
 We use `rest` for mana too (universal). `meditate` (faster mana regen) is a follow-up
