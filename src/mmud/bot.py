@@ -569,11 +569,18 @@ class MudBot:
         if self._parse_who(clean):
             return
         # Accumulate display lines so _parse_exits can recover the room title for
-        # MegaMud's room-hash lookup (reset when an exits line closes the block).
+        # MegaMud's room-hash lookup. The prompt ("[HP=..]:") is a turn boundary:
+        # reset there so the block holds ONLY the current room display (title +
+        # items + also-here), not 30 lines of combat/loot/async history — that
+        # history produced ~27 garbage candidate hashes that caused false route and
+        # wander matches. (Also reset at the exits line that closes the block.)
         if clean:
-            self._room_block.append(clean)
-            if len(self._room_block) > 30:
-                self._room_block = self._room_block[-30:]
+            if "[hp=" in clean.lower():
+                self._room_block = []
+            else:
+                self._room_block.append(clean)
+                if len(self._room_block) > 30:
+                    self._room_block = self._room_block[-30:]
         self._parse_vitals(clean)
         if inv := self._inv_parser.feed(clean):
             self._state.inventory = inv

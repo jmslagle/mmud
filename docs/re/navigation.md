@@ -76,11 +76,17 @@ chains of identical rooms.
 We advance **one step per arrival** (follow the command) and re-anchor only on a
 **confidently name-detected** room. The hard-won rules, each a fixed bug:
 
-- **Broad seen-set.** `on_arrival` gets `seen_hexes = {room_id(line) for line in
-  room_block}` — every block line (title + each description line) is hashed, all
-  sharing the room's exit-bits, so a long description yields ~25 candidate hashes.
-  This is the collision amplifier. (MegaMud uses ONE id; narrowing us to the title
-  line is the open follow-up.)
+- **Seen-set narrowed (2026-06-26).** `on_arrival` gets `seen_hexes = {room_id(line)
+  for line in room_block}`. The bug: `_room_block` was the last **30 lines of ALL
+  output** (combat, loot, async), only reset at the exits line — so after a fight it
+  held ~27 garbage lines → ~27 candidate hashes → false route/wander matches. Fix:
+  reset `_room_block` at each **prompt** (`[HP=..]:` — a turn boundary), so it holds
+  only the current room display (title + items + also-here) → ~3-5 hashes. This is
+  the practical version of MegaMud's "one id per room" (`room_title_parse @0x475e20`
+  computes `title_hash<<20` from the single title line, identified by its bold/colour
+  attribute `state+0x7deb==0x0e`). NOTE: genuinely identical rooms (same title AND
+  same exits — e.g. the `2B000055` graveyard maze rooms) still collide by design;
+  MegaMud has the same limit and relies on the command sequence + the give-up stop.
 - **No eager hash-jump (chains).** We do NOT resync the cursor to a nearby step on a
   bare hash match. In a run of identical rooms (Temple St, the cemetery), a later
   step's dest hash routinely appears in an earlier room's candidate set; jumping on it
@@ -212,9 +218,13 @@ flag field through `PathStep`/`RouteStep` would let us match MegaMud's proactive
 handling — see open follow-ups.
 
 ## Open follow-ups
-- **One room id from the title line** instead of hashing every block line (~25
-  candidates) — the highest-leverage fix; aligns us with MegaMud and sharply cuts
-  collisions, improving both travel and goto start detection.
+- **Exact single title id by colour.** The seen-set is now ~3-5 (reset on prompt),
+  but the true MegaMud behaviour is ONE id from the title line, identified by its
+  ANSI attribute (`room_title_parse` gates on `state+0x7deb==0x0e`). Our pipeline
+  keeps per-cell SGR (`parser/ansi.py`), so we could extract each line's fg colour,
+  auto-learn the room-title colour from confidently-detected rooms, and compute the
+  single id — eliminating the last item/also-here/exit hashes from the set. (Won't
+  fix genuinely-identical rooms; those are a design limit.)
 - Port MegaMud's ±1 peek, 3-mismatch counter + full-path id search, "Lost!" stop, and
   `.MP` self-correction.
 - Full 32-bit exit-hash room lookup needs the upper base-id source (`gs+0x2e9c`); this

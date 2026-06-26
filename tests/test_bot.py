@@ -271,6 +271,22 @@ def test_closed_door_or_gate_is_not_a_nav_failure():
     assert _NAV_FAIL_RE.search("There is no exit in that direction!") is not None
 
 
+@pytest.mark.asyncio
+async def test_room_block_resets_on_prompt_not_accumulating_combat():
+    # The room-hash candidate set was built from the last 30 lines of ALL output
+    # (combat, loot, async) -> ~27 garbage hashes that caused false route/wander
+    # matches. The prompt is a turn boundary: reset the block there so it holds only
+    # the current room display (title + items + also-here).
+    bot = make_transcript_bot([])
+    await bot._process_line("The zombie swings at you with its arm!\n")
+    await bot._process_line("You fire a magic missile at zombie for 21 damage!\n")
+    await bot._process_line("[HP=100/MA=50]:\n")      # prompt -> reset
+    assert bot._room_block == []
+    await bot._process_line("Graveyard\n")
+    await bot._process_line("You notice gold here.\n")
+    assert bot._room_block == ["Graveyard", "You notice gold here."]
+
+
 def test_keyed_door_reissues_move_not_the_whole_step():
     # After `use <key> <dir>` unlocks but leaves the door CLOSED, the move fails with
     # "There is a closed door in that direction!". We must `open <dir>` then re-issue
