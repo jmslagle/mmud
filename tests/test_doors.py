@@ -8,6 +8,13 @@ def test_closed_door_opens():
     assert cmds == ["open w"]
 
 
+def test_move_blocked_by_closed_door_opens():
+    # The move-failed wording (after a keyed unlock leaves the door CLOSED): the
+    # black-star-key door says this, and we must send `open <dir>` to get through.
+    m = DoorMonitor(NavigationConfig())
+    assert m.handle("There is a closed door in that direction!", last_move="e") == ["open e"]
+
+
 def test_locked_door_picks_when_able():
     m = DoorMonitor(NavigationConfig(can_pick_locks=True))
     assert m.handle("The door is locked.", last_move="n") == ["pick n"]

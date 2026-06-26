@@ -970,10 +970,15 @@ class MudBot:
         door_cmds = self._doors.handle(line, self._pending_move)
         if door_cmds is None:
             return
-        for c in door_cmds:
-            self._state.enqueue(c)
         if door_cmds:
-            self._travel.retry_current()   # re-send the move after opening
+            for c in door_cmds:
+                self._state.enqueue(c)
+            # Re-issue just the MOVE after the door clears — NOT retry_current(),
+            # which re-runs the whole step including any `[use <key> <dir>]` keyword
+            # annotation and burns another key on an already-unlocked door. Travel
+            # stays in-flight; the re-issued move's arrival advances the cursor.
+            if self._pending_move:
+                self._state.enqueue(self._pending_move)
         else:
             self._travel.on_move_failed()  # can't open: normal failure path
 

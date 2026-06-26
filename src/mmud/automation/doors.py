@@ -4,9 +4,14 @@ from mmud.config.schema import NavigationConfig
 
 # Blocked-passage replies. Gates and doors share all handling (MegaMud's
 # room_door_response_parse @0x42609e matches both). Server wording on this realm:
-# "The gate is closed!", "... is Closed!", "... is locked", "It's closed."
+# "The gate is closed!", "... is Closed!", "... is locked", "It's closed.", and the
+# move-blocked form "There is a closed door in that direction!" — the last is what we
+# get after a keyed unlock (use <key> <dir>) leaves the door UNLOCKED but still CLOSED.
 _OBSTACLE = r"(?:door|gate|portcullis|grate|drawbridge)"
-_CLOSED_RE = re.compile(rf"{_OBSTACLE}\s+is\s+closed|it'?s\s+closed", re.IGNORECASE)
+_CLOSED_RE = re.compile(
+    rf"{_OBSTACLE}\s+is\s+closed|it'?s\s+closed"
+    rf"|closed\s+{_OBSTACLE}\s+in\s+that\s+direction",
+    re.IGNORECASE)
 _LOCKED_RE = re.compile(rf"{_OBSTACLE}\s+is\s+locked|it'?s\s+locked|just\s+locked",
                         re.IGNORECASE)
 _OPEN_RE = re.compile(r"is\s+now\s+open|(?:is|was)\s+already\s+open", re.IGNORECASE)

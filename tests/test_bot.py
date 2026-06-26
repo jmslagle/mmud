@@ -271,6 +271,23 @@ def test_closed_door_or_gate_is_not_a_nav_failure():
     assert _NAV_FAIL_RE.search("There is no exit in that direction!") is not None
 
 
+def test_keyed_door_reissues_move_not_the_whole_step():
+    # After `use <key> <dir>` unlocks but leaves the door CLOSED, the move fails with
+    # "There is a closed door in that direction!". We must `open <dir>` then re-issue
+    # ONLY the move — re-running the step would re-`use` another key.
+    from mmud.config.schema import MudConfig
+    from mmud.navigation.graph import RouteStep
+    config = MudConfig()
+    bot = make_transcript_bot([], config=config)
+    bot._travel.set_route([RouteStep("e", frozenset({"X"}), "X")])
+    bot._pending_move = "e"
+    bot._handle_doors("There is a closed door in that direction!")
+    cmds = []
+    while (c := bot._state.dequeue()) is not None:
+        cmds.append(c)
+    assert cmds == ["open e", "e"]   # open, then re-move; no `use <key>` re-run
+
+
 def test_closed_gate_during_travel_bashes_not_wanders():
     from mmud.config.schema import MudConfig
     from mmud.navigation.graph import RouteStep

@@ -162,6 +162,19 @@ hard-block messages ("You may not enter", "not healthy enough", "too heavy", "no
 permitted", "too good/evil to go", "no room ticket", "shimmering wall", "heat too
 intense") → **path blocked, stop** (it does not bash through these).
 
+### Which key? It's recorded in the path (keyword exit)
+You don't compute the key — the `.MP` step's `[keyword]` annotation IS the unlock
+command. The CAVW (Cave Worm) loop's Black House door is recorded as
+`e[use black star key e]`: the path recorder captured `use black star key e` as the
+exit command. We carry it via `expand_annotated` (`use black star key e`, then `e`).
+In-game, `use <key> <dir>` auto-picks the key from inventory, so there's no key→door
+table to maintain.
+
+**Unlock ≠ open.** After `use black star key e` → "You successfully unlocked the
+door.", the door is UNLOCKED but still CLOSED, so the move fails with **"There is a
+closed door in that direction!"** — you then need `open e`, then the move. (Live log
+23:29: unlock → closed-door block → `open e` → "The door is now open.")
+
 ### Our port (`automation/doors.py` `DoorMonitor`)
 Reactive open→pick→bash, driven by the same response text: a blocked move →
 `open [dir]` first → if it won't open, `pick` (if `can_pick_locks` and under
@@ -169,10 +182,18 @@ Reactive open→pick→bash, driven by the same response text: a blocked move �
 doors share handling (`_OBSTACLE` = door|gate|portcullis|grate|drawbridge). Keyword
 exits are handled in travel via `expand_annotated` (e.g. `w[search w]`).
 
-**Gap:** we parse `.MP` steps as `(hex_id, command)` only — we **discard the flags
-field**, so we don't pre-`search`/`disarm` trapped exits (`0x200`) from path data; we'd
-only react if the server reports a trap after we trip it. (We also ignore the
-rest/sneak/stop step flags, though those come from config/other logic.) Wiring the
+Fixed bugs (2026-06-25):
+- `DoorMonitor` now matches the move-blocked form **"There is a closed door in that
+  direction!"** (`closed <obstacle> in that direction`), not just "X is closed" — that
+  phrasing is what a keyed-but-still-closed door produces, and we were ignoring it.
+- `_handle_doors` re-issues **only the move** after opening, not `travel.retry_current()`
+  — the latter re-ran the whole annotated step and **burned another key** on an
+  already-unlocked door (the live log shows repeated `use black star key e`).
+
+**Remaining gap:** we parse `.MP` steps as `(hex_id, command)` only — we **discard the
+flags field**, so we don't pre-`search`/`disarm` trapped exits (`0x200`) from path
+data; we'd only react if the server reports a trap after we trip it. (We also ignore
+the rest/sneak/stop step flags, though those come from config/other logic.) Wiring the
 flag field through `PathStep`/`RouteStep` would let us match MegaMud's proactive trap
 handling — see open follow-ups.
 
