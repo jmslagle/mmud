@@ -126,6 +126,20 @@ A bad direction ("no exit") while looping = desync → drop the route and
 `LoopRunner.recover()` wanders until back on a loop room. The decision engine blocks
 deciders at priority ≥ an active task's priority, so a stuck task freezes travel.
 
+**The graveyard trap (lost for hours, bounded 2026-06-26).** CRY1's approach crosses
+the Graveyard Bridge to the crypt. The graveyard is a maze of identically-titled
+rooms whose ids collide on `2B000055` — which is also a CRY1 approach step. So when
+the bot desyncs at the crypt entrance (the cursor was one step behind: the room had
+exits *south, down* but the step said `n` → "no exit") and drops to wander, the
+graveyard rooms **false-match** the loop's `2B000055` target, so it "relocates",
+re-engages, fails, and re-wanders — for SIX HOURS in one run, because the optimistic
+advance also lets it "complete" fake laps without ever detecting CRY1. Mitigation:
+`TravelDecider.set_wander(limit=, on_giveup=)` bounds wander to `_MAX_WANDER` (40)
+moves; on exceeding it `LoopRunner._giveup()` stops the loop and the bot's
+`on_lost` logs/flags it ("Lost (gave up …)") — MegaMud's "Lost!" stop. This is a
+SAFETY NET, not a cure: reliably traversing the graveyard needs the one-room-id fix
+(below) so the cursor doesn't desync and the wander doesn't false-match collisions.
+
 ## NPC look filter
 A proper-named "Also here" entry that is a catalogued monster (`monster_db.find` hit,
 e.g. "Lady Sentara", kill-type 2) is an NPC, not a player → tracked as a

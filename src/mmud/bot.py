@@ -1157,10 +1157,19 @@ class MudBot:
     def _make_loop_runner(self):
         from mmud.automation.loop_runner import LoopRunner
         paths = list(self._navigator._paths.values())
-        return LoopRunner(self._config.navigation, paths, self._rooms, self._travel,
-                          code_route=self._code_route,
-                          current_code=self._state.current_room,
-                          current_hex=self._resolved_current_hex())
+        lr = LoopRunner(self._config.navigation, paths, self._rooms, self._travel,
+                        code_route=self._code_route,
+                        current_code=self._state.current_room,
+                        current_hex=self._resolved_current_hex())
+        lr.on_lost = self._on_loop_lost
+        return lr
+
+    def _on_loop_lost(self) -> None:
+        """Wander recovery gave up — the loop stopped. Surface it so the user isn't
+        left thinking it's still working (it wandered a colliding maze and bailed)."""
+        name = self._config.navigation.loop_path
+        self._session_log.event(f"lost — gave up loop {name} (could not relocate); stopped")
+        self._emit(SessionStatUpdated(key="objective", value=f"Lost (gave up {name})"))
 
     def _spell_durations(self) -> dict[str, float]:
         """mnemonic/name -> SPELLS.MD duration (minutes), for auto-timing bless
