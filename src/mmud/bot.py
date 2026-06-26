@@ -177,7 +177,15 @@ class MudBot:
         # id->name for resolving PLAYERS.MD class_id/race_id (race 7=Dark-Elf,
         # class 10=Gypsy) on spy records.
         self._class_race = ClassRaceDB.from_dir(data_dir)
-        self._navigator = Navigator.from_directory(data_dir) if data_dir else Navigator([])
+        # Bundled .MP paths plus optional user dirs of custom paths. extra_paths_dir is
+        # a comma-separated list of dirs, loaded in order AFTER the bundled ones, so a
+        # later dir's path for the same from->to overrides an earlier one (and new
+        # files add new routes). Lets users fix/extend routing without touching the corpus.
+        path_dirs = [d for d in (data_dir,) if d]
+        path_dirs += [pathlib.Path(d.strip())
+                      for d in self._config.navigation.extra_paths_dir.split(",")
+                      if d.strip()]
+        self._navigator = Navigator.from_directories(path_dirs)
         self._combat = CombatEngine(
             config=self._config.combat,
             sneak_cmd="sneak" if (self._config.stealth.auto_sneak or self._config.stealth.must_sneak) else "",

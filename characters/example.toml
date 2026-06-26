@@ -90,6 +90,11 @@ auto_start       = false
 flee_rooms       = 3
 can_pick_locks   = false
 can_disarm_traps = false
+# Optional dir(s) of your own recorded .MP path files (comma-separate several).
+# Loaded ON TOP of the bundled paths, in order: a file with the same FROM->TO
+# overrides earlier/bundled ones, new files add new routes/loops.
+# e.g. extra_paths_dir = "mypaths, shared/paths"
+extra_paths_dir  = ""
 auto_search      = false   # search for hidden exits in each new room
 search_max       = 3       # search attempts per room
 roam             = false   # wander random exits when otherwise idle

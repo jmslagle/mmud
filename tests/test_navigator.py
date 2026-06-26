@@ -11,6 +11,22 @@ def _path(fc, tc, steps):
     )
 
 
+def test_from_directories_extra_overrides_and_adds(tmp_path):
+    bundled = tmp_path / "bundled"; bundled.mkdir()
+    extra = tmp_path / "extra"; extra.mkdir()
+    # bundled AABB->BBCC is 1 step; the user's extra version is 2 steps and must win.
+    (bundled / "AABB.MP").write_text(
+        "[][]\n[AABB:R:From]\n[BBCC:R:To]\nH0:H1:1:-1:0:::\nH0:0000:n\n")
+    (extra / "AABB.MP").write_text(
+        "[][]\n[AABB:R:From]\n[BBCC:R:To]\nH0:H1:2:-1:0:::\nH0:0000:n\nH1:0000:e\n")
+    # a brand-new path only in the extra dir
+    (extra / "XXYY.MP").write_text(
+        "[][]\n[XXYY:R:X]\n[YYZZ:R:Y]\nH0:H1:1:-1:0:::\nH0:0000:s\n")
+    nav = Navigator.from_directories([bundled, extra])
+    assert [s.command for s in nav.get_path("AABB", "BBCC").steps] == ["n", "e"]  # extra won
+    assert nav.get_path("XXYY", "YYZZ") is not None                                # new path added
+
+
 def test_get_path_finds_registered_path():
     p = _path("AAAA", "BBBB", ["n", "e"])
     nav = Navigator([p])
