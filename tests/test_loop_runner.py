@@ -139,6 +139,26 @@ def test_wanders_when_position_unknown_then_engages_loop():
     assert travel.decide(gs) == "n"                      # real loop engaged at idx 0
 
 
+def test_relocate_repaths_from_a_known_room_mid_wander():
+    # Lost and wandering with no idea where we are; then we recognise a KNOWN room.
+    # relocate() must re-path to the loop FROM that room (not keep wandering).
+    from mmud.navigation.graph import RouteStep
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    calls = {}
+    def code_route(frm, to):
+        calls["args"] = (frm, to)
+        return [RouteStep("e", frozenset({"AAAA0001"}), "AAAA0001")]
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
+                        code_route=code_route, current_code="", current_hex="")
+    runner.start()                                    # position unknown -> wander
+    assert travel.wandering
+    msg = runner.relocate("FARR", "FAR00000")         # recognised a known room
+    assert calls["args"] == ("FARR", "HOME")          # re-pathed from there
+    assert not travel.wandering                        # wander cancelled
+    assert travel.decide(GameState()) == "e"           # follows the approach now
+
+
 def test_recover_wanders_to_relocate_the_loop():
     # A bad direction means we've desynced -> wander to find a loop room again.
     path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "e")])

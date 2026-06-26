@@ -194,6 +194,19 @@ def test_confident_detection_does_not_jump_backward():
     assert d._cursor == 3                            # advanced optimistically, not back to 1
 
 
+def test_set_route_cancels_wander():
+    # Arming a route (lost-wander recovery re-paths from a known room) must cancel the
+    # wander — decide() checks wander first, so a leftover wander would shadow it.
+    d = _decider()
+    gs = GameState()
+    gs.last_exits = ["n"]
+    d.set_wander({"NEVER0001"}, on_reach=lambda h: None)
+    assert d.wandering
+    d.set_route([_step("n", "B")])
+    assert not d.wandering
+    assert d.decide(gs) == "n"          # follows the route, not wandering
+
+
 def test_wander_gives_up_after_limit():
     # Live bug: lost near the crypt, the bot wandered the (hash-colliding) graveyard
     # for HOURS without ever relocating the loop. Bound it: after `limit` wander moves

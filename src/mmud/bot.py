@@ -968,6 +968,13 @@ class MudBot:
                 f"arrive room={code or '?'} hex={self._state.current_hex or '?'} "
                 f"seen={sorted(seen_hexes)}")
         self._travel.on_arrival(self._state, seen_hexes, confident_hex=confident_hex)
+        # Lost-wander recovery: if we're STILL wandering but just recognised a KNOWN
+        # room (ROOMS.MD name-detected), re-route to the loop from here instead of
+        # wandering blindly until we trip over a loop room.
+        if (code and self._travel.wandering
+                and self._loop_runner and self._loop_runner.running):
+            msg = self._loop_runner.relocate(code, confident_hex)
+            self._session_log.event(f"relocated at {code}: {msg}")
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()
