@@ -31,7 +31,7 @@ from mmud.net.connection import MudConnection
 from mmud.terminal import TerminalEmulator
 from mmud.parser.matcher import PatternMatcher
 from mmud.parser.room_parser import RoomParser
-from mmud.parser.ansi import render_line, visible_text
+from mmud.parser.ansi import render_line, visible_text, line_fg
 from mmud.state.game_state import GameState, MonsterSighting
 from mmud.navigation.navigator import Navigator
 from mmud.combat.combat import CombatEngine, select_attack_target
@@ -256,7 +256,8 @@ class MudBot:
         self._build_engines()
         self._graph = None        # built on first use (corpus parse ~1s)
         self._last_seen_hex = ""
-        self._room_block: list[str] = []   # recent display lines -> room-hash title
+        self._room_block: list[tuple[str, str]] = []   # (display line, fg colour)
+        self._title_color = ""             # learned room-title fg colour (one-id hash)
         self._wait_reason = ""             # current intentional-wait status (UI)
         self._objective = ""               # macro status (Looping/Traveling/...)
         self._objective_phase = ""         # objective minus the step, for log throttle
@@ -578,7 +579,10 @@ class MudBot:
             if "[hp=" in clean.lower():
                 self._room_block = []
             else:
-                self._room_block.append(clean)
+                # Keep each line's foreground colour so we can pick out the room TITLE
+                # by colour (MegaMud identifies it by its display attribute) and hash
+                # just that one line instead of the whole block.
+                self._room_block.append((clean, line_fg(line)))
                 if len(self._room_block) > 30:
                     self._room_block = self._room_block[-30:]
         self._parse_vitals(clean)
@@ -919,13 +923,10 @@ class MudBot:
         # line and let travel match the set against the route (works even for rooms
         # absent from ROOMS.MD). detect_room_from_block additionally names the room
         # (ROOMS.MD) for the UI/position. The block is consumed here.
-        block = self._room_block
+        block = self._room_block          # list[(clean_text, fg_colour)]
         self._room_block = []
-        seen_hexes = {h for c in block if (h := room_id(c, line))}
-        # Remember the current room's candidate hashes so travel can recognise a
-        # departure-room re-display even when current_hex is stale/wrong.
-        self._state.last_room_hexes = seen_hexes
-        code = self._room_parser.detect_room_from_block(block, line)
+        clean_lines = [c for c, _ in block]
+        code = self._room_parser.detect_room_from_block(clean_lines, line)
         confident_hex = ""   # hex of a NAME-DETECTED ROOMS.MD room (high confidence)
         if code:
             room = self._rooms.get(code)
@@ -935,6 +936,25 @@ class MudBot:
             if code != self._state.current_room:
                 self._state.set_room(code)
                 self._emit(RoomChanged(code=code, name=(room.name if room else code)))
+        # Auto-learn the room-TITLE colour from a confidently name-detected room (the
+        # line whose hash IS the detected room's id is the title), then prefer the
+        # single title-coloured id — MegaMud uses ONE id per room (title x exits), not
+        # the whole block. Falls back to the (prompt-trimmed) block set until learned
+        # or if no title-coloured line is present.
+        if confident_hex:
+            for c, col in block:
+                if col and room_id(c, line) == confident_hex:
+                    self._title_color = col
+                    break
+        seen_hexes = set()
+        if self._title_color:
+            seen_hexes = {h for c, col in block
+                          if col == self._title_color and (h := room_id(c, line))}
+        if not seen_hexes:
+            seen_hexes = {h for c, _ in block if (h := room_id(c, line))}
+        # Remember the current room's candidate hashes so travel can recognise a
+        # departure-room re-display even when current_hex is stale/wrong.
+        self._state.last_room_hexes = seen_hexes
         # "Obvious exits:" terminates a room display. If this display showed no
         # "Also here:", the room has no monsters -> clear the roster (handles
         # rooms missing from ROOMS.MD, where name-detection can't fire).
