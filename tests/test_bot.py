@@ -284,7 +284,22 @@ async def test_room_block_resets_on_prompt_not_accumulating_combat():
     assert bot._room_block == []
     await bot._process_line("Graveyard\n")
     await bot._process_line("You notice gold here.\n")
-    assert bot._room_block == ["Graveyard", "You notice gold here."]
+    assert [c for c, _ in bot._room_block] == ["Graveyard", "You notice gold here."]
+
+
+@pytest.mark.asyncio
+async def test_title_colour_narrows_seen_to_single_id():
+    # Once the room-title colour is learned, the candidate-hash set is just the
+    # title line's id (MegaMud's one-id-per-room) — not the items/exits lines.
+    from mmud.parser.exits_parser import room_id
+    bot = make_transcript_bot([])
+    bot._title_color = "1;36"                                    # learned: cyan titles
+    await bot._process_line("[HP=100/MA=50]:\n")                 # prompt -> fresh block
+    await bot._process_line("\x1b[1;36mGraveyard\x1b[0m\n")      # title (cyan)
+    await bot._process_line("\x1b[0;37mYou notice gold here.\x1b[0m\n")  # items (white)
+    exits = "Obvious exits: north, south"
+    await bot._process_line(exits + "\n")                        # closes the block
+    assert bot._state.last_room_hexes == {room_id("Graveyard", exits)}
 
 
 def test_keyed_door_reissues_move_not_the_whole_step():

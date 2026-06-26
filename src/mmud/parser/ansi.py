@@ -84,3 +84,43 @@ def render_line(raw: str, *, color: bool = False) -> str:
 def visible_text(raw: str) -> str:
     """The final on-screen text of a line — cursor moves applied, colour gone."""
     return render_line(raw, color=False)
+
+
+def line_fg(raw: str) -> str:
+    """Foreground-colour key (e.g. '1;36' = bold cyan, '33' = yellow) in effect at the
+    line's first visible character, or '' if the text carries no SGR colour. Used to
+    identify room titles by colour — MegaMud's `room_title_parse` keys on the title's
+    display attribute (`state+0x7deb`)."""
+    fg = ""
+    bold = False
+    i, n = 0, len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch == "\x1b" and i + 1 < n and raw[i + 1] == "[":
+            m = _CSI_RE.match(raw, i)
+            if not m:
+                i += 1
+                continue
+            i = m.end()
+            if m.group(2) == "m":
+                params = m.group(1)
+                for p in (params.split(";") if params else ["0"]):
+                    code = int(p) if p.isdigit() else 0
+                    if code == 0:
+                        fg, bold = "", False
+                    elif code == 1:
+                        bold = True
+                    elif code == 22:
+                        bold = False
+                    elif code == 39:
+                        fg = ""
+                    elif 30 <= code <= 37 or 90 <= code <= 97:
+                        fg = str(code)
+            continue
+        if ch in ("\x08", "\r", "\n", " "):
+            i += 1
+            continue
+        if fg and bold:
+            return f"1;{fg}"
+        return fg or ("1" if bold else "")
+    return ""

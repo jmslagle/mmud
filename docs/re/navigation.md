@@ -217,14 +217,17 @@ the rest/sneak/stop step flags, though those come from config/other logic.) Wiri
 flag field through `PathStep`/`RouteStep` would let us match MegaMud's proactive trap
 handling — see open follow-ups.
 
+**Single title id by colour (2026-06-26).** The final step toward MegaMud's one-id-
+per-room (`room_title_parse @0x475e20` keys on the title's attribute `state+0x7deb`).
+`parser/ansi.line_fg(raw)` returns each line's fg colour key (e.g. `1;36`). The bot
+stores `(line, colour)` in `_room_block`, **auto-learns** the room-title colour from a
+confidently name-detected room (the block line whose hash == the detected id is the
+title), then narrows `seen_hexes` to just the title-coloured line's id. Falls back to
+the prompt-trimmed block set until learned or if no title-coloured line is present.
+(Server-agnostic: the title colour is learned, not the hardcoded `0x0e`.) Still won't
+distinguish genuinely-identical rooms — a design limit.
+
 ## Open follow-ups
-- **Exact single title id by colour.** The seen-set is now ~3-5 (reset on prompt),
-  but the true MegaMud behaviour is ONE id from the title line, identified by its
-  ANSI attribute (`room_title_parse` gates on `state+0x7deb==0x0e`). Our pipeline
-  keeps per-cell SGR (`parser/ansi.py`), so we could extract each line's fg colour,
-  auto-learn the room-title colour from confidently-detected rooms, and compute the
-  single id — eliminating the last item/also-here/exit hashes from the set. (Won't
-  fix genuinely-identical rooms; those are a design limit.)
 - Port MegaMud's ±1 peek, 3-mismatch counter + full-path id search, "Lost!" stop, and
   `.MP` self-correction.
 - Full 32-bit exit-hash room lookup needs the upper base-id source (`gs+0x2e9c`); this
