@@ -6,9 +6,11 @@ from mmud.state.game_state import GameState
 
 class Navigator:
     def __init__(self, paths: list[GamePath]) -> None:
+        # Key by UPPERCASE codes so lookups and the extra-dir override are
+        # case-insensitive (corpus files vary; custom files may be lowercase).
         self._paths: dict[tuple[str, str], GamePath] = {}
         for p in paths:
-            self._paths[(p.from_code, p.to_code)] = p
+            self._paths[(p.from_code.upper(), p.to_code.upper())] = p
 
     @classmethod
     def from_directory(cls, directory: pathlib.Path) -> "Navigator":
@@ -34,11 +36,11 @@ class Navigator:
         return cls(paths)
 
     def get_path(self, from_code: str, to_code: str) -> GamePath | None:
-        return self._paths.get((from_code, to_code))
+        return self._paths.get((from_code.upper(), to_code.upper()))
 
     def navigate_to(self, from_code: str, to_code: str) -> GamePath | None:
         """Find any path from from_code to to_code and return it (or None)."""
-        return self._paths.get((from_code, to_code))
+        return self._paths.get((from_code.upper(), to_code.upper()))
 
     def execute_path(self, path: GamePath, state: GameState) -> None:
         for step in path.steps:

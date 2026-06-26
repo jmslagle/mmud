@@ -23,6 +23,8 @@ class GamePath:
     npc: str          # optional NPC associated with path
     steps: list[PathStep] = field(default_factory=list)
     requires: str = ""  # item needed to traverse (e.g. "wooden skiff" for a boat leg)
+    source_file: str = ""  # .MP filename stem (so a loop can be referenced by it)
+    description: str = ""  # free-text label from the header (Format B loops)
 
 
 _BRACKET_RE = re.compile(r"\[([^\]]*)\]")
@@ -132,6 +134,8 @@ def _parse_block(lines: list[str], filename_stem: str = "") -> GamePath | None:
         npc=npc,
         steps=steps,
         requires=requires,
+        source_file=filename_stem,
+        description=description,
     )
 
 

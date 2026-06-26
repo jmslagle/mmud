@@ -51,9 +51,18 @@ class LoopRunner:
         name = self._nav.loop_path.upper()
         if not name:
             return None
+        # 1) by room CODE (loop where from == to == name) — e.g. "CRY1", "SLMC".
         for p in paths:
             if p.from_code.upper() == name and p.to_code.upper() == name:
                 return p
+        # 2) by .MP FILENAME stem or header DESCRIPTION, for a self-loop — so a custom
+        # "slm2loop.mp" (whose code is SLMC) can be referenced as "slm2loop".
+        for p in paths:
+            if p.from_code == p.to_code and (
+                    p.source_file.upper() == name
+                    or p.description.upper() == name):
+                return p
+        # 3) an 8-char "FROMTO" pair (a point-to-point "loop").
         if len(name) == 8:
             fc, tc = name[:4], name[4:]
             for p in paths:
