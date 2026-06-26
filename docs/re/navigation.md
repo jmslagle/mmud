@@ -37,9 +37,16 @@ produced a bogus 18-step Bank→Crypt that diverged at the first collision.
 **Fix:** `navigation/code_route.find_code_route(from_code, to_code, paths, rooms)`
 chains the recorded `.MP` paths over the **room-CODE** graph (1190 paths as
 `from_code → to_code` edges; each leg is a real walked sequence), concatenating legs
-into `RouteStep`s. Per-step destination hash still confirms position as we go. Real
+into `RouteSteps`. Per-step destination hash still confirms position as we go. Real
 Bank→CRY1 = 29 steps; MAGS→CRY1 = 23. Used by `LoopRunner` approach and
 `navigate_to_room` (goto). The hash BFS (`RoomGraph.find_path`) is retired for routing.
+
+**Weight by STEPS, not legs (2026-06-26).** `find_code_route` originally did a plain
+BFS minimising the number of *legs* (named-room hops) — so it chained a few enormous
+legs (River St → Pier → Silver River → Dragon's Teeth → …) to reach the slum-side
+Orc Mansion (`ORCM`), a ~150-step detour around a ~65-step slum walk (STSQ → SOVN →
+SOAK → SNOB → SLMC → SLMG → SLMW → ORCM). Now it's **Dijkstra weighted by leg step
+count**, so it picks the fewest-*moves* route.
 
 `navigate_to_room` builds the route from `state.current_room` (the last
 **name-detected** room). If the bot is standing in an undetected room, that start is

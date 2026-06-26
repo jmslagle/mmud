@@ -9,7 +9,9 @@ named rooms (from_code -> to_code); chaining them yields a real route, and the
 per-step destination hash still confirms position as we go.
 """
 from __future__ import annotations
-from collections import defaultdict, deque
+import heapq
+from collections import defaultdict
+from itertools import count
 from mmud.data.paths import GamePath
 from mmud.data.rooms import Room
 from mmud.navigation.graph import RouteStep
@@ -37,18 +39,27 @@ def find_code_route(from_code: str, to_code: str, paths: list[GamePath],
     edges = build_code_edges(paths)
     if from_code == to_code:
         return []
-    q: deque[tuple[str, list[GamePath]]] = deque([(from_code, [])])
-    seen = {from_code}
+    # Dijkstra over the code graph weighted by leg STEP count — pick the route with
+    # the fewest actual moves, NOT the fewest hops. A plain BFS (fewest legs) chained
+    # a few enormous legs (River St -> Pier -> Silver River -> Dragon's Teeth -> ...)
+    # to reach the slum-side Orc Mansion, a ~150-step detour around a ~50-step walk.
+    inf = float("inf")
+    tie = count()                               # keeps heapq from comparing leg lists
+    pq: list[tuple[int, int, str, list[GamePath]]] = [(0, next(tie), from_code, [])]
+    best: dict[str, int] = {from_code: 0}
     chain: list[GamePath] | None = None
-    while q:
-        code, legs = q.popleft()
+    while pq:
+        cost, _, code, legs = heapq.heappop(pq)
         if code == to_code:
             chain = legs
             break
+        if cost > best.get(code, inf):
+            continue                            # stale heap entry
         for nxt, path in edges.get(code, {}).items():
-            if nxt not in seen:
-                seen.add(nxt)
-                q.append((nxt, legs + [path]))
+            ncost = cost + len(path.steps)
+            if ncost < best.get(nxt, inf):
+                best[nxt] = ncost
+                heapq.heappush(pq, (ncost, next(tie), nxt, legs + [path]))
     if chain is None:
         return None
     all_steps = [s for leg in chain for s in leg.steps]
