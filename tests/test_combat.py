@@ -71,6 +71,23 @@ def test_rests_when_mana_low_and_holds_until_recovered():
     assert not gs.task.is_active               # loop resumes
 
 
+def test_rest_not_respammed_before_resting_confirmation():
+    # Live bug: we flooded the server with `rest` (30+ in 0.5s -> "slow down") because
+    # we re-issued it on every line in the window before the "(Resting)" prompt. Send
+    # it ONCE per prompt cycle.
+    gs = GameState()
+    gs.set_combat(False)
+    gs.set_hp(30, 100)
+    ce = CombatEngine(CombatConfig(rest_threshold=0.5))
+    assert ce.decide(gs) == "rest"           # sent once
+    ce.on_line("You are now resting.")       # not a [HP=] prompt -> no confirmation yet
+    assert ce.decide(gs) is None             # must NOT re-send before the prompt
+    ce.on_line("You fire a magic missile!")  # other chatter
+    assert ce.decide(gs) is None             # still no spam
+    ce.on_line("[HP=31/MA=10]: (Resting)")   # confirmed resting
+    assert ce.decide(gs) is None             # resting -> stays quiet
+
+
 def test_no_mana_rest_by_default():
     gs = GameState()
     gs.set_combat(False)

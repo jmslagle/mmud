@@ -103,6 +103,7 @@ class CombatEngine:
         self._sneak_confirmed = False
         self._engaged_target = ""   # monster we've already sent the attack at
         self._resting = False       # server has us resting (prompt shows (Resting))
+        self._rest_pending = False  # sent 'rest', awaiting the next prompt to confirm
 
     def on_line(self, line: str) -> None:
         # The MajorMUD prompt authoritatively flags resting: "[HP=..]: (Resting)".
@@ -110,6 +111,10 @@ class CombatEngine:
         low = line.lower()
         if "[hp=" in low:
             self._resting = "(resting)" in low
+            # A prompt came back, so the prior 'rest' resolved — re-arm. Without
+            # this debounce we re-issued 'rest' on every line (echoes, etc.) in the
+            # window before the "(Resting)" prompt and flooded the server.
+            self._rest_pending = False
         if not self.must_sneak:
             return
         if _SNEAK_OK_RE.search(line):
@@ -172,16 +177,26 @@ class CombatEngine:
             mana_done = state.max_mana <= 0 or mp_pct >= _REST_FULL
             if hp_done and mana_done:
                 state.complete_task()      # recovered -> let the loop resume
+                self._rest_pending = False
                 return None
-            return "rest" if not self._resting else None
+            return self._rest_cmd()
         hp_low = hp_pct < self.rest_threshold
         mana_low = (self.rest_mana_pct > 0 and state.max_mana > 0
                     and mp_pct < self.rest_mana_pct)
         if hp_low or mana_low:
             state.begin_task(TaskType.RESTING, priority=PRIO_REST,
                              timeout_s=_REST_TIMEOUT_S, now=time.monotonic())
-            return "rest" if not self._resting else None
+            return self._rest_cmd()
         return None
+
+    def _rest_cmd(self) -> str | None:
+        """Issue `rest` at most once per prompt cycle. We're already resting, or
+        we've sent `rest` and are waiting for the next [HP=..] prompt to confirm —
+        either way, don't re-send (the server rate-limits a flood of `rest`)."""
+        if self._resting or self._rest_pending:
+            return None
+        self._rest_pending = True
+        return "rest"
 
     def _pick_target(self, state: GameState) -> str:
         return select_attack_target(state, self.monster_priority,
