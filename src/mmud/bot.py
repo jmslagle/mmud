@@ -272,6 +272,8 @@ class MudBot:
         self._travel_dest = ""             # "FROM->TO" for an active goto
         self._relocate_from = ""           # last hex we re-pathed from (anti-thrash)
         self._pending_move = ""
+        self._can_act = True         # may we issue a command after this line? (False on
+                                     # mid-round combat chatter — act at the turn boundary)
         self._combat_enabled = True  # MegaMud-style auto-combat toggle ("run" = off)
         self._last_prompt_cmd = ""   # command the server echoed in its last "[HP=]:x"
                                      # prompt — tells us which move a nav-failure is for
@@ -415,7 +417,7 @@ class MudBot:
                 if self._safety.hangup_requested:
                     self._emit(HangupTriggered(reason=self._safety.reason))
                     break
-                cmd = self._next_command()
+                cmd = self._next_command() if self._can_act else None
                 if cmd:
                     self._session_log.tx(cmd)
                     await self._conn.send(cmd)
@@ -647,6 +649,19 @@ class MudBot:
                 self._emit(EffectApplied(name=result.pattern.name, flags=result.pattern.flags))
             else:
                 self._emit(EffectRemoved(name=result.pattern.name))
+        # Decide WHEN we may act. MegaMud parses every line but its combat decision runs
+        # on the AI tick reading the CURRENT target — so it never casts a monster the
+        # "You gain N experience" line already cleared. Our per-line decide raced that:
+        # it cast on the cast-result damage line microseconds before the kill cleared the
+        # roster, wasting the cast + resending. So DURING combat, only act at the turn
+        # boundary (the "[HP=]" prompt) or a room display (new/again "Also here:"/exits);
+        # the streaming hit/death/exp lines just update state. Out of combat, act freely.
+        # Queued commands (login, door, loot, user) always flush.
+        low = clean.lower()
+        is_turn_boundary = ("[hp=" in low or "also here:" in low
+                            or "obvious exits:" in low)
+        self._can_act = (not self._state.in_combat or is_turn_boundary
+                         or bool(self._state._command_queue))
 
     def _parse_vitals(self, line: str) -> None:
         if m := _HP_RE.search(line):
@@ -872,6 +887,22 @@ class MudBot:
         return True
 
     def _parse_who_and_exp(self, line: str) -> None:
+        # A maxed character that gets no XP still KILLED the monster: MegaMud
+        # (combat_event_parse @0x4176b0) runs the same kill epilogue on "You have
+        # progressed too far without training". Count the kill + remove the target.
+        if "progressed too far without training" in line.lower():
+            self._state.add_kill()
+            self._emit(SessionStatUpdated(key="kills", value=str(self._state.kills)))
+            target = select_attack_target(
+                self._state,
+                [p.lower() for p in self._config.combat.monster_priority],
+                self._config.combat.attack_order,
+                self._config.combat.attack_neutral)
+            if target and self._state.remove_monster(target):
+                self._on_monster_killed(f"killed {target} (maxed)")
+            else:
+                self._on_monster_killed("kill (maxed)")
+            return
         # Per-kill experience: "You gain N experience." This is MegaMud's kill
         # signal (combat_event_parse @ 0x004176b0): accumulate the delta, count
         # the kill, and remove the monster we were fighting (the current target,

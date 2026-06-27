@@ -25,5 +25,6 @@ RE a new function (per CLAUDE.md, always RE the binary for MegaMud-matching beha
 | Function | Addr | Purpose |
 |---|---|---|
 | [`combat_flee_or_hide_decide`](combat_flee_or_hide_decide.md) | `0x407f70` | Per-tick combat driver: flee/hide/backstab + the main attack cast-vs-melee decision (MaxCastCnt / AttMaxDmg / ManaAttack% gates; per-kill counter reset) |
+| [`combat_event_parse`](combat_event_parse.md) | `0x4176b0` | Monster kill (by `You gain N exp` → remove pinned slot-0 target), player/party death, "is dead" re-scan. No per-monster death string exists |
 | [`inventory_parse_response`](inventory_parse_response.md) | `0x43d650` | Parse the `i`/`inv` listing (split on `,`/`.` only; rejoin wraps; `(Slot)` worn tags; keys line) |
 | [`item_name_match`](item_name_match.md) | `0x442080` | Item-name comparator: apostrophe-stripped exact match + trailing-`'s'` plural tolerance |
