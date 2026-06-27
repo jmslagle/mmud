@@ -272,8 +272,8 @@ class MudBot:
         self._travel_dest = ""             # "FROM->TO" for an active goto
         self._relocate_from = ""           # last hex we re-pathed from (anti-thrash)
         self._pending_move = ""
-        self._can_act = True         # may we issue a command after this line? (False on
-                                     # mid-round combat chatter — act at the turn boundary)
+        self._ready = False          # MegaMud's turn-boundary READY bit: act only at the
+                                     # bare "[HP=]:" prompt (set in _process_line), in-game
         self._combat_enabled = True  # MegaMud-style auto-combat toggle ("run" = off)
         self._last_prompt_cmd = ""   # command the server echoed in its last "[HP=]:x"
                                      # prompt — tells us which move a nav-failure is for
@@ -417,7 +417,15 @@ class MudBot:
                 if self._safety.hangup_requested:
                     self._emit(HangupTriggered(reason=self._safety.reason))
                     break
-                cmd = self._next_command() if self._can_act else None
+                # MegaMud decides ONCE per turn, gated on the bare-prompt READY bit
+                # (network_receive_dispatch @0x45d520 → game_ai_do_something @0x402b20),
+                # NOT per line — that coupling caused the double-move / dead-target cast /
+                # sneak-spam class. In-game we act only at the prompt; the command QUEUE
+                # (login responses, door/loot/user) still drains immediately. Pre-game
+                # (login) we respond to every line as before (READY only exists in-game).
+                in_game = self._login_handler.in_game
+                may_act = (not in_game) or self._ready or bool(self._state._command_queue)
+                cmd = self._next_command() if may_act else None
                 if cmd:
                     self._session_log.tx(cmd)
                     await self._conn.send(cmd)
@@ -589,6 +597,10 @@ class MudBot:
         # items + also-here), not 30 lines of combat/loot/async history — that
         # history produced ~27 garbage candidate hashes that caused false route and
         # wander matches. (Also reset at the exits line that closes the block.)
+        # READY = MegaMud's turn boundary (gs+0x53F4 bit0, network_receive_dispatch
+        # @0x45d520): we act ONLY at the bare "[HP=...]:" prompt, never mid-stream. Set
+        # below for a bare/(Resting) prompt; cleared on every other line.
+        self._ready = False
         if clean:
             if "[hp=" in clean.lower():
                 self._room_block = []
@@ -599,7 +611,11 @@ class MudBot:
                 # one (the live double-move). Empty echo (bare prompt) -> leave as-is.
                 idx = clean.rfind("]:")
                 if idx != -1:
-                    self._last_prompt_cmd = clean[idx + 2:].strip().lower()
+                    after = clean[idx + 2:].strip()
+                    self._last_prompt_cmd = after.lower()
+                    # Bare prompt (nothing after "]:") OR a "(Resting)"-type status line
+                    # = the turn boundary. A command echo ("]:fjet orc") is NOT ready.
+                    self._ready = (after == "" or after.startswith("("))
             else:
                 # Keep each line's foreground colour so we can pick out the room TITLE
                 # by colour (MegaMud identifies it by its display attribute) and hash
@@ -649,19 +665,6 @@ class MudBot:
                 self._emit(EffectApplied(name=result.pattern.name, flags=result.pattern.flags))
             else:
                 self._emit(EffectRemoved(name=result.pattern.name))
-        # Decide WHEN we may act. MegaMud parses every line but its combat decision runs
-        # on the AI tick reading the CURRENT target — so it never casts a monster the
-        # "You gain N experience" line already cleared. Our per-line decide raced that:
-        # it cast on the cast-result damage line microseconds before the kill cleared the
-        # roster, wasting the cast + resending. So DURING combat, only act at the turn
-        # boundary (the "[HP=]" prompt) or a room display (new/again "Also here:"/exits);
-        # the streaming hit/death/exp lines just update state. Out of combat, act freely.
-        # Queued commands (login, door, loot, user) always flush.
-        low = clean.lower()
-        is_turn_boundary = ("[hp=" in low or "also here:" in low
-                            or "obvious exits:" in low)
-        self._can_act = (not self._state.in_combat or is_turn_boundary
-                         or bool(self._state._command_queue))
 
     def _parse_vitals(self, line: str) -> None:
         if m := _HP_RE.search(line):

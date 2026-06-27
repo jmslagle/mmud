@@ -283,22 +283,22 @@ async def test_room_display_emits_hash_location_when_unknown():
 
 
 @pytest.mark.asyncio
-async def test_no_action_decision_on_midround_lines_during_combat():
-    # During combat, the streaming hit/damage/death lines must NOT trigger a new action
-    # — deciding mid-round races the kill (we cast a monster that dies microseconds later
-    # in the same packet, then resend). The bot acts only at the turn boundary (prompt)
-    # or a room display. Outside combat, behaviour is unchanged.
+async def test_ready_only_on_the_bare_prompt():
+    # MegaMud's turn boundary: the decider runs ONLY at a bare "[HP=]:" prompt, never on
+    # mid-stream lines (hit/damage/death/exp/room). A command-echo prompt is NOT ready.
     bot = make_transcript_bot([])
-    bot._state.set_combat(True)
     await bot._process_line("You fire a frost jet at orc for 20 damage!\n")
-    assert not bot._can_act                      # mid-round result -> hold
+    assert not bot._ready                         # mid-round result -> not a turn boundary
     await bot._process_line("The dark cultist collapses without a sound.\n")
-    assert not bot._can_act                      # flavor death -> hold
-    await bot._process_line("[HP=100/MA=100]:\n")
-    assert bot._can_act                          # prompt = turn boundary -> act
-    # A monster appearing (room display) is also a valid in-combat decision point.
+    assert not bot._ready                         # flavor death -> not ready
     await bot._process_line("Also here: a rat.\n")
-    assert bot._can_act
+    assert not bot._ready                         # sighting -> not ready
+    await bot._process_line("[HP=100/MA=100]:fjet orc\n")        # command echo -> NOT ready
+    assert not bot._ready
+    await bot._process_line("[HP=100/MA=100]:\n")                # bare prompt -> ready
+    assert bot._ready
+    await bot._process_line("[HP=100/MA=100]: (Resting)\n")      # resting status -> ready
+    assert bot._ready
 
 
 @pytest.mark.asyncio
@@ -315,12 +315,30 @@ async def test_progressed_too_far_counts_as_a_kill():
 
 
 @pytest.mark.asyncio
-async def test_out_of_combat_acts_every_line():
-    # No combat -> no gating (existing behaviour: act on the sighting line immediately).
-    bot = make_transcript_bot([])
-    bot._state.set_combat(False)
-    await bot._process_line("You notice something glitter.\n")
-    assert bot._can_act
+async def test_in_game_decides_only_at_the_prompt(unused_tcp_port):
+    # End-to-end: once in-game, an "Also here: orc" sighting does NOT trigger an attack
+    # mid-stream — the bot waits for the bare prompt (the turn boundary) and attacks then.
+    received = []
+
+    async def server_handler(reader, writer):
+        writer.write(b"Also here: an orc.\r\n")           # sighting (mid-stream) -> no act
+        await writer.drain()
+        writer.write(b"[HP=100/MA=100]:\r\n")             # bare prompt -> act now
+        await writer.drain()
+        cmd = await asyncio.wait_for(reader.readline(), timeout=2.0)
+        received.append(cmd.decode().strip())
+        writer.close()
+
+    server = await asyncio.start_server(server_handler, "127.0.0.1", unused_tcp_port)
+    async with server:
+        bot = MudBot("127.0.0.1", unused_tcp_port, patterns=[])
+        bot._login_handler.in_game = True            # the gate is in-game only
+        bot._stat_requested = True                   # skip the one-time login `stat`
+        try:
+            await asyncio.wait_for(bot.run(), timeout=3.0)
+        except asyncio.TimeoutError:
+            pass
+    assert received and received[0] == "kill orc"     # attacked at the prompt, not before
 
 
 def test_toggle_combat_disables_attack_slots():
