@@ -79,5 +79,31 @@ MELEE: /* re-issued every action tick (and on each new target), gated by gs+0x56
 - Melee is re-issued each action tick and on each new target (server auto-combat does the
   per-round swings).
 
+## Flee / run (same function)
+
+Before the cast/melee logic, this function also decides to RUN. **It never sends the
+MajorMUD `flee` verb and there is no recall.**
+
+```c
+/* RUN trigger: arm the room counter ONCE when HP (or Mana) drops below the run %. */
+if (gs->cur_hp/*0x5384*/ < gs->MaxHP/*0x538c*/ * gs->HpRun/*0x3768*/ / 100
+    && gs->run_counter/*0x54b8*/ == 0 && gs->RunRooms/*0x54bc*/ > 0) {
+    if (gs->break_b4_running/*0x3a20*/) net_buffer_receive(gs, "break\r");
+    gs->run_counter = gs->RunRooms;        /* default 4 */
+    debug_status_log(gs, "Running away because HP's are too low");
+}
+/* (identical for Mana: cur_mana 0x5390 < MaxMana 0x5398 * ManaRun 0x3784 / 100) */
+```
+
+The move itself is issued later by `navigation_step_decide @0x405290`:
+`roam_random_exit_select @0x425900` picks a random allowed exit avoiding
+`direction_get_opposite(last_dir/*0x5478*/)`, or — if `RunBackwards/*0x3a1c*/` —
+retraces the path-step history (`path_step_from_history`). `path_move_execute @0x407010`
+sends `"%s\r"` (the bare direction) and does `run_counter--`. `combat_rest_decide
+@0x40b380` returns 0 (NO rest) while `run_counter > 0`; at 0 it sends `rest\r` and
+recovers to `HpRest%`(0x375c)/`ManaRest%`(0x3778)/full. No emergency/recall tier (PvP
+disconnect on `[PvP] FleeTimeout` is the only hard escape).
+
 **Ported to:** `src/mmud/automation/spells.py` (`SpellEngine._attack_casts`, `on_kill`
-reset), `src/mmud/combat/combat.py` (melee). See [`../combat.md`](../combat.md).
+reset), `src/mmud/combat/combat.py` (`CombatEngine._flee` walks out exits + rests; plus a
+non-MegaMud `emergency_cmd` tier). See [`../combat.md`](../combat.md).

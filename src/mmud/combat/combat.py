@@ -84,12 +84,20 @@ def select_target(names: list[str], priority: list[str], attack_order: str) -> s
     return names[0]
 
 
+_REVERSE = {"n": "s", "s": "n", "e": "w", "w": "e", "ne": "sw", "sw": "ne",
+            "nw": "se", "se": "nw", "u": "d", "d": "u"}
+
+
 class CombatEngine:
     def __init__(self, config: CombatConfig | None = None,
                  sneak_cmd: str = "", must_sneak: bool = False) -> None:
         cfg = config or CombatConfig()
         self.attack_cmd = cfg.attack_cmd
         self.flee_threshold = cfg.flee_threshold
+        self.flee_rooms = max(1, cfg.flee_rooms)
+        self.run_backwards = cfg.run_backwards
+        self.emergency_threshold = cfg.emergency_threshold
+        self.emergency_cmd = cfg.emergency_cmd.strip()
         self.rest_threshold = cfg.rest_threshold
         self.rest_mana_pct = cfg.rest_mana_pct
         self.mana_attack_pct = cfg.mana_attack_pct
@@ -102,6 +110,9 @@ class CombatEngine:
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
         self._engaged_target = ""   # monster we've already sent the attack at
+        self._fleeing = False       # currently running away (low HP in combat)
+        self._flee_retrace: list[str] = []   # precomputed backtrack moves (run_backwards)
+        self._emergency_sent = False
         self._resting = False       # server has us resting (prompt shows (Resting))
         self._rest_pending = False  # sent 'rest', awaiting the next prompt to confirm
         self._recovering = False    # recovering HP/mana -> keep resting until full
@@ -132,8 +143,8 @@ class CombatEngine:
         # attack_neutral is off) never trigger an initiation — that's the fix for
         # auto-attacking town guards/shopkeepers.
         if state.in_combat or attackable_sightings(state, self.attack_neutral):
-            if state.in_combat and hp_pct <= self.flee_threshold:
-                return "flee"
+            if state.max_hp > 0 and hp_pct <= self.flee_threshold:
+                return self._flee(state, hp_pct)
             # MegaMud melees below ManaAttack% (it doesn't wait) — the spell engine
             # (higher priority) declines to cast there, so the combat engine just
             # swings. No mana gate here.
@@ -162,7 +173,11 @@ class CombatEngine:
             self._engaged_target = target
             return f"{self.attack_cmd} {target}"
 
-        # Not engaged: reset sneak flags for the next encounter
+        # Not engaged (safe): reset the flee episode + sneak flags for the next encounter.
+        # With danger gone, the rest-to-recover block below brings HP/mana back to full.
+        self._fleeing = False
+        self._flee_retrace = []
+        self._emergency_sent = False
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
         self._engaged_target = ""
@@ -193,6 +208,30 @@ class CombatEngine:
                                  timeout_s=_REST_TIMEOUT_S, now=time.monotonic())
             return self._rest_cmd()
         return None
+
+    def _flee(self, state: GameState, hp_pct: float) -> str | None:
+        """Run away when low on HP. MegaMud never sends the literal "flee" — it WALKS OUT
+        an exit (one room per turn), retracing the way it came if RunBackwards, then rests
+        once safe. Below `emergency_threshold` it first sends the configurable
+        `emergency_cmd` (our tier — MegaMud has no recall) ONCE, then falls back to running."""
+        if (self.emergency_cmd and self.emergency_threshold > 0
+                and hp_pct <= self.emergency_threshold and not self._emergency_sent):
+            self._emergency_sent = True
+            return self.emergency_cmd
+        if not self._fleeing:               # start of a run episode
+            self._fleeing = True
+            self._flee_retrace = []
+            if self.run_backwards:
+                recent = list(state.move_history)[-self.flee_rooms:]
+                self._flee_retrace = [_REVERSE[m] for m in reversed(recent) if m in _REVERSE]
+        if self._flee_retrace:              # retrace the moves we came in by
+            return self._flee_retrace.pop(0)
+        exits = list(state.last_exits or [])
+        if exits:                           # walk out a real exit, away from where we came
+            last = state.move_history[-1] if state.move_history else ""
+            rev = _REVERSE.get(last)
+            return next((e for e in exits if e != rev), exits[0])
+        return "flee"                       # no known exit -> MajorMUD's flee verb (last resort)
 
     def _rest_cmd(self) -> str | None:
         """Issue `rest` at most once per prompt cycle. We're already resting, or
