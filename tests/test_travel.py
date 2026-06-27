@@ -14,6 +14,31 @@ def _decider(bus=None):
                          bus or GameEventBus())
 
 
+def test_travel_holds_for_attackable_monster():
+    # MegaMud's combat_engage_or_move_decide engages OR moves, never both. While an
+    # attackable monster is present, travel must HOLD (the combat slot fights); once the
+    # room clears, travel resumes — otherwise the bot wanders off mid-fight (it did, at
+    # the cast->melee switch, once the CASTING task stopped pinning travel).
+    from mmud.state.game_state import GameState, MonsterSighting
+    d = _decider()
+    d.set_route([_step("n", "AAAA0001")])
+    gs = GameState()
+    gs.monsters_present = [MonsterSighting(name="orc")]    # attackable (unknown kill-type)
+    assert d.decide(gs) is None                            # fight first
+    gs.monsters_present = []
+    assert d.decide(gs) == "n"                             # room clear -> resume travel
+
+
+def test_travel_moves_past_nonattackable_npc():
+    # A neutral NPC/guard (kill-type 2) is NOT a reason to stop travelling.
+    from mmud.state.game_state import GameState, MonsterSighting
+    d = _decider()
+    d.set_route([_step("n", "AAAA0001")])
+    gs = GameState()
+    gs.monsters_present = [MonsterSighting(name="town guard", kill_type=2)]
+    assert d.decide(gs) == "n"                             # walk past the guard
+
+
 def test_expand_annotated():
     assert expand_annotated("n") == ["n"]
     assert expand_annotated("w[search w]") == ["search w", "w"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import re
-from mmud.config.schema import ItemsConfig, StealthConfig
+from mmud.config.schema import CombatConfig, ItemsConfig, StealthConfig
+from mmud.combat.combat import attackable_sightings
 from mmud.events import GameEventBus, TravelResynced, TravelEnded
 from mmud.navigation.graph import RouteStep
 from mmud.state.game_state import GameState
@@ -30,10 +31,12 @@ class TravelDecider:
     """
 
     def __init__(self, items: ItemsConfig, stealth: StealthConfig,
-                 bus: GameEventBus) -> None:
+                 bus: GameEventBus, combat: CombatConfig | None = None) -> None:
         self._items = items
         self._stealth = stealth
         self._bus = bus
+        # For the "engage OR move" gate: hold travel while an attackable monster is here.
+        self._attack_neutral = (combat or CombatConfig()).attack_neutral
         self._steps: list[RouteStep] = []
         self._cursor = 0
         self._in_flight = False
@@ -172,6 +175,14 @@ class TravelDecider:
         return choice
 
     def decide(self, state: GameState) -> str | None:
+        # Hold for combat: MegaMud's combat_engage_or_move_decide engages OR moves, never
+        # both. While an attackable monster is present, don't travel — the higher-priority
+        # combat/spell slots fight it; once the room clears, travel resumes. (Without this
+        # the bot wandered off mid-fight at the cast->melee switch, once the CASTING task
+        # stopped pinning travel.) Neutral NPCs/guards (kill-type 2) are not attackable,
+        # so the bot still walks past them.
+        if attackable_sightings(state, self._attack_neutral):
+            return None
         if self._wander_targets is not None:
             return self._decide_wander(state)
         if not self._steps or self._in_flight:

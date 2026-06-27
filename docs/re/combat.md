@@ -147,3 +147,13 @@ the spell engine then preempted it for ~15s), it emitted a STALE `sneak` mid-fig
 `in_combat` is seen** and stay silent until the encounter ends (no target) or a new
 room (`reset()`). Also tightened the result patterns: `_HIDE_OK` no longer matches the
 "don't think you are hidden" failure; `_SNEAK_FAIL` catches "may not sneak".
+
+## Engage OR move — travel holds for an attackable monster
+MegaMud's `combat_engage_or_move_decide` is a single unit: it engages **or** moves, never
+both. Our combat engine returns None once it has engaged a melee target (MajorMUD's
+auto-combat swings each round on its own), so the lower-priority `travel` slot would fall
+through and the bot would wander off mid-fight — visible at the **cast→melee switch**,
+where the spell engine's `CASTING` task stops pinning travel. Fix (`TravelDecider.decide`):
+hold (return None) while `attackable_sightings(state, attack_neutral)` is non-empty; the
+combat/spell slots fight, and travel resumes once the room clears. Neutral NPCs/guards
+(kill-type 2) are not attackable, so the bot still walks past them.

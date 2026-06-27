@@ -243,7 +243,7 @@ class MudBot:
         self._rooms = rooms or {}
         from mmud.automation.travel import TravelDecider
         self._travel = TravelDecider(self._config.items, self._config.stealth,
-                                     self._bus or GameEventBus())
+                                     self._bus or GameEventBus(), self._config.combat)
         from mmud.automation.doors import DoorMonitor
         self._doors = DoorMonitor(self._config.navigation)
         from mmud.automation.commerce import CommerceEngine
