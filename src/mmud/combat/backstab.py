@@ -8,10 +8,14 @@ from mmud.state.game_state import GameState
 from mmud.state.tasks import TaskType
 
 # Tune against the live server; record real wording in docs/testing-plan.md.
-_HIDE_OK_RE = re.compile(r"slip into the shadows|you are hidden", re.IGNORECASE)
-_HIDE_FAIL_RE = re.compile(r"fail to hide|can'?t hide", re.IGNORECASE)
+_HIDE_OK_RE = re.compile(r"slip into the shadows", re.IGNORECASE)
+# NB: "You don't think you are hidden." is a FAILURE — must not match _HIDE_OK (it
+# contains the substring "you are hidden"), so _HIDE_OK no longer keys on that phrase.
+_HIDE_FAIL_RE = re.compile(
+    r"fail to hide|can'?t hide|not hidden|don'?t think you are hidden", re.IGNORECASE)
 _SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
-_SNEAK_FAIL_RE = re.compile(r"fail to sneak|make a noise", re.IGNORECASE)
+_SNEAK_FAIL_RE = re.compile(
+    r"fail to sneak|make a noise|may not sneak|cannot sneak", re.IGNORECASE)
 _BS_OK_RE = re.compile(r"plant your weapon|backstab.*for \d+", re.IGNORECASE)
 _BS_FAIL_RE = re.compile(r"backstab attempt fails|fails? to find an opening", re.IGNORECASE)
 
@@ -45,10 +49,12 @@ class BackstabEngine:
         self._sneak_cmd = "sneak"
         self._stage = _Stage.IDLE
         self._hide_tries = 0
+        self._engaged = False   # latched once we've been in_combat this encounter
 
     def reset(self) -> None:
         self._stage = _Stage.IDLE
         self._hide_tries = 0
+        self._engaged = False
 
     def on_line(self, line: str) -> None:
         if self._stage is _Stage.HIDING:
@@ -70,12 +76,22 @@ class BackstabEngine:
                 self._stage = _Stage.RUN if self._run_if_fails else _Stage.DONE
 
     def decide(self, state: GameState) -> str | None:
+        # Backstab is an OPENER — it only happens before the fight. Once we've been in
+        # combat this encounter, LATCH off: the between-round *Combat Off* flicker leaves
+        # in_combat briefly False with the monster still present, and a stale mid-sequence
+        # stage would otherwise emit "sneak"/"hide" mid-fight ("You may not sneak right
+        # now!"). The latch clears only when the encounter ends (no target) or on a new
+        # room (reset()).
+        if state.in_combat:
+            self._engaged = True
+            return None
         # Only open on an attackable target — NPCs/guards (kill-type 2, or neutral
         # when attack_neutral is off) never trigger a backstab.
         targets = attackable_sightings(state, self._attack_neutral)
-        if not self._enabled or state.in_combat or not targets:
-            if not targets and not state.in_combat:
-                self.reset()        # no valid target: new encounter next time
+        if not targets:
+            self.reset()            # encounter over: re-arm for the next one
+            return None
+        if not self._enabled or self._engaged:
             return None
         if self._stage is _Stage.IDLE:
             self._stage = _Stage.HIDING
