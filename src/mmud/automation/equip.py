@@ -30,6 +30,10 @@ class EquipDecider:
         if self._on_mark is not None:
             self._on_mark(name)
 
+    def set_allow_list(self, only_items: list[str] | None) -> None:
+        """Refresh the auto-equip allow-list at runtime (e.g. after 'mark worn')."""
+        self._only = [s.lower() for s in (only_items or [])]
+
     def decide(self, state: GameState) -> str | None:
         if not self._enabled or state.in_combat:
             return None

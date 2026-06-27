@@ -37,6 +37,9 @@ class MegaMudApp(App):
         Binding("ctrl+k", "toggle_connect", "Connect", show=False, priority=True),
         Binding("ctrl+l", "toggle_loop", "Loop", show=False, priority=True),
         Binding("ctrl+f", "toggle_combat", "Combat", show=False, priority=True),
+        Binding("ctrl+t", "get_all", "Get all", show=False, priority=True),
+        Binding("ctrl+e", "equip_all", "Equip all", show=False, priority=True),
+        Binding("ctrl+w", "mark_worn", "Mark worn auto", show=False, priority=True),
         Binding("ctrl+o", "open_settings", "Settings", show=False, priority=True),
         Binding("ctrl+g", "menu", "Menu", show=False, priority=True),
         # NOT priority: a priority escape here steals Esc from modal screens
@@ -258,6 +261,24 @@ class MegaMudApp(App):
             else:
                 self._echo(f"[bot] {self._bot.set_combat_enabled(False)}")
 
+        elif verb in ("get", "getall"):
+            if self._bot is None:
+                self._echo("[bot] Not connected")
+                return
+            self._echo(f"[bot] {self._bot.get_all()}")
+
+        elif verb in ("equip", "equipall", "wearall"):
+            if self._bot is None:
+                self._echo("[bot] Not connected")
+                return
+            self._echo(f"[bot] {self._bot.equip_all()}")
+
+        elif verb in ("markworn", "mark"):
+            if self._bot is None:
+                self._echo("[bot] Not connected")
+                return
+            self._echo(f"[bot] {self._bot.mark_worn_as_auto()}")
+
         elif verb in ("goto", "go", "g"):
             if self._bot is None:
                 self._echo("[bot] Not connected")
@@ -324,6 +345,9 @@ class MegaMudApp(App):
                 "  :goto TARGET   — navigate to a room by 4-letter code or name",
                 "  :combat [on|off] — toggle auto-combat (Ctrl+F)",
                 "  :run [off]     — quick-move with combat off (':run off' re-enables)",
+                "  :get           — pick up all ground items, one at a time (Ctrl+T)",
+                "  :equip         — equip all carried gear, one at a time (Ctrl+E)",
+                "  :markworn      — mark worn gear as auto-get + auto-equip (Ctrl+W)",
                 "  :paths         — list available loop paths",
                 "  :status        — show HP/MP/room/loop status",
                 "  :connect       — connect to server",
@@ -406,6 +430,18 @@ class MegaMudApp(App):
     def action_toggle_combat(self) -> None:
         if self._bot is not None:
             self._echo(f"[bot] {self._bot.toggle_combat()}")
+
+    def action_get_all(self) -> None:
+        if self._bot is not None:
+            self._echo(f"[bot] {self._bot.get_all()}")
+
+    def action_equip_all(self) -> None:
+        if self._bot is not None:
+            self._echo(f"[bot] {self._bot.equip_all()}")
+
+    def action_mark_worn(self) -> None:
+        if self._bot is not None:
+            self._echo(f"[bot] {self._bot.mark_worn_as_auto()}")
 
     def action_open_settings(self) -> None:
         self.push_screen(SettingsScreen(self._config_service))
