@@ -86,10 +86,12 @@ _DODGE_RE = re.compile(r"misses you|miss you\b|You (?:dodge|parry|evade|sidestep
 # attack without one). The attacker name (group 1) is added to the roster as a safety
 # net so we fight back even if its arrival was missed/cleared and we'd otherwise rest.
 _ATTACKER_RE = re.compile(
-    r"^(?:A|An|The)\s+(.+?)\s+(?:snaps?|lunges?|claws?|bites?|chomps?|hits?|swings?|"
-    r"gores?|mauls?|strikes?|slashes?|tears?|rips?|pounds?|attacks?|stabs?|smashes?|"
-    r"slams?|crushes?|kicks?|punches?|spits?|breathes?|blasts?|shoots?|gnaws?|"
-    r"thrusts?|jabs?|hacks?|chops?|lashes?)\b.*\byou\b", re.IGNORECASE)
+    # `(?:all-out\s+)?` eats MajorMUD's all-out attack-mode adverb so it isn't captured
+    # as part of the monster name ("The X all-out slashes you" -> X, not "X all-out").
+    r"^(?:A|An|The)\s+(.+?)\s+(?:all-out\s+)?(?:snaps?|lunges?|claws?|bites?|chomps?|"
+    r"hits?|swings?|gores?|mauls?|strikes?|slashes?|tears?|rips?|pounds?|attacks?|"
+    r"stabs?|smashes?|slams?|crushes?|kicks?|punches?|spits?|breathes?|blasts?|"
+    r"shoots?|gnaws?|thrusts?|jabs?|hacks?|chops?|lashes?)\b.*\byou\b", re.IGNORECASE)
 _BACKSTAB_RE = re.compile(r"\bbackstab", re.IGNORECASE)
 _CRIT_RE = re.compile(r"critical|devastat|annihilat|massacre|demolish|savage", re.IGNORECASE)
 _SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)

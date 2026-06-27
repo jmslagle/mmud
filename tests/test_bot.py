@@ -44,6 +44,19 @@ async def test_monster_attacking_us_is_added_to_roster():
 
 
 @pytest.mark.asyncio
+async def test_attacker_name_excludes_all_out_adverb():
+    # "The X all-out slashes you" -> the attacker is X, NOT "X all-out" (MajorMUD's
+    # all-out attack mode). A bogus "X all-out" roster entry made the bot cast
+    # "lbol <X> all-out" -> "You do not see ... here".
+    bot = make_transcript_bot([])
+    await bot._process_line(
+        "The nasty black orc captain all-out slashes you for 11 damage!\n")
+    names = [m.name for m in bot._state.monsters_present]
+    assert "nasty black orc captain" in names
+    assert "nasty black orc captain all-out" not in names
+
+
+@pytest.mark.asyncio
 async def test_wander_in_survives_a_stray_exits_line():
     # A monster wandering in occupies the room; a stray exits line with no "Also here:"
     # must NOT clear it as an empty room (that made the bot rest/move through it).
