@@ -139,12 +139,24 @@ class MudBot:
         self._conn.on_raw = self._feed_raw
         self._config = config or MudConfig()
 
-        if patterns is None and data_dir is not None:
-            patterns = load_messages(data_dir / "MESSAGES.MD")
+        # The per-BBS data set (extra_paths_dir) OVERRIDES the bundled data_dir for the
+        # .MD files too (not just .MP paths) — first-found wins, case-insensitive (the
+        # per-BBS dir uses mixed case "Monsters.md"). This is how a server-specific data
+        # pack (e.g. giant rats hostile here, not the bundled neutral) takes effect.
+        from mmud.data.store import resolve_md as _resolve_md
+        extra_dirs = [pathlib.Path(d.strip())
+                      for d in self._config.navigation.extra_paths_dir.split(",")
+                      if d.strip()]
+        md_dirs = extra_dirs + ([pathlib.Path(data_dir)] if data_dir else [])
+
+        if patterns is None and md_dirs:
+            mp = _resolve_md(md_dirs, "MESSAGES.MD")
+            patterns = load_messages(mp) if mp else None
         self._matcher = PatternMatcher(patterns or [])
 
-        if rooms is None and data_dir is not None:
-            rooms = load_rooms(data_dir / "ROOMS.MD")
+        if rooms is None and md_dirs:
+            rp = _resolve_md(md_dirs, "ROOMS.MD")
+            rooms = load_rooms(rp) if rp else None
         self._room_parser = RoomParser(rooms or {})
         self._convo_parser = ConversationParser()
         from mmud.parser.player_parser import PlayerExamineParser
@@ -167,9 +179,9 @@ class MudBot:
             # without the bundled MD files; import_md only runs when data_dir is set.
             from mmud.data.store import GameStore, import_md
             self._store = GameStore(pathlib.Path(self._config.learning.store_path))
-        if self._store is not None and data_dir is not None:
+        if self._store is not None and md_dirs:
             from mmud.data.store import import_md
-            report = import_md(self._store, data_dir)
+            report = import_md(self._store, md_dirs)   # per-BBS dirs override the bundled
             self._monster_db = MonsterDB.from_store(self._store)
             self._item_db = ItemDB.from_store(self._store)
             self._emit(DbImported(
@@ -179,26 +191,23 @@ class MudBot:
             for c in self._store.data["collisions"][-report.collisions:] if report.collisions else []:
                 self._emit(DbCollision(db=c["db"], record_id=c["record_id"]))
         else:
-            monsters_md = (data_dir / "MONSTERS.MD") if data_dir else None
+            monsters_md = _resolve_md(md_dirs, "MONSTERS.MD") if md_dirs else None
             self._monster_db = (MonsterDB.from_file(monsters_md)
-                                if monsters_md and monsters_md.exists() else MonsterDB([]))
-            items_md = (data_dir / "ITEMS.MD") if data_dir else None
+                                if monsters_md else MonsterDB([]))
+            items_md = _resolve_md(md_dirs, "ITEMS.MD") if md_dirs else None
             self._item_db = (ItemDB.from_file(items_md)
-                             if items_md and items_md.exists() else ItemDB([]))
+                             if items_md else ItemDB([]))
 
         self._state = GameState()
         from mmud.data.classes_races import ClassRaceDB
         # id->name for resolving PLAYERS.MD class_id/race_id (race 7=Dark-Elf,
         # class 10=Gypsy) on spy records.
-        self._class_race = ClassRaceDB.from_dir(data_dir)
-        # Bundled .MP paths plus optional user dirs of custom paths. extra_paths_dir is
-        # a comma-separated list of dirs, loaded in order AFTER the bundled ones, so a
-        # later dir's path for the same from->to overrides an earlier one (and new
-        # files add new routes). Lets users fix/extend routing without touching the corpus.
-        path_dirs = [d for d in (data_dir,) if d]
-        path_dirs += [pathlib.Path(d.strip())
-                      for d in self._config.navigation.extra_paths_dir.split(",")
-                      if d.strip()]
+        self._class_race = ClassRaceDB.from_dirs(md_dirs)
+        # Bundled .MP paths plus the per-BBS extra dirs. The Navigator loads bundled FIRST
+        # then the extra dirs, so a later (extra) dir's path for the same from->to
+        # overrides an earlier one (and new files add new routes) — same per-BBS override
+        # intent as the .MD files above, just last-wins instead of first-found.
+        path_dirs = ([pathlib.Path(data_dir)] if data_dir else []) + extra_dirs
         self._navigator = Navigator.from_directories(path_dirs)
         self._combat = CombatEngine(
             config=self._config.combat,
