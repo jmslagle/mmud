@@ -180,8 +180,10 @@ class TravelDecider:
         # combat/spell slots fight it; once the room clears, travel resumes. (Without this
         # the bot wandered off mid-fight at the cast->melee switch, once the CASTING task
         # stopped pinning travel.) Neutral NPCs/guards (kill-type 2) are not attackable,
-        # so the bot still walks past them.
-        if attackable_sightings(state, self._attack_neutral):
+        # so the bot still walks past them. EXCEPTION: in "run" mode (combat toggled off)
+        # we quick-move THROUGH monster rooms instead of stopping to fight.
+        if getattr(state, "combat_enabled", True) and attackable_sightings(
+                state, self._attack_neutral):
             return None
         if self._wander_targets is not None:
             return self._decide_wander(state)

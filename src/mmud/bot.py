@@ -15,7 +15,8 @@ from mmud.events import (
     RawOutput, ScreenUpdated,
 )
 from mmud.automation.decision import (
-    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_CURE, PRIO_FLEE, PRIO_SPELLS, PRIO_COMBAT,
+    DecisionEngine, QueueDecider, PRIO_QUEUE, PRIO_EMERGENCY, PRIO_CURE, PRIO_FLEE,
+    PRIO_SPELLS, PRIO_COMBAT,
     PRIO_BACKSTAB, PRIO_REFRESH, PRIO_ITEMS, PRIO_EQUIP, PRIO_TRAVEL, PRIO_SEARCH,
     PRIO_COMMERCE, PRIO_PARTY, PRIO_LOOK,
 )
@@ -319,8 +320,12 @@ class MudBot:
         from mmud.automation.run_rules import RunDecider
         from mmud.state.inventory import RefreshDecider
         from mmud.automation.search import SearchDecider
+        from mmud.combat.combat import EmergencyDecider
         registry: list[tuple[str, object, int]] = [
             ("queue", QueueDecider(), PRIO_QUEUE),
+            # Critical-HP escape: fires even in "run" mode (NOT in the combat-toggle's
+            # disabled slots), above everything else.
+            ("emergency", EmergencyDecider(self._config.combat), PRIO_EMERGENCY),
             ("cures", CureDecider(self._config.health), PRIO_CURE),
             ("run", RunDecider(self._config.combat, self._config.navigation), PRIO_FLEE),
             ("backstab", self._backstab, PRIO_BACKSTAB),
@@ -1430,6 +1435,7 @@ class MudBot:
         and travel/loops keep moving through rooms without fighting ("run"); on ->
         restored. Returns a short status message."""
         self._combat_enabled = on
+        self._state.combat_enabled = on   # travel reads this: off -> run through monsters
         if on:
             self._engine.disabled_slots.difference_update(self._COMBAT_SLOTS)
         else:

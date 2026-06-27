@@ -29,6 +29,20 @@ def test_travel_holds_for_attackable_monster():
     assert d.decide(gs) == "n"                             # room clear -> resume travel
 
 
+def test_travel_runs_through_monster_room_when_combat_disabled():
+    # "Run" mode = combat toggled off -> quick-move THROUGH rooms with monsters instead
+    # of holding to fight them.
+    from mmud.state.game_state import GameState, MonsterSighting
+    d = _decider()
+    d.set_route([_step("n", "AAAA0001")])
+    gs = GameState()
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    gs.combat_enabled = False             # run mode
+    assert d.decide(gs) == "n"            # move through, don't hold
+    gs.combat_enabled = True              # combat on
+    assert d.decide(gs) is None          # hold and fight
+
+
 def test_travel_moves_past_nonattackable_npc():
     # A neutral NPC/guard (kill-type 2) is NOT a reason to stop travelling.
     from mmud.state.game_state import GameState, MonsterSighting

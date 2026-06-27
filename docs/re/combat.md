@@ -174,6 +174,13 @@ The only hard escape is PvP disconnect (`[PvP] FleeTimeout`); **no recall comman
 Our port (`CombatEngine._flee`): at `hp_pct <= flee_threshold` (HpRun%), walk out a real
 exit (avoid the reverse), retracing `move_history` if `run_backwards`; fall back to the
 literal `flee` only when NO exits are known (genuinely trapped); once safe (out of combat)
-the existing rest-to-recover block rests to full. Added a non-MegaMud **emergency tier**:
-below `emergency_threshold`, send the configurable `emergency_cmd` (e.g. `recall`) ONCE,
-then fall back to running. Full source: [`source/combat_flee_or_hide_decide.md`](source/combat_flee_or_hide_decide.md).
+the existing rest-to-recover block rests to full. A non-MegaMud **emergency tier** is a
+separate always-active `EmergencyDecider` (PRIO_EMERGENCY, above cures/flee/combat and
+NOT in the combat-toggle's disabled slots): at/below `emergency_threshold` HP (incl.
+going negative) it sends the configurable `emergency_cmd` (e.g. `sys go sil`) ONCE,
+re-arming after recovery — so it fires even in **"run" mode** when combat is toggled off.
+Full source: [`source/combat_flee_or_hide_decide.md`](source/combat_flee_or_hide_decide.md).
+
+**Run mode = move THROUGH monsters.** `TravelDecider` holds for an attackable monster
+only when `state.combat_enabled` is on; with combat toggled off ("run") it quick-moves
+through monster rooms instead of stopping to fight.

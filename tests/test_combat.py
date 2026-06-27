@@ -51,16 +51,35 @@ def test_flee_run_backwards_retraces_move_history():
     assert ce.decide(gs) == "s"          # then reverse of 'n'
 
 
-def test_emergency_command_then_falls_back_to_running():
+def test_emergency_decider_fires_once_below_threshold():
+    # Critical-HP escape lives in its own always-active decider (so "run" mode still
+    # bails when dying). Fires the configurable command ONCE, re-arms after recovery.
+    from mmud.combat.combat import EmergencyDecider
     gs = GameState()
-    gs.set_combat(True)
-    gs.set_hp(3, 100)                    # 3% -> below emergency
-    gs.set_mana(50, 100)
-    gs.last_exits = ["n"]
-    ce = CombatEngine(CombatConfig(flee_threshold=0.15, emergency_threshold=0.05,
-                                   emergency_cmd="recall"))
-    assert ce.decide(gs) == "recall"    # critical -> the configurable escape command (once)
-    assert ce.decide(gs) == "n"         # already sent -> fall back to running out
+    gs.set_hp(3, 100)                   # 3% < 5%
+    d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="sys go sil"))
+    assert d.decide(gs) == "sys go sil"
+    assert d.decide(gs) is None         # debounced — don't spam the recall
+    gs.set_hp(80, 100)                  # recovered above threshold -> re-arm
+    assert d.decide(gs) is None
+    gs.set_hp(2, 100)                   # critical again
+    assert d.decide(gs) == "sys go sil"
+
+
+def test_emergency_decider_fires_even_in_run_mode_and_when_hp_negative():
+    from mmud.combat.combat import EmergencyDecider
+    gs = GameState()
+    gs.set_hp(-5, 100)                  # HP went negative
+    gs.combat_enabled = False           # "run" mode (combat toggled off)
+    d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="recall"))
+    assert d.decide(gs) == "recall"     # still bails
+
+
+def test_emergency_decider_off_when_unconfigured():
+    from mmud.combat.combat import EmergencyDecider
+    gs = GameState()
+    gs.set_hp(1, 100)
+    assert EmergencyDecider(CombatConfig()).decide(gs) is None   # no emergency_cmd
 
 
 def test_no_command_when_not_in_combat_and_healthy():
