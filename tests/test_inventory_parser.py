@@ -51,3 +51,39 @@ def test_unrelated_lines_ignored():
     p = InventoryParser()
     assert p.feed("[HP=100/100]:") is None
     assert p.feed("An orc swings at you!") is None
+
+
+# The live "Realm of Legends" `i` output: ONE comma-wrapped "You are carrying" list
+# that inlines worn gear with "(Slot)" tags, a keys line, Wealth, Encumbrance. The
+# wrapped continuation lines have NO leading space, and item names may contain "and"
+# ("rope and grapple"). MegaMud (inventory_parse_response @0x0043d650) splits on ","/"."
+# only — never " and " — and rejoins wraps, so the name survives.
+LIVE_INV = [
+    "You are carrying 2 platinum pieces, 70 gold crowns, 539 silver nobles, 5",
+    "copper farthings, ethereal amulet (Neck), gold jeweled ring (Finger), silver",
+    "rimmed hat (Head), chain gauntlets (Hands), chainmail boots (Feet), chainmail",
+    "leggings (Legs), chainmail hauberk (Torso), greatcloak (Back), flametongue",
+    "(Weapon Hand), rope and grapple",
+    "You have the following keys:  brass key, bone key, 8 black star keys.",
+    "Wealth: 32395 copper farthings",
+    "Encumbrance: 1789/2880 - Medium [62%]",
+]
+
+
+def test_live_wrapped_inventory_keeps_multiword_and_item():
+    inv = _parse(LIVE_INV)
+    assert inv is not None
+    # the bug: "rope and grapple" must NOT be split on " and ", and must survive the
+    # no-leading-space wrap (it's on the last carry line).
+    assert "rope and grapple" in inv.carried
+
+
+def test_live_inventory_parses_slots_keys_and_wrap_rejoin():
+    inv = _parse(LIVE_INV)
+    held = set(inv.carried) | set(inv.worn)
+    assert "rope and grapple" in held
+    assert "flametongue" in held                 # slot "(Weapon Hand)" stripped
+    assert "chainmail hauberk" in held           # rejoined across the wrap
+    assert "brass key" in inv.carried            # keys line parsed as carried
+    assert ("black star keys", 8) in inv.carried_counts.items()
+    assert inv.encumbrance_level == "medium" and inv.encumbrance_pct == 62

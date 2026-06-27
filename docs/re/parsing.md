@@ -61,6 +61,33 @@ in `PLAYERS.MD` (which is the who/spy DB of *other* players).
   equip/train/buy/sell/join/invite. The only real automation knobs are the attack
   prefix (`AttackCmd`), the spell commands, and `PreRestCmd`.
 
+## Inventory parse + item-name matching (RE-confirmed 2026-06-26)
+`inventory_parse_response @0x0043d650` parses the `i`/`inv` response. Decisive rules
+(verified against the binary, then mirrored in `parser/inventory_parser.py` +
+`navigation/code_route.py`):
+- **Item list split on `,` and `.` ONLY — never on " and ".** So multi-word names that
+  contain "and" (`rope and grapple`, `bow and arrow`) stay intact. The earlier bug
+  split `rope and grapple` → `rope`/`grapple`, so the rope-and-grapple path gate never
+  matched and the bot wandered "lost" (see ../re/navigation.md).
+- **Wrapped lines are rejoined**, NOT detected by leading whitespace. The live "Realm
+  of Legends" `i` output word-wraps the carrying list across lines with **no leading
+  space**; MegaMud stashes the trailing partial item and prepends it to the next line.
+  Our parser accumulates the whole section's text and splits only when it ends.
+- **Worn gear is inlined in the carrying list with a `" (Slot)"` suffix** (`(Neck)`,
+  `(Weapon Hand)`, …) — there is no separate "You are wearing" line on this server. The
+  suffix is stripped; a slot ⇒ worn, else carried. Leading digit = quantity.
+- **`You have the following keys: …`** is parsed as more carried items (so a `brass key`
+  gate is satisfied). `You have no keys.` / `Wealth:` / `Encumbrance:` terminate the
+  list; the binary hard-codes the misspelt `"Encumberance"` — accept both spellings.
+- **Name comparison: `item_name_match @0x00442080`** — strip apostrophes from both, then
+  exact compare with **trailing-`'s'` plural tolerance** (so `black star keys` matches a
+  `black star key` gate). NOT substring, NOT case-folded (works because data is
+  lowercase). `inventory_item_find_by_name @0x0043d210` additionally treats the boats
+  `wooden skiff`/`log raft`/`silverbark canoe` as interchangeable. The path-gate check
+  (`pathfind_next_step @0x0042b7b0`, required-item NAME at edge+0x1a; `""`/`"None"` ⇒ no
+  requirement) and the inventory parser share this comparator — both operate purely on
+  **name strings**, never numeric ITEMS.MD ids.
+
 ## Debugging: the session log
 `src/mmud/debug_log.py` (`SessionLogger`) writes a human-readable log when
 `[session] debug_log = "logs/session.log"` is set (enabled in the gitignored
