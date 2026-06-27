@@ -190,6 +190,9 @@ tell_format = "/{name} {text}"
 [learning]
 # Use our own JSON game DB: MD binaries convert/merge in at startup (never
 # written); unknown monsters / marks / learned exits persist across sessions.
+# The store holds THIS server's .MD data (per-BBS extra_paths_dir override) plus
+# learned players/exits, so give each character/BBS its OWN store file
+# (e.g. "<character>.gamedb.json") — don't share one across servers.
 enabled    = false
 store_path = "gamedb.json"
 
