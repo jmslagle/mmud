@@ -272,6 +272,7 @@ class MudBot:
         self._travel_dest = ""             # "FROM->TO" for an active goto
         self._relocate_from = ""           # last hex we re-pathed from (anti-thrash)
         self._pending_move = ""
+        self._combat_enabled = True  # MegaMud-style auto-combat toggle ("run" = off)
         self._last_prompt_cmd = ""   # command the server echoed in its last "[HP=]:x"
                                      # prompt — tells us which move a nav-failure is for
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
@@ -995,6 +996,16 @@ class MudBot:
                 f"arrive room={code or '?'} hex={self._state.current_hex or '?'} "
                 f"seen={sorted(seen_hexes)}")
         self._travel.on_arrival(self._state, seen_hexes, confident_hex=confident_hex)
+        # Surface where we are for the status panel: code+name when ROOMS.MD-known, else
+        # the raw room hash (most live rooms aren't in ROOMS.MD).
+        loc = ""
+        if code:
+            r = self._rooms.get(code)
+            loc = f"{code} {r.name}".strip() if r and r.name else code
+        elif self._state.current_hex:
+            loc = self._state.current_hex
+        if loc:
+            self._emit(SessionStatUpdated(key="location", value=loc))
         self._maybe_relocate(code, confident_hex)
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
@@ -1338,6 +1349,30 @@ class MudBot:
             return
         self._loop_runner = self._make_loop_runner()
         self._loop_runner.start()
+
+    # Slots that constitute "fighting" — suppressed when combat is toggled off so the
+    # bot quick-moves past monsters ("run") instead of stopping to attack.
+    _COMBAT_SLOTS = ("backstab", "spells", "combat")
+
+    @property
+    def combat_enabled(self) -> bool:
+        return self._combat_enabled
+
+    def set_combat_enabled(self, on: bool) -> str:
+        """Toggle auto-combat (MegaMud-style). Off -> the attack deciders are skipped
+        and travel/loops keep moving through rooms without fighting ("run"); on ->
+        restored. Returns a short status message."""
+        self._combat_enabled = on
+        if on:
+            self._engine.disabled_slots.difference_update(self._COMBAT_SLOTS)
+        else:
+            self._engine.disabled_slots.update(self._COMBAT_SLOTS)
+        self._emit(SessionStatUpdated(key="combat", value="on" if on else "off"))
+        self._session_log.event(f"combat {'on' if on else 'off'}")
+        return f"Combat {'ON' if on else 'OFF — running (no attacks)'}"
+
+    def toggle_combat(self) -> str:
+        return self.set_combat_enabled(not self._combat_enabled)
 
     def maybe_build_web_server(self):
         """Construct the web control-panel server iff [web] config is enabled.

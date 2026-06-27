@@ -36,6 +36,7 @@ class MegaMudApp(App):
         Binding("ctrl+3", "switch_tab_stats", "Stats", show=False, priority=True),
         Binding("ctrl+k", "toggle_connect", "Connect", show=False, priority=True),
         Binding("ctrl+l", "toggle_loop", "Loop", show=False, priority=True),
+        Binding("ctrl+f", "toggle_combat", "Combat", show=False, priority=True),
         Binding("ctrl+o", "open_settings", "Settings", show=False, priority=True),
         Binding("ctrl+g", "menu", "Menu", show=False, priority=True),
         # NOT priority: a priority escape here steals Esc from modal screens
@@ -237,6 +238,26 @@ class MegaMudApp(App):
                 self._echo(f"[bot] {msg}")
                 self.sub_title = f"{self._host}:{self._port} [connected]"
 
+        elif verb in ("combat", "fight"):
+            if self._bot is None:
+                self._echo("[bot] Not connected")
+                return
+            if arg.lower() in ("on", "off"):
+                self._echo(f"[bot] {self._bot.set_combat_enabled(arg.lower() == 'on')}")
+            else:
+                self._echo(f"[bot] {self._bot.toggle_combat()}")
+
+        elif verb == "run":
+            # "Run" = quick-move with combat off. With no arg it toggles combat off/on;
+            # `:run off` re-enables combat (stop running).
+            if self._bot is None:
+                self._echo("[bot] Not connected")
+                return
+            if arg.lower() == "off":
+                self._echo(f"[bot] {self._bot.set_combat_enabled(True)}")
+            else:
+                self._echo(f"[bot] {self._bot.set_combat_enabled(False)}")
+
         elif verb in ("goto", "go", "g"):
             if self._bot is None:
                 self._echo("[bot] Not connected")
@@ -301,6 +322,8 @@ class MegaMudApp(App):
                 "  :stop          — stop loop, clear queue",
                 "  :find QUERY    — search rooms by name/code (shows codes for :goto)",
                 "  :goto TARGET   — navigate to a room by 4-letter code or name",
+                "  :combat [on|off] — toggle auto-combat (Ctrl+F)",
+                "  :run [off]     — quick-move with combat off (':run off' re-enables)",
                 "  :paths         — list available loop paths",
                 "  :status        — show HP/MP/room/loop status",
                 "  :connect       — connect to server",
@@ -379,6 +402,10 @@ class MegaMudApp(App):
                     f"{self._host}:{self._port} [looping]" if running
                     else f"{self._host}:{self._port} [connected]"
                 )
+
+    def action_toggle_combat(self) -> None:
+        if self._bot is not None:
+            self._echo(f"[bot] {self._bot.toggle_combat()}")
 
     def action_open_settings(self) -> None:
         self.push_screen(SettingsScreen(self._config_service))

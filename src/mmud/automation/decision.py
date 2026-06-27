@@ -45,6 +45,9 @@ class DecisionEngine:
 
     def __init__(self) -> None:
         self._slots: list[tuple[int, str, Decider]] = []
+        # Slot names to skip entirely (transparently — as if unregistered). Used by the
+        # combat toggle to suppress the attack slots so the bot quick-moves ("run").
+        self.disabled_slots: set[str] = set()
 
     def register(self, name: str, decider: Decider, priority: int) -> None:
         self._slots.append((priority, name, decider))
@@ -52,6 +55,8 @@ class DecisionEngine:
 
     def next_command(self, state: GameState) -> str | None:
         for priority, _name, decider in self._slots:
+            if _name in self.disabled_slots:
+                continue
             if state.task.is_active and priority >= state.task.priority:
                 return None
             cmd = decider.decide(state)

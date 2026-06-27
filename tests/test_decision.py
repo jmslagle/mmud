@@ -33,6 +33,19 @@ def test_none_falls_through_to_next_slot():
     assert engine.next_command(GameState()) == "b-cmd"
 
 
+def test_disabled_slot_is_skipped():
+    # Combat toggle: disabling the attack slots makes the engine fall through to
+    # travel — the bot moves past monsters without fighting ("run").
+    engine = DecisionEngine()
+    engine.register("combat", StubDecider("kill orc"), priority=PRIO_COMBAT)
+    engine.register("travel", StubDecider("n"), priority=PRIO_TRAVEL)
+    assert engine.next_command(GameState()) == "kill orc"
+    engine.disabled_slots.add("combat")
+    assert engine.next_command(GameState()) == "n"     # combat skipped -> travel runs
+    engine.disabled_slots.discard("combat")
+    assert engine.next_command(GameState()) == "kill orc"
+
+
 def test_active_task_pins_slots_at_or_below_its_priority():
     engine = DecisionEngine()
     pinned = StubDecider("pinned")

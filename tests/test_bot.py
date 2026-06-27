@@ -244,6 +244,57 @@ def test_matching_nav_failure_triggers_recovery():
     assert bot._travel.wandering
 
 
+@pytest.mark.asyncio
+async def test_room_display_emits_location_stat():
+    # The bottom-left status panel shows where we are: a code+name when known, else the
+    # raw hash. The bot emits it as a "location" session stat on each room display.
+    from mmud.events import SessionStatUpdated
+    from mmud.data.rooms import Room
+    from mmud.parser.exits_parser import room_id
+    exits = "Obvious exits: north"
+    rooms = {"HOME": Room(code="HOME", hex_id=room_id("The Home Room", exits),
+                          hex_id2="", flags=(0, 0, 0), region="", name="The Home Room")}
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(SessionStatUpdated, received.append)
+    bot = MudBot("localhost", 4000, patterns=[], event_bus=bus, rooms=rooms)
+    await bot._process_line("The Home Room\n")
+    await bot._process_line(exits + "\n")
+    locs = [e.value for e in received if e.key == "location"]
+    assert locs and "HOME" in locs[-1]
+
+
+@pytest.mark.asyncio
+async def test_room_display_emits_hash_location_when_unknown():
+    # A room absent from ROOMS.MD still reports position by hash.
+    from mmud.events import SessionStatUpdated
+    from mmud.parser.exits_parser import room_id
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(SessionStatUpdated, received.append)
+    bot = MudBot("localhost", 4000, patterns=[], event_bus=bus)
+    bot._title_color = "1;36"
+    await bot._process_line("[HP=100/MA=50]:\n")
+    await bot._process_line("\x1b[1;36mSlum Street, Bend\x1b[0m\n")
+    exits = "Obvious exits: south, west"
+    await bot._process_line(exits + "\n")
+    locs = [e.value for e in received if e.key == "location"]
+    assert locs and locs[-1] == room_id("Slum Street, Bend", exits)
+
+
+def test_toggle_combat_disables_attack_slots():
+    # MegaMud-style combat toggle: off -> the attack deciders are skipped so the bot
+    # quick-moves past monsters ("run"); on -> they're restored.
+    bot = MudBot("localhost", 4000, patterns=[])
+    assert bot.combat_enabled is True
+    bot.toggle_combat()
+    assert bot.combat_enabled is False
+    assert {"combat", "backstab", "spells"} <= bot._engine.disabled_slots
+    bot.toggle_combat()
+    assert bot.combat_enabled is True
+    assert not (bot._engine.disabled_slots & {"combat", "backstab", "spells"})
+
+
 def test_bot_list_paths_empty():
     bot = MudBot("localhost", 4000, patterns=[])
     assert isinstance(bot.list_paths(), list)

@@ -88,6 +88,17 @@ async def test_stats_bar_shows_session_stat():
         assert bar.session["kills"] == "694"
 
 
+@pytest.mark.asyncio
+async def test_stats_bar_shows_location():
+    # The bottom-left zone displays where we are (room code/name or hash).
+    app = _StatsApp()
+    async with app.run_test() as pilot:
+        bar = app.query_one(StatsBar)
+        bar.post_message(StatsBar.SessionUpdate(key="location", value="SBNK Bank of Godfrey"))
+        await pilot.pause(0.1)
+        assert bar.room == "SBNK Bank of Godfrey"
+
+
 from textual.widgets import TabPane
 from mmud.tui.widgets.right_panel import RightPanel
 
