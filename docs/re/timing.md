@@ -55,7 +55,11 @@ Split the loop exactly like the binary:
   then clear `ready` (re-arms on the next prompt). Keep a ~1 s idle tick to re-enter when
   idle at a prompt.
 
-Partial steps already shipped toward this (each a symptom-level patch until the full
-turn-gate lands): the stale-failure prompt-echo guard, the in-combat `_can_act` mid-round
-gate (`bot._process_line`), and the backstab opener-latch. The full fix is to make the
-decider prompt-turn-gated for ALL actions (with login/queue draining preserved).
+**Implemented (2026-06-26).** `bot._process_line` sets `self._ready` only on a bare
+`[HP=...]:` prompt (or a `(Resting)` status line); a command-echo prompt (`]:fjet orc`)
+is NOT ready. The run loop gates the decision: `may_act = (not in_game) or self._ready or
+queued` — so IN-GAME the priority chain runs once per prompt turn (never mid-stream),
+while login (pre-game, no READY) and the command queue (login/door/loot/user) still drain
+immediately. This is the root fix for the double-move / dead-target-cast / sneak-spam
+class; the earlier symptom patches (stale-failure prompt-echo guard, backstab
+opener-latch) remain as belt-and-suspenders.
