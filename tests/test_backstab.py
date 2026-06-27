@@ -18,6 +18,13 @@ def _state_with_target():
     return gs
 
 
+def test_backstab_opens_before_the_attack_spell():
+    # If we open from stealth we backstab FIRST, then cast — mirroring MegaMud's
+    # combat_backstab_prepare (step 0xB, before cast_configured_spell at 0x18).
+    from mmud.automation.decision import PRIO_BACKSTAB, PRIO_SPELLS
+    assert PRIO_BACKSTAB < PRIO_SPELLS
+
+
 def test_full_sequence():
     eng = _engine()
     gs = _state_with_target()

@@ -175,8 +175,12 @@ class CombatEngine:
             # MegaMud melees below ManaAttack% (it doesn't wait) — the spell engine
             # (higher priority) declines to cast there, so the combat engine just
             # swings. No mana gate here.
-            # Sneak before first attack if configured
-            if self.sneak_cmd and not self._sneaked_this_encounter:
+            # Sneak before the first attack if configured — but ONLY as an OPENER, while
+            # we're not yet engaged. You can't sneak in combat, so firing it at the
+            # cast->melee switch (in_combat) or on a between-round flicker (already
+            # engaged this target) just spams "You may not sneak right now!".
+            if (self.sneak_cmd and not self._sneaked_this_encounter
+                    and not state.in_combat and not self._engaged_target):
                 self._sneaked_this_encounter = True
                 return self.sneak_cmd
             if self.must_sneak and not self._sneak_confirmed:

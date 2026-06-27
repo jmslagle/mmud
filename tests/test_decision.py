@@ -112,9 +112,10 @@ def test_decider_setting_own_task_is_not_self_aborted():
     assert gs.task.priority == PRIO_CURE
 
 
-def test_prio_backstab_sits_just_above_combat():
-    from mmud.automation.decision import PRIO_BACKSTAB, PRIO_COMBAT
-    assert PRIO_BACKSTAB == PRIO_COMBAT - 1
+def test_prio_backstab_opens_before_spells_and_combat():
+    from mmud.automation.decision import PRIO_BACKSTAB, PRIO_SPELLS, PRIO_COMBAT
+    # The stealth opener (hide/sneak/backstab) runs before the attack spell AND melee.
+    assert PRIO_BACKSTAB < PRIO_SPELLS < PRIO_COMBAT
 
 
 def test_equal_priority_decider_does_not_preempt_its_own_active_task():

@@ -8,9 +8,10 @@ PRIO_QUEUE = 0      # queued commands (login, path steps, user/remote commands)
 PRIO_EMERGENCY = 5  # critical-HP escape (recall) — fires even with combat toggled off
 PRIO_CURE = 10      # condition cures + panic            (Phase 2)
 PRIO_FLEE = 20      # flee/run rules                     (Phase 4)
+PRIO_BACKSTAB = 29  # hide/sneak/stab OPENER — before the attack spell (MegaMud's
+                    # combat_backstab_prepare @step 0xB precedes cast at 0x18)
 PRIO_SPELLS = 30    # heal/mana/attack/pre-attack/bless  (current SpellEngine)
 PRIO_COMBAT = 40    # melee attack/rest                  (current CombatEngine)
-PRIO_BACKSTAB = PRIO_COMBAT - 1  # hide/sneak/stab, just before melee
 PRIO_REST = 50      # rest task management               (Phase 4)
 PRIO_REFRESH = 60   # stats/inventory refresh            (Phase 5)
 PRIO_BLESS = 70     # bless scheduling split-out         (Phase 4)
