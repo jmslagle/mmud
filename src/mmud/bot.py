@@ -1092,10 +1092,13 @@ class MudBot:
             self._state.complete_task()
 
     def _engage_attacker(self, line: str) -> None:
-        """Safety net: a monster is hitting us. Ensure it's in the roster so the combat
-        engine fights back instead of resting/moving through the beating — covers a
-        wander-in the room display cleared, or an arrival we missed entirely. MegaMud
-        re-scans the room on combat events; this is our equivalent."""
+        """Safety net: a monster is hitting us. Ensure it's in the roster AND treat it as
+        hostile so we fight back instead of resting/moving through the beating — covers a
+        wander-in the room display cleared, a missed arrival, OR a mob the bundled
+        MONSTERS.MD mis-classifies as neutral on this server (the slum giant rats are
+        kill-type 3 but aggressive). Aggression is the reliable signal. EXCEPTION: never
+        promote a kill-type-2 NPC/guard — we don't attack guards even if they swing at us.
+        MegaMud re-scans the room on combat events; this is our equivalent."""
         from mmud.parser.room_parser import _plausible_monster_name
         m = _ATTACKER_RE.match(line)
         if not m:
@@ -1103,11 +1106,18 @@ class MudBot:
         name = m.group(1).strip()
         if not _plausible_monster_name(name):
             return
-        if any(s.name.lower() == name.lower() for s in self._state.monsters_present):
-            return                              # already tracked -> nothing to do
-        self._state.add_monster(self._build_sighting(name, 1))
-        self._also_here_seen = True
-        self._session_log.event(f"under attack by {name!r} -> re-added to roster")
+        sighting = next((s for s in self._state.monsters_present
+                         if s.name.lower() == name.lower()), None)
+        if sighting is None:
+            sighting = self._build_sighting(name, 1)
+            self._state.add_monster(sighting)
+            self._also_here_seen = True
+        # Attacking us -> hostile, so the combat engine engages it. Only promote a
+        # "neutral" (kill-type 3); leave guards (2), specials (5), already-hostile (4) and
+        # unknown (0, already attackable) alone.
+        if getattr(sighting, "kill_type", 0) == 3:
+            sighting.kill_type = 4
+            self._session_log.event(f"under attack by {name!r} (neutral) -> hostile")
 
     def _parse_monster_removal(self, line: str) -> None:
         """Drop a monster from the roster on a named death / slay / "you do not

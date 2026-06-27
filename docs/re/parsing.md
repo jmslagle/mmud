@@ -28,6 +28,11 @@ between rounds. (The old "any MESSAGES.MD apply-match → in_combat" was a bug.)
   you`, the attacker is added to the roster if absent — so we fight back even if its
   arrival was missed or cleared by a room-display race (the "rests through a monster
   beating on it" bug). MegaMud re-scans the room on combat events; this is our equivalent.
+  It also **promotes a kill-type-3 (neutral) attacker to hostile** so we fight aggressive
+  mobs the bundled MONSTERS.MD mis-classifies as neutral (e.g. the slum giant rats — there
+  are 26 "giant rat" records, 25 hostile + 1 neutral, and the store kept the neutral one;
+  aggression is the reliable signal). It NEVER promotes a kill-type-2 NPC/guard — guards
+  are not attacked even if they swing at us.
 
 This killed phantom-target spam + cross-room accumulation. A stale
 `monsters=['fat giant rat', …]` at index 0 in the session log reveals a phantom target.
