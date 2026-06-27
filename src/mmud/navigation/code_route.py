@@ -17,25 +17,33 @@ from mmud.data.rooms import Room
 from mmud.navigation.graph import RouteStep
 
 
+# Interchangeable water transport — MegaMud's inventory_item_find_by_name treats these
+# as equivalent for a boat-gated leg.
+_BOAT_EQUIV = frozenset({"wooden skiff", "log raft", "silverbark canoe"})
+
+
 def _norm_item(s: str) -> str:
-    """Normalise an item name for lenient matching: lowercase, drop a trailing '*'
-    marker, strip a leading article, collapse whitespace."""
-    s = s.lower().strip().rstrip("*").strip()
-    for art in ("a ", "an ", "the "):
-        if s.startswith(art):
-            s = s[len(art):]
-            break
+    """Normalise an item name to MegaMud's comparison form: lowercase (it compares
+    case-sensitively but server/PATHS data are lowercase), strip apostrophes and a
+    trailing '*' marker, collapse whitespace."""
+    s = s.lower().replace("'", "").strip().rstrip("*").strip()
     return " ".join(s.split())
 
 
+def _names_match(a: str, b: str) -> bool:
+    """Mirror item_name_match @0x442080: exact compare after apostrophe-stripping, with
+    trailing-'s' plural tolerance. NOT substring."""
+    return a == b or a == b + "s" or b == a + "s"
+
+
 def _item_held(requires: str, held: set[str]) -> bool:
-    """True if a leg's required item is satisfied by something the bot holds. Lenient
-    substring match either way so 'rope and grapple' matches 'a coil of rope and
-    grapple' in inventory (and vice versa)."""
+    """True if a leg's required item is satisfied by something the bot holds. `held` is
+    a set of already-normalised item names. Empty/'none' requirement => always true."""
     req = _norm_item(requires)
-    if not req:
+    if not req or req == "none":
         return True
-    return any(req in h or h in req for h in held)
+    candidates = _BOAT_EQUIV if req in _BOAT_EQUIV else {req}
+    return any(_names_match(c, h) for c in candidates for h in held)
 
 
 def build_code_edges(paths: list[GamePath],

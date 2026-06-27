@@ -90,12 +90,22 @@ def test_uses_item_leg_when_the_item_is_held():
     assert [s.command for s in steps] == ["d"]
 
 
-def test_item_match_is_lenient_about_articles_and_extra_words():
-    # Inventory may name it "a coil of rope and grapple"; the requires field is bare.
+def test_item_match_mirrors_megamud_name_match():
+    # MegaMud item_name_match @0x442080: apostrophe-stripped exact compare with
+    # trailing-'s' plural tolerance and boat interchangeability — NOT substring.
     gated = _path("A", "C", ("X0000000", "d"))
+    gated.requires = "black star key"
+    # plural in inventory ("8 black star keys" -> "black star keys") still matches.
+    assert "C" in build_code_edges([gated], held_items={"black star keys"}).get("A", {})
+    # apostrophes are ignored on both sides.
+    gated.requires = "dragon's tooth"
+    assert "C" in build_code_edges([gated], held_items={"dragons tooth"}).get("A", {})
+    # boats are interchangeable: a log raft satisfies a "wooden skiff" gate.
+    gated.requires = "wooden skiff"
+    assert "C" in build_code_edges([gated], held_items={"log raft"}).get("A", {})
+    # but a bare "rope" does NOT satisfy "rope and grapple" (no substring match).
     gated.requires = "rope and grapple"
-    edges = build_code_edges([gated], held_items={"a coil of rope and grapple"})
-    assert "C" in edges.get("A", {})
+    assert "C" not in build_code_edges([gated], held_items={"rope"}).get("A", {})
 
 
 def test_missing_route_items_reports_the_gated_item():
