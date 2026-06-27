@@ -135,3 +135,15 @@ cast on a dead monster and resending. Fix (`bot._process_line` → `self._can_ac
 (`Also here:` / `Obvious exits:`); the streaming hit/death/exp lines just update state.
 Out of combat there's no gating. Queued commands (login/door/loot/user) always flush.
 See [`source/combat_event_parse.md`](source/combat_event_parse.md).
+
+## Backstab is an OPENER — latch it off once the fight starts
+Hide/sneak/backstab only make sense BEFORE a fight. The between-round
+`*Combat Off*`/`*Combat Engaged*` flicker leaves `in_combat` briefly False with the
+monster still present; the backstab engine keyed only on `in_combat`, so it re-opened
+on every flicker — and once it got stuck mid-sequence (the live "You don't think you
+are hidden." FALSE-matched the hide-success regex `you are hidden`, leaving it HIDDEN;
+the spell engine then preempted it for ~15s), it emitted a STALE `sneak` mid-fight
+("You may not sneak right now!"). Fix (`BackstabEngine`): **latch `_engaged` once
+`in_combat` is seen** and stay silent until the encounter ends (no target) or a new
+room (`reset()`). Also tightened the result patterns: `_HIDE_OK` no longer matches the
+"don't think you are hidden" failure; `_SNEAK_FAIL` catches "may not sneak".
