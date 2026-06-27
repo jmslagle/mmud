@@ -17,18 +17,45 @@ from mmud.data.rooms import Room
 from mmud.navigation.graph import RouteStep
 
 
-def build_code_edges(paths: list[GamePath]) -> dict[str, dict[str, GamePath]]:
+def _norm_item(s: str) -> str:
+    """Normalise an item name for lenient matching: lowercase, drop a trailing '*'
+    marker, strip a leading article, collapse whitespace."""
+    s = s.lower().strip().rstrip("*").strip()
+    for art in ("a ", "an ", "the "):
+        if s.startswith(art):
+            s = s[len(art):]
+            break
+    return " ".join(s.split())
+
+
+def _item_held(requires: str, held: set[str]) -> bool:
+    """True if a leg's required item is satisfied by something the bot holds. Lenient
+    substring match either way so 'rope and grapple' matches 'a coil of rope and
+    grapple' in inventory (and vice versa)."""
+    req = _norm_item(requires)
+    if not req:
+        return True
+    return any(req in h or h in req for h in held)
+
+
+def build_code_edges(paths: list[GamePath],
+                     held_items=None) -> dict[str, dict[str, GamePath]]:
     """from_code -> {to_code: GamePath}. Self-loops (loops like CRY1->CRY1) are
-    skipped for routing. Shorter paths win when a (from,to) pair repeats."""
+    skipped for routing. Shorter paths win when a (from,to) pair repeats.
+
+    Item-gated legs (a boat needs a "wooden skiff", a descent needs a "rope and
+    grapple") are EXCLUDED unless the required item is in `held_items` — we don't
+    model fetching transport items, and crossing water without one drowns the bot.
+    But a leg whose item the bot already carries is perfectly walkable, and is often
+    the ONLY way into an area (the rope-and-grapple drop into the Cave Worm Area), so
+    excluding it unconditionally would make that area unreachable."""
+    held = {_norm_item(x) for x in (held_items or [])}
     edges: dict[str, dict[str, GamePath]] = defaultdict(dict)
     for p in paths:
         fc, tc = p.from_code.upper(), p.to_code.upper()
         if fc == tc:
             continue
-        if p.requires:
-            # Item-gated leg (a boat needs a "wooden skiff", etc.). We don't model
-            # carrying/using transport items, and crossing water without it drowns
-            # the bot — so never auto-route through these. Land routes only.
+        if p.requires and not _item_held(p.requires, held):
             continue
         cur = edges[fc].get(tc)
         if cur is None or len(p.steps) < len(cur.steps):
@@ -36,20 +63,57 @@ def build_code_edges(paths: list[GamePath]) -> dict[str, dict[str, GamePath]]:
     return edges
 
 
-def find_code_route(from_code: str, to_code: str, paths: list[GamePath],
-                    rooms: dict[str, Room]) -> list[RouteStep] | None:
-    """A walkable route from `from_code` to `to_code` by chaining .MP paths, as
-    RouteSteps (per-step expected destination hash). None if unreachable."""
-    from_code, to_code = from_code.upper(), to_code.upper()
-    edges = build_code_edges(paths)
-    if from_code == to_code:
-        return []
-    # Dijkstra over the code graph weighted by leg STEP count — pick the route with
-    # the fewest actual moves, NOT the fewest hops. A plain BFS (fewest legs) chained
-    # a few enormous legs (River St -> Pier -> Silver River -> Dragon's Teeth -> ...)
-    # to reach the slum-side Orc Mansion, a ~150-step detour around a ~50-step walk.
+def _route_chain(from_code: str, to_code: str,
+                 edges: dict[str, dict[str, GamePath]]) -> list[GamePath] | None:
+    """Dijkstra over the code graph weighted by leg STEP count — fewest actual moves,
+    not fewest hops. Returns the chain of legs, or None if `to_code` is unreachable."""
     inf = float("inf")
     tie = count()                               # keeps heapq from comparing leg lists
+    pq: list[tuple[int, int, str, list[GamePath]]] = [(0, next(tie), from_code, [])]
+    best: dict[str, int] = {from_code: 0}
+    while pq:
+        cost, _, code, legs = heapq.heappop(pq)
+        if code == to_code:
+            return legs
+        if cost > best.get(code, inf):
+            continue                            # stale heap entry
+        for nxt, path in edges.get(code, {}).items():
+            ncost = cost + len(path.steps)
+            if ncost < best.get(nxt, inf):
+                best[nxt] = ncost
+                heapq.heappush(pq, (ncost, next(tie), nxt, legs + [path]))
+    return None
+
+
+def missing_route_items(from_code: str, to_code: str, paths: list[GamePath],
+                        held_items=None) -> list[str] | None:
+    """Diagnose why a route is blocked. Returns:
+      - []   : reachable now with the items currently held (no item gate in the way),
+      - [...]: items needed (beyond those held) to make it reachable — the gates on
+               the best all-items route, in order, deduped,
+      - None : unreachable even with every item (genuinely no recorded path).
+    Lets the bot say 'need rope and grapple' instead of wandering off, lost."""
+    from_code, to_code = from_code.upper(), to_code.upper()
+    if from_code == to_code:
+        return []
+    held = {_norm_item(x) for x in (held_items or [])}
+    # Reachable with what we hold? Then nothing's missing.
+    if _route_chain(from_code, to_code, build_code_edges(paths, held_items)) is not None:
+        return []
+    # Otherwise, route over the graph with ALL item legs allowed, but prefer the route
+    # that crosses the FEWEST unheld gates (then fewest steps) — so we report only the
+    # items truly required, not extras from a shorter key-shortcut the user can skip.
+    all_edges: dict[str, dict[str, GamePath]] = defaultdict(dict)
+    for p in paths:
+        fc, tc = p.from_code.upper(), p.to_code.upper()
+        if fc == tc:
+            continue
+        cur = all_edges[fc].get(tc)
+        if cur is None or len(p.steps) < len(cur.steps):
+            all_edges[fc][tc] = p
+    GATE = 1_000_000                            # one gate outweighs any step count
+    inf = float("inf")
+    tie = count()
     pq: list[tuple[int, int, str, list[GamePath]]] = [(0, next(tie), from_code, [])]
     best: dict[str, int] = {from_code: 0}
     chain: list[GamePath] | None = None
@@ -59,12 +123,35 @@ def find_code_route(from_code: str, to_code: str, paths: list[GamePath],
             chain = legs
             break
         if cost > best.get(code, inf):
-            continue                            # stale heap entry
-        for nxt, path in edges.get(code, {}).items():
-            ncost = cost + len(path.steps)
+            continue
+        for nxt, path in all_edges.get(code, {}).items():
+            gated = bool(path.requires) and not _item_held(path.requires, held)
+            ncost = cost + len(path.steps) + (GATE if gated else 0)
             if ncost < best.get(nxt, inf):
                 best[nxt] = ncost
                 heapq.heappush(pq, (ncost, next(tie), nxt, legs + [path]))
+    if chain is None:
+        return None
+    need: list[str] = []
+    for leg in chain:
+        if leg.requires and not _item_held(leg.requires, held):
+            item = leg.requires.strip().rstrip("*").strip()
+            if item not in need:
+                need.append(item)
+    return need
+
+
+def find_code_route(from_code: str, to_code: str, paths: list[GamePath],
+                    rooms: dict[str, Room], held_items=None) -> list[RouteStep] | None:
+    """A walkable route from `from_code` to `to_code` by chaining .MP paths, as
+    RouteSteps (per-step expected destination hash). None if unreachable. Item-gated
+    legs are usable only when `held_items` covers the required item (see
+    build_code_edges); the route is step-weighted (fewest moves, not fewest legs)."""
+    from_code, to_code = from_code.upper(), to_code.upper()
+    if from_code == to_code:
+        return []
+    edges = build_code_edges(paths, held_items)
+    chain = _route_chain(from_code, to_code, edges)
     if chain is None:
         return None
     all_steps = [s for leg in chain for s in leg.steps]

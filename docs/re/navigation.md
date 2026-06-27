@@ -55,8 +55,27 @@ harness`, `rope and grapple`, `swamp boots`, `potion of levitation`, `room ticke
 `waterskin`, … The river route to ORCM used `BOAT→ISLB` which needs the **wooden
 skiff** — crossing without it nearly drowned a low-level char. We don't model
 carrying/using transport items, so `GamePath.requires` is parsed and `build_code_edges`
-**skips any leg with `requires`** — land routes only. (Keyword-gated steps like
+**skips any leg with `requires` UNLESS the bot holds that item** — land routes by
+default, item legs unlocked when carried. (Keyword-gated steps like
 `[use black star key e]` live inside loop BODIES, which are self-loops and unaffected.)
+
+**Held-item routing + missing-item diagnosis (2026-06-26).** A blanket skip made
+item-*only*-reachable areas permanently unreachable: the **Cave Worm Area (CAVW)** has
+exactly one walkable entrance, `BHDC→CAVW`, gated by **rope and grapple** (the other
+candidate, `OBCW→CAVW`, is itself unreachable). Sitting in the Bank (SBNK) and starting
+the CAVW loop, the loop runner found no route → fell into the wander branch reporting a
+misleading "Position unknown" and wandered forever. Fixes:
+- `build_code_edges(paths, held_items=…)` and `find_code_route(…, held_items=…)` include
+  an item leg when `held_items` covers its item (lenient match: lowercased, strip a
+  trailing `*` marker + leading article, substring either way — so `rope and grapple`
+  matches `a coil of rope and grapple`). The bot passes `inventory.carried | worn`.
+- `missing_route_items(from, to, paths, held_items=…)` → `[]` reachable now, `[items]`
+  the gates on the **fewest-gate** route (gate-penalised Dijkstra, so it reports only
+  what's truly needed — e.g. `['rope and grapple']`, not a black-star-key shortcut the
+  user can skip), `None` if unreachable even with every item.
+- `LoopRunner.start()` (and `navigate_to_room`): when a KNOWN room has no route but the
+  best route is item-gated, it **stops and names the item** ("Can't reach CAVW from
+  SBNK: need rope and grapple") via `on_lost(reason)` → objective, instead of wandering.
 
 `navigate_to_room` builds the route from `state.current_room` (the last
 **name-detected** room). If the bot is standing in an undetected room, that start is

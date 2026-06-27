@@ -885,6 +885,21 @@ def test_goto_unknown_destination():
     assert "unknown" in bot.navigate_to_room("ZZZZ").lower()
 
 
+def test_goto_reports_required_item_when_only_route_is_gated():
+    # The only HOME->FARR route needs a "rope and grapple" we don't hold. Instead of a
+    # bare "no route", tell the user exactly what's missing.
+    bot = make_transcript_bot([], rooms=_NAV_ROOMS)
+    gated = _GamePath(from_code="HOME", from_region="", from_name="",
+                      to_code="FARR", to_region="", to_name="", npc="",
+                      steps=[_PathStep(hex_id="AAAA0001", command="d")],
+                      requires="rope and grapple")
+    bot._navigator._paths[("HOME", "FARR")] = gated
+    bot._state.set_room("HOME")
+    bot._state.current_hex = "AAAA0001"
+    msg = bot.navigate_to_room("FARR")
+    assert "rope and grapple" in msg.lower()
+
+
 @pytest.mark.asyncio
 async def test_observed_movement_learns_exit(tmp_path):
     config = MudConfig()

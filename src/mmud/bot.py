@@ -1223,15 +1223,21 @@ class MudBot:
         paths = self._navigator.all_paths()
         lr = LoopRunner(self._config.navigation, paths, self._rooms, self._travel,
                         code_route=self._code_route,
+                        missing_items=self._code_missing_items,
                         current_code=self._state.current_room,
                         current_hex=self._resolved_current_hex())
         lr.on_lost = self._on_loop_lost
         return lr
 
-    def _on_loop_lost(self) -> None:
-        """Wander recovery gave up — the loop stopped. Surface it so the user isn't
-        left thinking it's still working (it wandered a colliding maze and bailed)."""
+    def _on_loop_lost(self, reason: str = "") -> None:
+        """The loop stopped before completing. `reason` distinguishes a blocked route
+        (e.g. 'need rope and grapple') from a plain lost-wander give-up, so the user
+        sees WHY rather than a vague 'Lost' — they can grab the item and retry."""
         name = self._config.navigation.loop_path
+        if reason:
+            self._session_log.event(f"loop {name} blocked: {reason}")
+            self._emit(SessionStatUpdated(key="objective", value=reason))
+            return
         self._session_log.event(f"lost — gave up loop {name} (could not relocate); stopped")
         self._emit(SessionStatUpdated(key="objective", value=f"Lost (gave up {name})"))
 
@@ -1252,12 +1258,29 @@ class MudBot:
                         out[key.strip().lower()] = float(dur)
         return out
 
+    def _held_items(self) -> set[str]:
+        """Items the bot is currently carrying or wearing — used to unlock item-gated
+        path legs (a 'rope and grapple' descent, a 'wooden skiff' crossing)."""
+        inv = self._state.inventory
+        return set(inv.carried) | set(inv.worn)
+
     def _code_route(self, from_code: str, to_code: str):
         """Walkable route between two room codes by chaining .MP paths (reliable),
-        not the collision-prone room-hash BFS. Returns RouteSteps or None."""
+        not the collision-prone room-hash BFS. Returns RouteSteps or None. Item-gated
+        legs are usable only when we actually carry the required item."""
         from mmud.navigation.code_route import find_code_route
         return find_code_route(from_code, to_code,
-                               list(self._navigator._paths.values()), self._rooms)
+                               list(self._navigator._paths.values()), self._rooms,
+                               held_items=self._held_items())
+
+    def _code_missing_items(self, from_code: str, to_code: str):
+        """Items we'd need (beyond those held) to reach `to_code`; [] if reachable,
+        None if unreachable even with every item. Lets us say 'need rope and grapple'
+        instead of wandering off lost."""
+        from mmud.navigation.code_route import missing_route_items
+        return missing_route_items(from_code, to_code,
+                                   list(self._navigator._paths.values()),
+                                   held_items=self._held_items())
 
     def _hex_name(self, hexid: str) -> str:
         """A short label for a hex id: 'CODE(Name)' if in ROOMS.MD, else the hex."""
@@ -1389,6 +1412,10 @@ class MudBot:
             return "Current room unknown — move around first to establish position"
         steps = self._code_route(from_code, to_code)
         if steps is None:
+            need = self._code_missing_items(from_code, to_code)
+            if need:
+                return (f"Can't reach {to_code} from {from_code}: "
+                        f"need {', '.join(need)}")
             return f"No known route from {from_code} to {to_code}"
         if not steps:
             return f"Already at {to_code}"
@@ -1402,6 +1429,11 @@ class MudBot:
     def list_paths(self) -> list[str]:
         """Return all known loop path names."""
         return self._navigator.list_loop_paths()
+
+    def list_loop_choices(self) -> list[tuple[str, str]]:
+        """(identifier, label) for the loop picker — label carries the room name/NPC
+        (e.g. 'Cave Worm Area (cavwloop)') so the list isn't a wall of opaque codes."""
+        return self._navigator.loop_choices()
 
     def status_text(self) -> str:
         """Return a brief status string."""

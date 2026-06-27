@@ -99,3 +99,26 @@ def test_list_loop_paths_returns_sorted_deduped_loop_codes():
 def test_list_loop_paths_empty_when_no_loops():
     nav = Navigator([_path("AAAA", "BBBB", ["n"])])
     assert nav.list_loop_paths() == []
+
+
+def test_loop_choices_label_with_room_name_and_file():
+    # Picker should show the room NAME plus the identifier: "Cave Worm Area (cavwloop)".
+    p = GamePath(from_code="CAVW", from_region="Black House", from_name="Cave Worm Area",
+                 to_code="CAVW", to_region="Black House", to_name="Cave Worm Area",
+                 npc="", steps=[PathStep(hex_id="H0", command="e")],
+                 source_file="Cavwloop")
+    choices = Navigator([p]).loop_choices()
+    assert ("Cavwloop", "Cave Worm Area (cavwloop)") in choices
+
+
+def test_loop_choices_includes_npc_and_falls_back_to_code():
+    # "General Store (Giovanni) (sgen)" — name + npc + identifier.
+    store = GamePath(from_code="SGEN", from_region="", from_name="General Store",
+                     to_code="SGEN", to_region="", to_name="General Store",
+                     npc="Giovanni", steps=[PathStep(hex_id="H0", command="buy")],
+                     source_file="")
+    # No name/file -> identifier (the room code) stands in for the label.
+    bare = _path("ZZZZ", "ZZZZ", ["n"])
+    choices = dict(Navigator([store, bare]).loop_choices())
+    assert choices["SGEN"] == "General Store (Giovanni) (sgen)"
+    assert choices["ZZZZ"] == "ZZZZ (zzzz)"

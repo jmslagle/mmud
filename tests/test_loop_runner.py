@@ -203,6 +203,37 @@ def test_recover_wanders_to_relocate_the_loop():
     assert travel.decide(gs) == "n"            # loop re-engaged
 
 
+def test_reports_missing_item_instead_of_wandering_lost():
+    # Known room, but the only route to the loop is gated by an item we don't hold.
+    # Don't wander off "lost" — say exactly which item is needed, and stop.
+    path = _loop("HOME", [("AAAA0001", "n")])
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    lost = []
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
+                        code_route=lambda f, t: None,
+                        missing_items=lambda f, t: ["rope and grapple"],
+                        current_code="FARR", current_hex="FAR00000")
+    runner.on_lost = lambda reason="": lost.append(reason)
+    msg = runner.start()
+    assert "rope and grapple" in msg.lower()
+    assert not travel.wandering          # did NOT fall into a blind wander
+    assert not runner.running            # stopped
+    assert lost and "rope and grapple" in lost[0].lower()   # reason surfaced, not "lost"
+
+
+def test_no_missing_item_known_room_still_wanders():
+    # Known room, no route, but nothing's item-gated (truly disconnected here) -> the
+    # old behaviour: wander to try to stumble onto the loop.
+    path = _loop("HOME", [("AAAA0001", "n")])
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    runner = LoopRunner(NavigationConfig(loop_path="HOME"), [path], ROOMS, travel,
+                        code_route=lambda f, t: None,
+                        missing_items=lambda f, t: [],
+                        current_code="FARR", current_hex="FAR00000")
+    msg = runner.start()
+    assert "wander" in msg.lower() and runner.running
+
+
 def test_missing_path_does_not_arm():
     travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
     runner = LoopRunner(NavigationConfig(loop_path="XXXX"), [], ROOMS, travel)
