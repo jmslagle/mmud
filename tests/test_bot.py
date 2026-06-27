@@ -57,6 +57,27 @@ async def test_attacker_name_excludes_all_out_adverb():
 
 
 @pytest.mark.asyncio
+async def test_aggressive_neutral_becomes_attackable_but_guards_dont():
+    # The slum giant rats are aggressive (red, attacking) but bundled MONSTERS.MD
+    # mis-classifies them kill-type 3 (neutral). If a kill-type-3 mob ATTACKS us, treat
+    # it as hostile and fight back (even with attack_neutral off). But NEVER a kill-type-2
+    # NPC/guard — we don't attack guards, even if they swing at us.
+    from mmud.state.game_state import MonsterSighting
+    from mmud.combat.combat import attackable_sightings
+    bot = make_transcript_bot([])
+    bot._state.monsters_present = [
+        MonsterSighting(name="giant rat", kill_type=3),
+        MonsterSighting(name="town guard", kill_type=2),
+    ]
+    assert not attackable_sightings(bot._state, False)        # neither yet (neutral off)
+    await bot._process_line("The giant rat bites you for 3 damage!\n")
+    await bot._process_line("The town guard swings at you!\n")
+    names = [s.name for s in attackable_sightings(bot._state, False)]
+    assert "giant rat" in names                              # aggressive neutral -> fight
+    assert "town guard" not in names                         # guard -> never
+
+
+@pytest.mark.asyncio
 async def test_wander_in_survives_a_stray_exits_line():
     # A monster wandering in occupies the room; a stray exits line with no "Also here:"
     # must NOT clear it as an empty room (that made the bot rest/move through it).
