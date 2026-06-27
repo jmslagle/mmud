@@ -205,14 +205,14 @@ class MegaMudApp(App):
 
     def _open_loop_picker(self) -> None:
         from mmud.tui.search_picker import SearchPickerScreen
-        paths = self._bot.list_paths()
-        if not paths:
+        choices = self._bot.list_loop_choices()
+        if not choices:
             self._echo("[bot] No loop paths loaded")
             return
 
         def provider(q: str) -> list[tuple[str, str]]:
             ql = q.strip().lower()
-            return [(p, p) for p in paths if ql in p.lower()]
+            return [(ident, label) for ident, label in choices if ql in label.lower()]
         self.push_screen(SearchPickerScreen(
             "Start loop — type a name", provider, self._start_loop))
 
@@ -266,11 +266,15 @@ class MegaMudApp(App):
             if self._bot is None:
                 self._echo("[bot] Not connected")
                 return
-            paths = self._bot.list_paths()
-            if not paths:
+            choices = self._bot.list_loop_choices()
+            if not choices:
                 self._echo("[bot] No loop paths loaded")
             else:
-                self._echo(f"[bot] {len(paths)} loop paths: {', '.join(paths[:20])}")
+                self._echo(f"[bot] {len(choices)} loop paths:")
+                for _ident, label in choices[:30]:
+                    self._echo(f"  {label}")
+                if len(choices) > 30:
+                    self._echo(f"  … and {len(choices) - 30} more")
 
         elif verb in ("status", "st"):
             if self._bot is None:

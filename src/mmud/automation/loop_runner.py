@@ -34,7 +34,8 @@ class LoopRunner:
     def __init__(self, nav_config: NavigationConfig, paths: list[GamePath],
                  rooms: dict[str, Room], travel: TravelDecider,
                  code_route: Callable[[str, str], list | None] | None = None,
-                 current_code: str = "", current_hex: str = "") -> None:
+                 current_code: str = "", current_hex: str = "",
+                 missing_items: Callable[[str, str], list | None] | None = None) -> None:
         self._nav = nav_config
         self._rooms = rooms
         self._travel = travel
@@ -43,6 +44,10 @@ class LoopRunner:
         # Route to the loop by chaining .MP paths over the room-CODE graph (reliable),
         # not the collision-ridden room-hash BFS.
         self._code_route = code_route         # callable(from_code, to_code)->[RouteStep]|None
+        # callable(from_code, to_code) -> items needed (beyond those held) to reach the
+        # loop, [] if reachable, None if unreachable even with every item. Lets us say
+        # "need rope and grapple" instead of wandering off lost.
+        self._missing_items = missing_items
         self._current_code = current_code.upper()
         self._current_hex = current_hex.upper()
         self.on_lost = None   # optional callback() the bot sets to log/alert on give-up
@@ -106,6 +111,18 @@ class LoopRunner:
                     self._travel.set_route(loop_steps, loop=True, loop_from=0)
                     self._running = True
                     return f"Loop started: {self._nav.loop_path}"
+                # approach is None: no walkable route from this KNOWN room. If the only
+                # way there is gated by an item we lack, name it and stop — don't wander
+                # off "lost" (the user can't tell a maze from a missing rope & grapple).
+                need = (self._missing_items(self._current_code, loop_code)
+                        if self._missing_items else None)
+                if need:
+                    self._running = False
+                    self._travel.clear(reason="need-item")
+                    reason = (f"Can't reach {self._nav.loop_path} from "
+                              f"{self._current_code}: need {', '.join(need)}")
+                    self._alert_lost(reason)
+                    return reason
             # Unknown room, or no code route -> wander until we step onto the loop.
             self._travel.set_wander(set(loop_hexes), self._engage_at,
                                     limit=_MAX_WANDER, on_giveup=self._giveup)
@@ -151,7 +168,16 @@ class LoopRunner:
         colliding maze (e.g. the graveyard) for hours. The bot's on_lost alerts."""
         self._running = False
         self._travel.clear(reason="lost")
-        if self.on_lost:
+        self._alert_lost("")
+
+    def _alert_lost(self, reason: str) -> None:
+        """Fire the bot's on_lost hook with a reason (a missing item, or "" for a
+        plain lost-wander give-up). Tolerates a no-arg callback for back-compat."""
+        if not self.on_lost:
+            return
+        try:
+            self.on_lost(reason)
+        except TypeError:
             self.on_lost()
 
     def stop(self) -> None:

@@ -75,3 +75,47 @@ def test_self_loops_skipped_for_routing():
     loop = _path("A", "A", ("A0000000", "n"))   # a loop, not a connector
     edges = build_code_edges([loop])
     assert "A" not in edges.get("A", {})
+
+
+def test_uses_item_leg_when_the_item_is_held():
+    # The ONLY A->C connector needs "rope and grapple". We don't auto-route through
+    # item legs by default — but when the bot actually HOLDS the item, the leg is
+    # walkable and must be used (e.g. the rope-and-grapple descent into the Cave Worm
+    # Area, the only way in). Otherwise the destination is forever unreachable.
+    gated = _path("A", "C", ("X0000000", "d"))
+    gated.requires = "rope and grapple"
+    edges = build_code_edges([gated], held_items={"rope and grapple"})
+    assert "C" in edges.get("A", {})
+    steps = find_code_route("A", "C", [gated], _ROOMS, held_items={"rope and grapple"})
+    assert [s.command for s in steps] == ["d"]
+
+
+def test_item_match_is_lenient_about_articles_and_extra_words():
+    # Inventory may name it "a coil of rope and grapple"; the requires field is bare.
+    gated = _path("A", "C", ("X0000000", "d"))
+    gated.requires = "rope and grapple"
+    edges = build_code_edges([gated], held_items={"a coil of rope and grapple"})
+    assert "C" in edges.get("A", {})
+
+
+def test_missing_route_items_reports_the_gated_item():
+    from mmud.navigation.code_route import missing_route_items
+    gated = _path("A", "C", ("X0000000", "d"))
+    gated.requires = "rope and grapple"
+    # No item held -> blocked, and we can name what's needed.
+    assert find_code_route("A", "C", [gated], _ROOMS) is None
+    assert missing_route_items("A", "C", [gated]) == ["rope and grapple"]
+    # Held -> reachable, nothing missing.
+    assert missing_route_items("A", "C", [gated], held_items={"rope and grapple"}) == []
+
+
+def test_missing_route_items_none_when_truly_unreachable():
+    from mmud.navigation.code_route import missing_route_items
+    p = _path("A", "B", ("A0000000", "n"))
+    assert missing_route_items("A", "Z", [p]) is None        # no route, item or not
+
+
+def test_missing_route_items_empty_when_a_land_route_exists():
+    from mmud.navigation.code_route import missing_route_items
+    land = _path("A", "C", ("A0000000", "n"))
+    assert missing_route_items("A", "C", [land]) == []

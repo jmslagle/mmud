@@ -72,3 +72,20 @@ class Navigator:
         names = {p.source_file or p.from_code
                  for p in self.all_paths() if p.from_code == p.to_code}
         return sorted(n for n in names if n)
+
+    def loop_choices(self) -> list[tuple[str, str]]:
+        """(identifier, label) for every loop path, for the picker. The identifier is
+        what `:loop <name>` accepts (filename stem, else room code); the label adds the
+        human room name (and NPC) so the picker reads 'Cave Worm Area (cavwloop)' or
+        'General Store (Giovanni) (sgen)' rather than a bare opaque code."""
+        out: dict[str, tuple[str, str]] = {}
+        for p in self.all_paths():
+            if p.from_code.upper() != p.to_code.upper():
+                continue
+            ident = p.source_file or p.from_code
+            if not ident:
+                continue
+            name = p.from_name or p.description or ident
+            label = name + (f" ({p.npc})" if p.npc else "") + f" ({ident.lower()})"
+            out[ident.upper()] = (ident, label)
+        return [out[k] for k in sorted(out, key=lambda k: out[k][1].lower())]
