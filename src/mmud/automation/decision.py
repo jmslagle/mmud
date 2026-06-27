@@ -5,6 +5,7 @@ from mmud.state.game_state import GameState
 # Priority slots mirroring megamud.exe's DoSomething order (lower = tried first).
 # Phases 2-11 register deciders into these slots; unused slots simply have no decider.
 PRIO_QUEUE = 0      # queued commands (login, path steps, user/remote commands)
+PRIO_EMERGENCY = 5  # critical-HP escape (recall) — fires even with combat toggled off
 PRIO_CURE = 10      # condition cures + panic            (Phase 2)
 PRIO_FLEE = 20      # flee/run rules                     (Phase 4)
 PRIO_SPELLS = 30    # heal/mana/attack/pre-attack/bless  (current SpellEngine)

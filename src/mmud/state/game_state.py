@@ -75,6 +75,8 @@ class GameState:
         self.ground_items: list[str] = []
         self.ground_coins: dict[str, int] = {}
         self.in_combat: bool = False
+        self.combat_enabled: bool = True   # MegaMud-style auto-combat toggle ("run"=off);
+                                           # off -> travel quick-moves through monster rooms
         self._command_queue: deque[str] = deque()
         self.task: TaskState = TaskState()
         self.kills: int = 0

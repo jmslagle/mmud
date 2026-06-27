@@ -88,6 +88,36 @@ _REVERSE = {"n": "s", "s": "n", "e": "w", "w": "e", "ne": "sw", "sw": "ne",
             "nw": "se", "se": "nw", "u": "d", "d": "u"}
 
 
+class EmergencyDecider:
+    """Critical-HP escape (our tier — MegaMud has no recall). When HP drops to/below
+    `emergency_threshold` (incl. going NEGATIVE), send the configurable `emergency_cmd`
+    (e.g. "sys go sil") ONCE — regardless of combat state or the combat toggle, so "run"
+    mode still bails when dying. Re-arms once HP recovers above the threshold. Registered
+    at PRIO_EMERGENCY (above cures/flee/combat) and never in the combat-toggle's
+    disabled slots."""
+
+    def __init__(self, config: CombatConfig | None = None) -> None:
+        cfg = config or CombatConfig()
+        self._cmd = cfg.emergency_cmd.strip()
+        self._threshold = cfg.emergency_threshold
+        self._sent = False
+
+    def decide(self, state: GameState) -> str | None:
+        if not self._cmd or self._threshold <= 0:
+            return None
+        if state.max_hp > 0:
+            hp_pct = state.hp / state.max_hp
+        else:                                  # max unknown: only act on actual ≤0 HP
+            hp_pct = 0.0 if state.hp <= 0 else 1.0
+        if hp_pct > self._threshold:
+            self._sent = False                 # recovered -> re-arm
+            return None
+        if self._sent:
+            return None                        # already bailed; don't spam the recall
+        self._sent = True
+        return self._cmd
+
+
 class CombatEngine:
     def __init__(self, config: CombatConfig | None = None,
                  sneak_cmd: str = "", must_sneak: bool = False) -> None:
@@ -96,8 +126,6 @@ class CombatEngine:
         self.flee_threshold = cfg.flee_threshold
         self.flee_rooms = max(1, cfg.flee_rooms)
         self.run_backwards = cfg.run_backwards
-        self.emergency_threshold = cfg.emergency_threshold
-        self.emergency_cmd = cfg.emergency_cmd.strip()
         self.rest_threshold = cfg.rest_threshold
         self.rest_mana_pct = cfg.rest_mana_pct
         self.mana_attack_pct = cfg.mana_attack_pct
@@ -112,7 +140,6 @@ class CombatEngine:
         self._engaged_target = ""   # monster we've already sent the attack at
         self._fleeing = False       # currently running away (low HP in combat)
         self._flee_retrace: list[str] = []   # precomputed backtrack moves (run_backwards)
-        self._emergency_sent = False
         self._resting = False       # server has us resting (prompt shows (Resting))
         self._rest_pending = False  # sent 'rest', awaiting the next prompt to confirm
         self._recovering = False    # recovering HP/mana -> keep resting until full
@@ -177,7 +204,6 @@ class CombatEngine:
         # With danger gone, the rest-to-recover block below brings HP/mana back to full.
         self._fleeing = False
         self._flee_retrace = []
-        self._emergency_sent = False
         self._sneaked_this_encounter = False
         self._sneak_confirmed = False
         self._engaged_target = ""
@@ -212,12 +238,8 @@ class CombatEngine:
     def _flee(self, state: GameState, hp_pct: float) -> str | None:
         """Run away when low on HP. MegaMud never sends the literal "flee" — it WALKS OUT
         an exit (one room per turn), retracing the way it came if RunBackwards, then rests
-        once safe. Below `emergency_threshold` it first sends the configurable
-        `emergency_cmd` (our tier — MegaMud has no recall) ONCE, then falls back to running."""
-        if (self.emergency_cmd and self.emergency_threshold > 0
-                and hp_pct <= self.emergency_threshold and not self._emergency_sent):
-            self._emergency_sent = True
-            return self.emergency_cmd
+        once safe. (The critical-HP `emergency_cmd` is a separate EmergencyDecider that
+        fires at a lower threshold, above this in priority.)"""
         if not self._fleeing:               # start of a run episode
             self._fleeing = True
             self._flee_retrace = []
