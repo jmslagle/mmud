@@ -18,6 +18,13 @@ def test_expand_annotated():
     assert expand_annotated("n") == ["n"]
     assert expand_annotated("w[search w]") == ["search w", "w"]
     assert expand_annotated("go path") == ["go path"]
+    # Many .MP steps carry an EMPTY annotation ("e[]", "w[]", "s[]") — just move; the
+    # brackets must be stripped, not sent literally as "e[]" (the live door-room bug).
+    assert expand_annotated("e[]") == ["e"]
+    assert expand_annotated("se[]") == ["se"]
+    # non-empty still expands (open the door, then move)
+    assert expand_annotated("d[use ancient obsidian key d]") == [
+        "use ancient obsidian key d", "d"]
 
 
 def test_matches_corpus_expect_hash_for_room_not_in_roomsmd():
