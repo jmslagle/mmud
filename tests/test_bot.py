@@ -28,6 +28,33 @@ async def test_connection_sends_and_receives(unused_tcp_port):
 
 
 @pytest.mark.asyncio
+async def test_monster_attacking_us_is_added_to_roster():
+    # Safety net: if something is hitting us (a wander-in the room display cleared, or a
+    # missed arrival), add it to the roster so the combat engine fights back instead of
+    # resting through the beating. (MegaMud re-scans the room on combat events.)
+    bot = make_transcript_bot([])
+    assert not bot._state.monsters_present
+    await bot._process_line("The cave worm lunges at you!\n")
+    assert any(m.name == "cave worm" for m in bot._state.monsters_present)
+    # our own attacks / players (no article) must NOT be mistaken for an attacker
+    bot._state.replace_monsters([])
+    await bot._process_line("You fire a frost jet at cave worm for 20 damage!\n")
+    await bot._process_line("Bob swings at you.\n")
+    assert not bot._state.monsters_present
+
+
+@pytest.mark.asyncio
+async def test_wander_in_survives_a_stray_exits_line():
+    # A monster wandering in occupies the room; a stray exits line with no "Also here:"
+    # must NOT clear it as an empty room (that made the bot rest/move through it).
+    bot = make_transcript_bot([])
+    await bot._process_line("A giant rat creeps into the room from nowhere.\n")
+    assert any(m.name == "giant rat" for m in bot._state.monsters_present)
+    await bot._process_line("Obvious exits: north, south\n")
+    assert any(m.name == "giant rat" for m in bot._state.monsters_present)
+
+
+@pytest.mark.asyncio
 async def test_bot_processes_line_and_issues_command(unused_tcp_port):
     """A monster in the room makes the bot initiate combat ('kill <monster>')."""
     received = []
