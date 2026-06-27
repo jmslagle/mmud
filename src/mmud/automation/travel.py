@@ -5,15 +5,20 @@ from mmud.events import GameEventBus, TravelResynced, TravelEnded
 from mmud.navigation.graph import RouteStep
 from mmud.state.game_state import GameState
 
-_ANNOTATION_RE = re.compile(r"^(.*?)\[(.+)\]$")
+_ANNOTATION_RE = re.compile(r"^(.*?)\[(.*)\]$")
 _MAX_RETRIES = 2
 
 
 def expand_annotated(command: str) -> list[str]:
-    """'w[search w]' -> ['search w', 'w']; plain commands pass through."""
+    """'w[search w]' -> ['search w', 'w'] (run the bracketed prep, then move).
+    'e[]' -> ['e'] — an EMPTY annotation is just a bare move; the brackets must be
+    stripped, not sent literally (the live 'e[]' door-room bug). Plain commands pass
+    through."""
     m = _ANNOTATION_RE.match(command.strip())
     if m and m.group(1).strip():
-        return [m.group(2).strip(), m.group(1).strip()]
+        move = m.group(1).strip()
+        inner = m.group(2).strip()
+        return [inner, move] if inner else [move]
     return [command.strip()]
 
 

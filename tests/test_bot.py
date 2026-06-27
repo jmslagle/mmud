@@ -202,6 +202,48 @@ async def test_bot_toggle_loop(unused_tcp_port):
         assert bot._loop_runner.running is False
 
 
+def _armed_loop_bot():
+    """A bot with a loop running and the route armed (not wandering)."""
+    from mmud.data.paths import GamePath, PathStep
+    from mmud.config.schema import MudConfig
+    config = MudConfig()
+    config.navigation.loop_path = "HOME"
+    bot = MudBot("localhost", 4000, patterns=[], config=config)
+    path = GamePath(from_code="HOME", from_region="", from_name="",
+                    to_code="HOME", to_region="", to_name="", npc="",
+                    steps=[PathStep(hex_id="AAAA0001", command="n"),
+                           PathStep(hex_id="BBBB0002", command="e")])
+    bot._navigator._paths[("HOME", "HOME")] = path
+    bot._state.set_room("HOME")
+    bot._state.current_hex = "AAAA0001"     # on the loop's first step -> resume, no wander
+    bot.toggle_loop()
+    return bot
+
+
+def test_stale_nav_failure_is_ignored():
+    # We sent 'w', but the server's "no exit" is echoing an OLDER 'n' (a superseded
+    # move still draining). Reacting would clear the route and fire a SECOND move on
+    # top of the in-flight 'w' -> the live double-move. The stale failure must be
+    # dropped: still on the loop, not wandering.
+    bot = _armed_loop_bot()
+    assert bot._travel.active and not bot._travel.wandering
+    bot._pending_move = "w"
+    bot._last_prompt_cmd = "n"          # server processed 'n', not our current 'w'
+    bot._parse_nav_failure("There is no exit in that direction!")
+    assert not bot._travel.wandering
+    assert bot._loop_runner.running
+
+
+def test_matching_nav_failure_triggers_recovery():
+    # The failure IS for our current move ('w' echoed) -> genuinely a dead end ->
+    # recover (wander to relocate the loop).
+    bot = _armed_loop_bot()
+    bot._pending_move = "w"
+    bot._last_prompt_cmd = "w"
+    bot._parse_nav_failure("There is no exit in that direction!")
+    assert bot._travel.wandering
+
+
 def test_bot_list_paths_empty():
     bot = MudBot("localhost", 4000, patterns=[])
     assert isinstance(bot.list_paths(), list)
@@ -329,6 +371,23 @@ async def test_title_colour_narrows_seen_to_single_id():
     exits = "Obvious exits: north, south"
     await bot._process_line(exits + "\n")                        # closes the block
     assert bot._state.last_room_hexes == {room_id("Graveyard", exits)}
+
+
+@pytest.mark.asyncio
+async def test_idle_room_display_updates_current_hex_by_hash():
+    # Live "Realm of Legends" rooms are mostly absent from ROOMS.MD, so position can't
+    # be NAME/ROOMS-detected. When idle (loop stopped, manual move), a room display that
+    # resolves to a single id must still update current_hex by HASH — else a loop
+    # RESTART resumes from a stale position. (MegaMud tracks one id per room.)
+    from mmud.parser.exits_parser import room_id
+    bot = make_transcript_bot([])
+    bot._title_color = "1;36"                                   # learned cyan titles
+    bot._state.current_hex = "STALE000"                         # stale from before
+    await bot._process_line("[HP=100/MA=50]:\n")
+    await bot._process_line("\x1b[1;36mSlum Street, Bend\x1b[0m\n")
+    exits = "Obvious exits: south, west"
+    await bot._process_line(exits + "\n")
+    assert bot._state.current_hex == room_id("Slum Street, Bend", exits)
 
 
 def test_keyed_door_reissues_move_not_the_whole_step():

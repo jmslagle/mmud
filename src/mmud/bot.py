@@ -272,6 +272,8 @@ class MudBot:
         self._travel_dest = ""             # "FROM->TO" for an active goto
         self._relocate_from = ""           # last hex we re-pathed from (anti-thrash)
         self._pending_move = ""
+        self._last_prompt_cmd = ""   # command the server echoed in its last "[HP=]:x"
+                                     # prompt — tells us which move a nav-failure is for
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
         # True once an "Also here:" line is parsed in the current room display;
         # checked at the "Obvious exits:" terminator to clear a monster-free room.
@@ -587,6 +589,14 @@ class MudBot:
         if clean:
             if "[hp=" in clean.lower():
                 self._room_block = []
+                # The server echoes the command it just processed after the prompt's
+                # "]:". Remember it so a stale nav-failure (the result of a SUPERSEDED
+                # move still draining) can be told apart from our current move's — else
+                # we'd clear the route and fire a second move on top of the in-flight
+                # one (the live double-move). Empty echo (bare prompt) -> leave as-is.
+                idx = clean.rfind("]:")
+                if idx != -1:
+                    self._last_prompt_cmd = clean[idx + 2:].strip().lower()
             else:
                 # Keep each line's foreground colour so we can pick out the room TITLE
                 # by colour (MegaMud identifies it by its display attribute) and hash
@@ -964,6 +974,14 @@ class MudBot:
         # Remember the current room's candidate hashes so travel can recognise a
         # departure-room re-display even when current_hex is stale/wrong.
         self._state.last_room_hexes = seen_hexes
+        # Keep position fresh by ROOM HASH even when the room isn't in ROOMS.MD (most
+        # live "Realm of Legends" rooms aren't, so confident_hex stays empty). When
+        # IDLE (not actively traveling — travel.on_arrival owns current_hex while a
+        # route runs) and the display resolves to a single id, commit it. Otherwise a
+        # manual move through an un-named room leaves current_hex stale and a loop
+        # RESTART can't tell we're standing on the loop. (MegaMud: one id per room.)
+        if not confident_hex and not self._travel.active and len(seen_hexes) == 1:
+            self._state.current_hex = next(iter(seen_hexes))
         # "Obvious exits:" terminates a room display. If this display showed no
         # "Also here:", the room has no monsters -> clear the roster (handles
         # rooms missing from ROOMS.MD, where name-detection can't fire).
@@ -1021,6 +1039,15 @@ class MudBot:
 
     def _parse_nav_failure(self, line: str) -> None:
         if not _NAV_FAIL_RE.search(line):
+            return
+        # Ignore a STALE failure: if the server's last echoed command isn't the move
+        # we're currently awaiting, this "no exit" belongs to a superseded move still
+        # draining through the pipeline. Acting on it would clear the route and issue a
+        # SECOND move on top of the in-flight one (the live double-move) and falsely
+        # declare us lost. Only act when the failure is for our current move (or we
+        # have no echo/pending move to compare).
+        if (self._last_prompt_cmd and self._pending_move
+                and self._last_prompt_cmd != self._pending_move):
             return
         # A bad direction while following a recorded loop means we've desynced
         # (common in hash-colliding areas like the graveyard). Retrying the dead
