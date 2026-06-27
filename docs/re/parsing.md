@@ -21,7 +21,13 @@ between rounds. (The old "any MESSAGES.MD apply-match → in_combat" was a bug.)
 - `<name> is dead.` → re-scan the room (re-read `Also here:`), don't name-remove.
 - `<name> drops to the ground!` → **player/party** death, NOT a monster kill.
 - `You do not see X` is a departure (`room_entity_movement_parse @0x4589c0`, by name).
-- An exits line with **no** `Also here:` clears a monster-free room.
+- An exits line with **no** `Also here:` clears a monster-free room — BUT a wander-in
+  (`X creeps into the room`) now marks the room occupied (`_also_here_seen`), so a stray
+  exits line can't clear a just-arrived monster (it would otherwise rest/move through it).
+- **Safety net (`_engage_attacker`):** when a line says `The <monster> <attack-verb> …
+  you`, the attacker is added to the roster if absent — so we fight back even if its
+  arrival was missed or cleared by a room-display race (the "rests through a monster
+  beating on it" bug). MegaMud re-scans the room on combat events; this is our equivalent.
 
 This killed phantom-target spam + cross-room accumulation. A stale
 `monsters=['fat giant rat', …]` at index 0 in the session log reveals a phantom target.

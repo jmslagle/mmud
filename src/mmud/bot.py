@@ -81,6 +81,14 @@ _MONSTER_HIT_RE = re.compile(
     r"\w+ you(?: with [\w' ]+)? for (\d+) damage", re.IGNORECASE)
 # A round where the monster missed = a dodge (drives Dodge%).
 _DODGE_RE = re.compile(r"misses you|miss you\b|You (?:dodge|parry|evade|sidestep)", re.IGNORECASE)
+# Who is attacking us: "The <monster> <attack-verb> ... you". Article-prefixed (players
+# attack without one). The attacker name (group 1) is added to the roster as a safety
+# net so we fight back even if its arrival was missed/cleared and we'd otherwise rest.
+_ATTACKER_RE = re.compile(
+    r"^(?:A|An|The)\s+(.+?)\s+(?:snaps?|lunges?|claws?|bites?|chomps?|hits?|swings?|"
+    r"gores?|mauls?|strikes?|slashes?|tears?|rips?|pounds?|attacks?|stabs?|smashes?|"
+    r"slams?|crushes?|kicks?|punches?|spits?|breathes?|blasts?|shoots?|gnaws?|"
+    r"thrusts?|jabs?|hacks?|chops?|lashes?)\b.*\byou\b", re.IGNORECASE)
 _BACKSTAB_RE = re.compile(r"\bbackstab", re.IGNORECASE)
 _CRIT_RE = re.compile(r"critical|devastat|annihilat|massacre|demolish|savage", re.IGNORECASE)
 _SNEAK_OK_RE = re.compile(r"move silently|begin to sneak", re.IGNORECASE)
@@ -648,6 +656,7 @@ class MudBot:
         self._parse_exits(clean)
         self._parse_combat_state(clean)
         self._parse_monster_removal(clean)
+        self._engage_attacker(clean)
         self._parse_combat_stats(clean)
         self._handle_doors(clean)
         self._parse_nav_failure(clean)
@@ -780,6 +789,9 @@ class MudBot:
                 else:
                     for s in built:
                         self._state.add_monster(s)
+                    # A wander-in occupies the room: mark it seen so the next exits line
+                    # doesn't clear the just-arrived monster as an "empty room".
+                    self._also_here_seen = True
                 self._session_log.event(
                     "monsters=" + repr([(m.name, getattr(m, "kill_type", 0))
                                         for m in self._state.monsters_present]))
@@ -1044,6 +1056,24 @@ class MudBot:
         self._last_seen_hex = ""
         if self._state.task.type is TaskType.SEARCHING:
             self._state.complete_task()
+
+    def _engage_attacker(self, line: str) -> None:
+        """Safety net: a monster is hitting us. Ensure it's in the roster so the combat
+        engine fights back instead of resting/moving through the beating — covers a
+        wander-in the room display cleared, or an arrival we missed entirely. MegaMud
+        re-scans the room on combat events; this is our equivalent."""
+        from mmud.parser.room_parser import _plausible_monster_name
+        m = _ATTACKER_RE.match(line)
+        if not m:
+            return
+        name = m.group(1).strip()
+        if not _plausible_monster_name(name):
+            return
+        if any(s.name.lower() == name.lower() for s in self._state.monsters_present):
+            return                              # already tracked -> nothing to do
+        self._state.add_monster(self._build_sighting(name, 1))
+        self._also_here_seen = True
+        self._session_log.event(f"under attack by {name!r} -> re-added to roster")
 
     def _parse_monster_removal(self, line: str) -> None:
         """Drop a monster from the roster on a named death / slay / "you do not
