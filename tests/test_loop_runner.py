@@ -33,6 +33,19 @@ def test_route_for_path_expectations():
     assert steps[1].expect == frozenset({"AAAA0001"})   # final edge -> home
 
 
+def test_find_specific_loop_variant_by_filename():
+    # Two CAVW loops differ only by file. loop_path must pick the right one by name.
+    a = GamePath(from_code="CAVW", from_region="", from_name="Cave", to_code="CAVW",
+                 to_region="", to_name="", npc="",
+                 steps=[PathStep("H0", "e")], source_file="CAVWLOOP")
+    b = GamePath(from_code="CAVW", from_region="", from_name="Cave", to_code="CAVW",
+                 to_region="", to_name="", npc="",
+                 steps=[PathStep("H0", "e"), PathStep("H1", "s")], source_file="CAVWLOP2")
+    travel = TravelDecider(ItemsConfig(), StealthConfig(), GameEventBus())
+    assert LoopRunner(NavigationConfig(loop_path="cavwlop2"), [a, b], ROOMS, travel)._path is b
+    assert LoopRunner(NavigationConfig(loop_path="CAVWLOOP"), [a, b], ROOMS, travel)._path is a
+
+
 def test_find_loop_by_filename_or_description_case_insensitively():
     # A custom "slm2loop.mp" whose code is SLMC must resolve by code, by the filename
     # stem, AND by header description — all case-insensitive.

@@ -1220,7 +1220,7 @@ class MudBot:
 
     def _make_loop_runner(self):
         from mmud.automation.loop_runner import LoopRunner
-        paths = list(self._navigator._paths.values())
+        paths = self._navigator.all_paths()
         lr = LoopRunner(self._config.navigation, paths, self._rooms, self._travel,
                         code_route=self._code_route,
                         current_code=self._state.current_room,

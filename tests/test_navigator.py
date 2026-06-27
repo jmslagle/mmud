@@ -33,6 +33,17 @@ def test_get_path_finds_registered_path():
     assert nav.get_path("AAAA", "BBBB") is p
 
 
+def test_keeps_multiple_loops_at_the_same_source_room(tmp_path):
+    # Two CAVW loops (different files) both start at CAVW. A (from,to) key would
+    # collapse them to one; keying by filename keeps BOTH.
+    d = tmp_path / "p"; d.mkdir()
+    (d / "CAVWLOOP.MP").write_text("[Loop A][]\n[CAVW:R:Cave]\nH0:H0:1:-1:0:::\nH0:0000:e\n")
+    (d / "CAVWLOP2.MP").write_text("[Loop B][]\n[CAVW:R:Cave]\nH0:H0:2:-1:0:::\nH0:0000:e\nH1:0000:s\n")
+    nav = Navigator.from_directories([d])
+    assert {"CAVWLOOP", "CAVWLOP2"} <= {p.source_file.upper() for p in nav.all_paths()}
+    assert {"CAVWLOOP", "CAVWLOP2"} <= set(nav.list_loop_paths())
+
+
 def test_get_path_is_case_insensitive():
     nav = Navigator([_path("SLMC", "A070", ["e"])])
     assert nav.get_path("slmc", "a070") is not None     # lowercase query
