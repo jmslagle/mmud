@@ -66,6 +66,20 @@ def test_emergency_decider_fires_once_below_threshold():
     assert d.decide(gs) == "sys go sil"
 
 
+def test_emergency_breaks_combat_before_the_escape_command():
+    # In MajorMUD you're combat-locked and can't recall/`sys go` until you `break`. So in
+    # combat the emergency sends `break` first, then the escape command right after (queued
+    # so it drains on the next line, before combat re-engages).
+    from mmud.combat.combat import EmergencyDecider
+    gs = GameState()
+    gs.set_hp(3, 100)
+    gs.set_combat(True)
+    d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="sys go sil"))
+    assert d.decide(gs) == "break"
+    assert gs.dequeue() == "sys go sil"       # escape queued right after the break
+    assert d.decide(gs) is None               # debounced
+
+
 def test_emergency_decider_fires_even_in_run_mode_and_when_hp_negative():
     from mmud.combat.combat import EmergencyDecider
     gs = GameState()

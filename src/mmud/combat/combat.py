@@ -94,7 +94,9 @@ class EmergencyDecider:
     (e.g. "sys go sil") ONCE — regardless of combat state or the combat toggle, so "run"
     mode still bails when dying. Re-arms once HP recovers above the threshold. Registered
     at PRIO_EMERGENCY (above cures/flee/combat) and never in the combat-toggle's
-    disabled slots."""
+    disabled slots. In combat we're locked out of recall/`sys go`, so we send `break`
+    first and queue the escape right behind it (drains on the next line, before the fight
+    re-engages)."""
 
     def __init__(self, config: CombatConfig | None = None) -> None:
         cfg = config or CombatConfig()
@@ -115,6 +117,10 @@ class EmergencyDecider:
         if self._sent:
             return None                        # already bailed; don't spam the recall
         self._sent = True
+        if state.in_combat:
+            # Combat-locked: break first, then fire the escape immediately behind it.
+            state.enqueue(self._cmd)
+            return "break"
         return self._cmd
 
 

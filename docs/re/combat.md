@@ -179,6 +179,8 @@ separate always-active `EmergencyDecider` (PRIO_EMERGENCY, above cures/flee/comb
 NOT in the combat-toggle's disabled slots): at/below `emergency_threshold` HP (incl.
 going negative) it sends the configurable `emergency_cmd` (e.g. `sys go sil`) ONCE,
 re-arming after recovery — so it fires even in **"run" mode** when combat is toggled off.
+In combat you're locked out of recall/`sys go`, so it sends **`break` first** and queues
+the escape right behind it (drains on the next line, before the fight re-engages).
 Full source: [`source/combat_flee_or_hide_decide.md`](source/combat_flee_or_hide_decide.md).
 
 **Run mode = move THROUGH monsters.** `TravelDecider` holds for an attackable monster
