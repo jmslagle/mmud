@@ -15,14 +15,52 @@ def test_attacks_when_in_combat():
     assert cmd == "kill orc"
 
 
-def test_flees_when_critically_low_hp():
+def test_flees_by_moving_out_an_exit_when_low_hp():
+    # MegaMud never sends the literal "flee" — at low HP it WALKS OUT an exit (one room
+    # per turn), avoiding the reverse of the way it came, then rests. This replaces the
+    # old "flee" spam.
     gs = GameState()
     gs.set_combat(True)
     gs.set_hp(10, 100)   # 10% HP
     gs.set_mana(50, 100)
+    gs.last_exits = ["n", "s"]
+    gs.move_history.append("n")          # came in via 'n' -> avoid 's' (its reverse)
     ce = CombatEngine(CombatConfig(flee_threshold=0.15))
-    cmd = ce.decide(gs)
-    assert cmd == "flee"
+    assert ce.decide(gs) == "n"          # moves out, NOT the literal "flee"
+
+
+def test_flee_falls_back_to_flee_command_with_no_known_exits():
+    # Genuinely trapped (no exits parsed) -> the MajorMUD "flee" verb is the last resort.
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(10, 100)
+    gs.set_mana(50, 100)
+    ce = CombatEngine(CombatConfig(flee_threshold=0.15))
+    assert ce.decide(gs) == "flee"
+
+
+def test_flee_run_backwards_retraces_move_history():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(10, 100)
+    gs.set_mana(50, 100)
+    gs.last_exits = ["n", "s", "e", "w"]
+    gs.move_history.extend(["n", "e"])   # came in n then e
+    ce = CombatEngine(CombatConfig(flee_threshold=0.15, run_backwards=True, flee_rooms=2))
+    assert ce.decide(gs) == "w"          # retrace: reverse of last move 'e'
+    assert ce.decide(gs) == "s"          # then reverse of 'n'
+
+
+def test_emergency_command_then_falls_back_to_running():
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(3, 100)                    # 3% -> below emergency
+    gs.set_mana(50, 100)
+    gs.last_exits = ["n"]
+    ce = CombatEngine(CombatConfig(flee_threshold=0.15, emergency_threshold=0.05,
+                                   emergency_cmd="recall"))
+    assert ce.decide(gs) == "recall"    # critical -> the configurable escape command (once)
+    assert ce.decide(gs) == "n"         # already sent -> fall back to running out
 
 
 def test_no_command_when_not_in_combat_and_healthy():

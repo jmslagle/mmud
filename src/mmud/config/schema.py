@@ -41,7 +41,11 @@ class LoginConfig:
 @dataclass
 class CombatConfig:
     attack_cmd: str = "kill"
-    flee_threshold: float = 0.15
+    flee_threshold: float = 0.15   # HP fraction below which we RUN (move out, then rest)
+    flee_rooms: int = 4            # how many rooms to run when fleeing (MegaMud RunRooms)
+    emergency_threshold: float = 0.0  # HP fraction below which we send emergency_cmd (0=off)
+    emergency_cmd: str = ""        # critical-HP escape command (e.g. "recall") — our tier;
+                                   # MegaMud has none. Sent once, then we fall back to running.
     rest_threshold: float = 0.40   # HP fraction below which we rest (out of combat)
     rest_mana_pct: float = 0.0     # mana fraction below which we rest (0 = off)
     backstab: bool = False

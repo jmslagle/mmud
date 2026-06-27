@@ -157,3 +157,23 @@ where the spell engine's `CASTING` task stops pinning travel. Fix (`TravelDecide
 hold (return None) while `attackable_sightings(state, attack_neutral)` is non-empty; the
 combat/spell slots fight, and travel resumes once the room clears. Neutral NPCs/guards
 (kill-type 2) are not attackable, so the bot still walks past them.
+
+## Flee = RUN out (then rest), not the "flee" command
+RE'd `combat_flee_or_hide_decide @0x407f70` + `combat_rest_decide @0x40b380` +
+`navigation_step_decide @0x405290` / `roam_random_exit_select @0x425900` /
+`path_move_execute @0x407010`. **MegaMud never sends the MajorMUD `flee` verb and has no
+recall.** At `curHP < MaxHP*HpRun%/100` (offset `0x3768`; same for Mana via `ManaRun%`
+`0x3784`) it arms a **run counter `0x54b8` = RunRooms (`0x54bc`, default 4)** ONCE, then
+walks out **one exit per turn** — a random allowed exit avoiding the reverse of the last
+move (`roam_random_exit_select`), or **retraces the path-step history** if `RunBackwards`
+(`0x3a1c`). `path_move_execute` decrements the counter per room. **Resting is suppressed
+while the counter > 0** (`combat_rest_decide` returns 0); when it hits 0 it sends `rest`
+and recovers to `HpRest%`/full. Anti-spam = arm-once + decrement-per-move + lock-step.
+The only hard escape is PvP disconnect (`[PvP] FleeTimeout`); **no recall command exists**.
+
+Our port (`CombatEngine._flee`): at `hp_pct <= flee_threshold` (HpRun%), walk out a real
+exit (avoid the reverse), retracing `move_history` if `run_backwards`; fall back to the
+literal `flee` only when NO exits are known (genuinely trapped); once safe (out of combat)
+the existing rest-to-recover block rests to full. Added a non-MegaMud **emergency tier**:
+below `emergency_threshold`, send the configurable `emergency_cmd` (e.g. `recall`) ONCE,
+then fall back to running. Full source: [`source/combat_flee_or_hide_decide.md`](source/combat_flee_or_hide_decide.md).
