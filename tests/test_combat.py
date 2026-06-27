@@ -248,25 +248,42 @@ def test_no_config_uses_defaults():
 
 
 def test_sneak_before_first_attack():
+    # The auto-sneak is an OPENER: it fires before engaging (not in combat), then attacks.
     from mmud.config.schema import CombatConfig
     gs = GameState()
-    gs.set_combat(True)
+    gs.set_combat(False)
     gs.set_hp(80, 100)
     gs.set_mana(80, 100)
     gs.monsters_present = [MonsterSighting(name="orc")]
     ce = CombatEngine(CombatConfig(), sneak_cmd="sneak")
-    assert ce.decide(gs) == "sneak"         # first: sneak
+    assert ce.decide(gs) == "sneak"         # first: sneak (opener)
     assert ce.decide(gs) == "kill orc"      # second: attack
+
+
+def test_no_sneak_once_in_combat_spell_to_melee():
+    # The bug: at the cast->melee switch we're already in combat, so trying to sneak just
+    # spams "You may not sneak right now!". The auto-sneak must NOT fire once in combat.
+    from mmud.config.schema import CombatConfig
+    gs = GameState()
+    gs.set_combat(True)                     # spell already engaged
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    ce = CombatEngine(CombatConfig(), sneak_cmd="sneak")
+    assert ce.decide(gs) == "kill orc"      # melee, NOT sneak
+    # and a between-round *Combat Off* flicker (still the same fight) must not sneak either
+    gs.set_combat(False)
+    assert ce.decide(gs) is None            # already engaged this target -> no sneak
 
 
 def test_must_sneak_holds_attack_until_sneak_succeeds():
     gs = GameState()
-    gs.set_combat(True)
+    gs.set_combat(False)
     gs.set_hp(80, 100)
     gs.set_mana(80, 100)
     gs.monsters_present = [MonsterSighting(name="orc")]
     ce = CombatEngine(CombatConfig(), sneak_cmd="sneak", must_sneak=True)
-    assert ce.decide(gs) == "sneak"     # issue the sneak
+    assert ce.decide(gs) == "sneak"     # issue the sneak (opener)
     assert ce.decide(gs) is None        # hold: not confirmed yet
     ce.on_line("You move silently into the shadows.")
     assert ce.decide(gs) == "kill orc"  # confirmed: attack
@@ -277,7 +294,7 @@ def test_must_sneak_issues_sneak_without_auto_sneak():
     # issue the sneak (not deadlock on None waiting for a confirm that never
     # comes). Proves the engine is fine; the deadlock was bot wiring passing "".
     gs = GameState()
-    gs.set_combat(True)
+    gs.set_combat(False)
     gs.set_hp(80, 100)
     gs.set_mana(80, 100)
     gs.monsters_present = [MonsterSighting(name="orc")]
@@ -290,7 +307,7 @@ def test_must_sneak_issues_sneak_without_auto_sneak():
 
 def test_must_sneak_retries_after_failure():
     gs = GameState()
-    gs.set_combat(True)
+    gs.set_combat(False)
     gs.set_hp(80, 100)
     gs.set_mana(80, 100)
     gs.monsters_present = [MonsterSighting(name="orc")]

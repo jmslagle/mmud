@@ -184,3 +184,14 @@ Full source: [`source/combat_flee_or_hide_decide.md`](source/combat_flee_or_hide
 **Run mode = move THROUGH monsters.** `TravelDecider` holds for an attackable monster
 only when `state.combat_enabled` is on; with combat toggled off ("run") it quick-moves
 through monster rooms instead of stopping to fight.
+
+## Stealth opener: backstab before spells; sneak only out of combat
+- **Backstab opens BEFORE the attack spell.** Priority moved to `PRIO_BACKSTAB=29`
+  (above `PRIO_SPELLS=30`), mirroring MegaMud's `combat_backstab_prepare` (DoSomething
+  step 0xB) running before `cast_configured_spell` (step 0x18). So a stealth character
+  hides/sneaks/backstabs first, then casts/melees.
+- **The combat engine's auto-sneak is an OPENER only** — it fires solely when NOT yet
+  engaged (`not in_combat and not _engaged_target`). It was firing at the cast→melee
+  switch (in combat) and on between-round `*Combat Off*` flickers, spamming "You may not
+  sneak right now!". (The backstab engine's own sneak is part of its hide→sneak→stab
+  sequence and is latched off once in combat — see the opener-latch note above.)
