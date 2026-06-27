@@ -9,10 +9,18 @@ Driven by the authoritative `*Combat Engaged*` / `*Combat Off*` markers
 (`bot._parse_combat_state`). **`*Combat Off*` does NOT clear the roster** — it fires
 between rounds. (The old "any MESSAGES.MD apply-match → in_combat" was a bug.)
 
-## Monster roster
+## Monster roster (RE: `combat_event_parse @0x4176b0`, see [source](source/combat_event_parse.md))
 - `Also here:` **REPLACES** the roster; arrivals append-if-absent.
-- A kill (`You gain N experience`) removes the current target (MegaMud's slot-0
-  `room_entity_slot_remove`); named death/slay/`You do not see X` remove by exact name.
+- **A kill is `You gain N experience.` — AUTHORITATIVE.** It removes the current target
+  (MegaMud's pinned slot-0 `room_entity_slot_remove @0x45a850`, by INDEX not name),
+  clears the target, and requests a room re-scan. `You have progressed too far without
+  training` is also a kill (maxed char, no XP).
+- **MegaMud has NO per-monster death string** (none in MONSTERS.MD). The varied flavor
+  death lines ("collapses without a sound", "falls to the ground, and is still") are
+  **ignored** — don't build a generic death regex to remove on them.
+- `<name> is dead.` → re-scan the room (re-read `Also here:`), don't name-remove.
+- `<name> drops to the ground!` → **player/party** death, NOT a monster kill.
+- `You do not see X` is a departure (`room_entity_movement_parse @0x4589c0`, by name).
 - An exits line with **no** `Also here:` clears a monster-free room.
 
 This killed phantom-target spam + cross-room accumulation. A stale

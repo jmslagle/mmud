@@ -120,3 +120,18 @@ the window before that confirmation we re-issued `rest` on every line (echoes, e
 and **flooded the server** (30+ in 0.5 s → "Why don't you slow down?"). Fix: a
 `_rest_pending` flag set when we send `rest`, cleared on the next `[HP=..]` prompt; we
 won't re-send while resting OR pending. Issues exactly one `rest` per prompt cycle.
+
+## Decision cadence — act at the turn boundary, not on every line
+MegaMud parses the server stream per-line (`combat_event_parse @0x4176b0`) but its
+cast/melee DECISION runs on the AI tick, reading the CURRENT pinned target (room-entity
+slot 0). So when `You gain N experience.` clears the target, the next decision simply
+picks the next monster — it never casts the just-killed one.
+
+Our port decided after **every** received line, so it raced the kill: it cast on the
+cast-result damage line (`You fire a frost jet at X for N damage!`) microseconds before
+the `You gain N experience.` line in the SAME packet cleared the roster — wasting the
+cast on a dead monster and resending. Fix (`bot._process_line` → `self._can_act`):
+**during combat, only act at the turn boundary** — the `[HP=]` prompt or a room display
+(`Also here:` / `Obvious exits:`); the streaming hit/death/exp lines just update state.
+Out of combat there's no gating. Queued commands (login/door/loot/user) always flush.
+See [`source/combat_event_parse.md`](source/combat_event_parse.md).

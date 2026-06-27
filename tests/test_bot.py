@@ -282,6 +282,47 @@ async def test_room_display_emits_hash_location_when_unknown():
     assert locs and locs[-1] == room_id("Slum Street, Bend", exits)
 
 
+@pytest.mark.asyncio
+async def test_no_action_decision_on_midround_lines_during_combat():
+    # During combat, the streaming hit/damage/death lines must NOT trigger a new action
+    # — deciding mid-round races the kill (we cast a monster that dies microseconds later
+    # in the same packet, then resend). The bot acts only at the turn boundary (prompt)
+    # or a room display. Outside combat, behaviour is unchanged.
+    bot = make_transcript_bot([])
+    bot._state.set_combat(True)
+    await bot._process_line("You fire a frost jet at orc for 20 damage!\n")
+    assert not bot._can_act                      # mid-round result -> hold
+    await bot._process_line("The dark cultist collapses without a sound.\n")
+    assert not bot._can_act                      # flavor death -> hold
+    await bot._process_line("[HP=100/MA=100]:\n")
+    assert bot._can_act                          # prompt = turn boundary -> act
+    # A monster appearing (room display) is also a valid in-combat decision point.
+    await bot._process_line("Also here: a rat.\n")
+    assert bot._can_act
+
+
+@pytest.mark.asyncio
+async def test_progressed_too_far_counts_as_a_kill():
+    # MegaMud (combat_event_parse @0x4176b0) treats "You have progressed too far without
+    # training" as a kill (a maxed character that gets no XP) — same target removal.
+    from mmud.state.game_state import MonsterSighting
+    bot = make_transcript_bot([])
+    bot._state.monsters_present = [MonsterSighting(name="orc")]
+    kills0 = bot._state.kills
+    await bot._process_line("You have progressed too far without training to gain more experience.\n")
+    assert bot._state.kills == kills0 + 1
+    assert not bot._state.monsters_present          # the target was removed
+
+
+@pytest.mark.asyncio
+async def test_out_of_combat_acts_every_line():
+    # No combat -> no gating (existing behaviour: act on the sighting line immediately).
+    bot = make_transcript_bot([])
+    bot._state.set_combat(False)
+    await bot._process_line("You notice something glitter.\n")
+    assert bot._can_act
+
+
 def test_toggle_combat_disables_attack_slots():
     # MegaMud-style combat toggle: off -> the attack deciders are skipped so the bot
     # quick-moves past monsters ("run"); on -> they're restored.
