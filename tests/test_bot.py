@@ -67,6 +67,31 @@ async def test_wander_in_survives_a_stray_exits_line():
     assert any(m.name == "giant rat" for m in bot._state.monsters_present)
 
 
+def test_nudge_due_when_task_waiting_and_server_quiet():
+    # Prompt-gated decisions stall if the server goes quiet while we're waiting on a task.
+    # MegaMud re-evaluates ~1Hz; our equivalent is a keepalive Enter after ~2s of no
+    # prompt while work is pending (instead of waiting out the 10s idle refresh).
+    from mmud.state.tasks import TaskType
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    bot._last_prompt_at = 0.0
+    bot._last_refresh = 0.0
+    bot._state.begin_task(TaskType.WAITING, priority=60, timeout_s=30.0, now=0.0)
+    assert bot._nudge_due(3.0)          # 3s quiet + task active -> nudge
+    assert not bot._nudge_due(1.0)      # only 1s quiet -> wait
+    bot._last_prompt_at = 2.5
+    assert not bot._nudge_due(3.0)      # a prompt arrived 0.5s ago -> no nudge
+
+
+def test_no_fast_nudge_when_nothing_pending():
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    bot._last_prompt_at = 0.0
+    bot._last_refresh = 0.0
+    # no task / travel / queue / pending move -> the slow 10s idle refresh handles it
+    assert not bot._nudge_due(5.0)
+
+
 def _equip_item(name, slot):
     from mmud.data.binary import Item
     return Item(record_id=1, name=name, source="", suffix="", item_type=1,

@@ -63,3 +63,11 @@ while login (pre-game, no READY) and the command queue (login/door/loot/user) st
 immediately. This is the root fix for the double-move / dead-target-cast / sneak-spam
 class; the earlier symptom patches (stale-failure prompt-echo guard, backstab
 opener-latch) remain as belt-and-suspenders.
+
+**Fast stuck-nudge (2026-06-27).** Prompt-gating means the bot stalls if the server goes
+quiet while waiting on a trigger, recovering only on the slow 10s idle refresh. MegaMud
+re-evaluates ~1Hz regardless of server data (the comms thread's `GetTickCount` re-post).
+Our equivalent (`bot._nudge_due`): send a keepalive Enter after **NUDGE_S=2s** of no
+`[HP=]` prompt *when work is pending* (`task.is_active or travel.active or command_queue
+or pending_move`); truly-idle (nothing pending) keeps the 10s refresh. The Enter draws a
+fresh prompt so the decision loop re-fires.

@@ -55,6 +55,9 @@ _STAT_MANA_RE = re.compile(r"\bMana(?:/Kai)?:\s*(\d+)/(\d+)")
 # between rounds mid-fight, so it only toggles the flag — it does NOT clear the
 # roster (combat_event_parse @ 0x004176b0).
 IDLE_REFRESH_S = 10.0   # idle keepalive: bare Enter every 10s (MegaMud parity)
+NUDGE_S = 2.0           # while WORK is pending but the server's gone quiet, send a
+                        # keepalive Enter this fast (prompt-gated decisions stall
+                        # otherwise — MegaMud re-evaluates ~1Hz; see docs/re/timing.md)
 STALL_TIMEOUT_S = 35.0  # in-game RX silence past this => dead/half-open socket.
                         # Idle refresh (10s) always draws a prompt from a live
                         # server, so ~3 missed prompts means the connection died.
@@ -289,6 +292,8 @@ class MudBot:
         self._last_prompt_cmd = ""   # command the server echoed in its last "[HP=]:x"
                                      # prompt — tells us which move a nav-failure is for
         self._last_refresh = 0.0   # last idle-refresh (bare Enter) send
+        self._last_prompt_at = time.monotonic()   # last "[HP=]" prompt (any) — drives the
+                                                  # fast stuck-nudge when work is pending
         # True once an "Also here:" line is parsed in the current room display;
         # checked at the "Obvious exits:" terminator to clear a monster-free room.
         self._also_here_seen = False
@@ -502,6 +507,21 @@ class MudBot:
         for key, value in out.items():
             self._emit(SessionStatUpdated(key=key, value=value))
 
+    def _nudge_due(self, now: float) -> bool:
+        """Should we send a keepalive Enter NOW? True when in-game, work is PENDING (a
+        task, travel, a queued command, or a move in flight) and no prompt has arrived for
+        NUDGE_S — i.e. the server went quiet while our prompt-gated decision loop is
+        waiting on a trigger. (Truly idle, with nothing pending, falls to the 10s idle
+        refresh.) Mirrors MegaMud's ~1Hz re-evaluation — see docs/re/timing.md."""
+        if not self._login_handler.in_game:
+            return False
+        pending = (self._state.task.is_active or self._travel.active
+                   or bool(self._state._command_queue) or bool(self._pending_move))
+        if not pending:
+            return False
+        return (now - self._last_prompt_at >= NUDGE_S
+                and now - self._last_refresh >= NUDGE_S)
+
     async def _maybe_idle_refresh(self) -> None:
         """MegaMud's 10-second room refresh (ai_room_refresh_trigger @ 0x00407e1a):
         when idle in-game it sends a bare Enter so the server re-prints the
@@ -513,7 +533,13 @@ class MudBot:
         if not self._login_handler.in_game:
             return
         now = time.monotonic()
-        if (now - self._last_activity >= IDLE_REFRESH_S
+        if self._nudge_due(now):
+            # We have work pending but the server went quiet — our decisions only fire on
+            # a prompt, so draw a fresh one fast instead of waiting out the 10s refresh.
+            self._last_refresh = now
+            self._session_log.tx("(nudge)")
+            await self._conn.send("")
+        elif (now - self._last_activity >= IDLE_REFRESH_S
                 and now - self._last_refresh >= IDLE_REFRESH_S):
             self._last_refresh = now
             self._session_log.tx("(idle refresh)")
@@ -619,6 +645,7 @@ class MudBot:
         if clean:
             if "[hp=" in clean.lower():
                 self._room_block = []
+                self._last_prompt_at = time.monotonic()   # prompts are flowing
                 # The server echoes the command it just processed after the prompt's
                 # "]:". Remember it so a stale nav-failure (the result of a SUPERSEDED
                 # move still draining) can be told apart from our current move's — else
