@@ -4,7 +4,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 
 
 class StatsBar(Widget):
@@ -23,12 +23,16 @@ class StatsBar(Widget):
     StatsBar .zone:last-of-type {
         border-right: none;
     }
+    StatsBar .zone Horizontal {
+        height: 1;
+    }
     """
 
     hp: reactive[int] = reactive(0)
     max_hp: reactive[int] = reactive(0)
     mp: reactive[int] = reactive(0)
     max_mp: reactive[int] = reactive(0)
+    room: reactive[str] = reactive("")
 
     class HpUpdate(Message):
         def __init__(self, hp: int, max_hp: int) -> None:
@@ -53,9 +57,11 @@ class StatsBar(Widget):
         self.session: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
-        with Horizontal(classes="zone"):
-            yield Static("HP: 0/0", id="hp-label")
-            yield Static("MP: 0/0", id="mp-label")
+        with Vertical(classes="zone"):
+            with Horizontal():
+                yield Static("HP: 0/0", id="hp-label")
+                yield Static("  MP: 0/0", id="mp-label")
+            yield Static("", id="room-label")
         with Horizontal(classes="zone"):
             yield Static("", id="session-label")
         with Horizontal(classes="zone"):
@@ -80,6 +86,13 @@ class StatsBar(Widget):
 
     def on_stats_bar_session_update(self, message: SessionUpdate) -> None:
         self.session[message.key] = message.value
+        if message.key == "location":
+            # Where we are — shown under HP/MP in the bottom-left zone (room code+name
+            # when ROOMS.MD-known, else the raw room hash). Not a middle-zone nav stat.
+            self.room = message.value
+            self.query_one("#room-label", Static).update(
+                f"@ {message.value}" if message.value else "")
+            return
         # skip empty values so a cleared status (e.g. "activity") doesn't show
         nav_parts = [f"{lbl} {self.session[k]}"
                      for k, lbl in self._NAV_LABELS.items() if self.session.get(k)]

@@ -13,6 +13,7 @@ _MENU = """\
   Ctrl+G          this menu
   Ctrl+K          connect / disconnect
   Ctrl+L          start / stop the loop
+  Ctrl+F          toggle auto-combat (off = "run": quick-move, no attacks)
   Ctrl+O          settings editor
   Ctrl+R          toggle the right panel
   Ctrl+B          toggle the stats bar
@@ -30,6 +31,8 @@ _MENU = """\
                     e.g.  :find arena
   :goto TARGET    travel to a room by 4-letter code OR name
                     e.g.  :goto CLKR   or   :goto newhaven arena
+  :combat [on|off] toggle auto-combat (Ctrl+F)
+  :run [off]      quick-move with combat off (':run off' re-enables)
   :paths          list available loop paths
   :status         HP/MP, room, loop state
   :connect / :disconnect
