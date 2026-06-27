@@ -106,6 +106,28 @@ def test_attack_spell_in_combat():
     assert cmd == "magic missile orc"
 
 
+def test_cast_count_resets_on_kill_not_just_empty_room():
+    # MegaMud (combat_flee_or_hide_decide @0x407f70) resets the main attack cast counter
+    # on EVERY kill, so it re-casts up to MaxCastCnt against each NEW monster — not
+    # MaxCastCnt total per room. Resetting only when the room empties made the bot melee
+    # everything with full mana after the first few casts ("wonky").
+    from mmud.state.game_state import MonsterSighting
+    cfg = SpellsConfig(attack="fjet", max_cast_count=2)
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(80, 100)
+    gs.set_mana(80, 100)            # well above the mana floor
+    gs.monsters_present = [MonsterSighting(name="orc")]
+    engine = SpellEngine(cfg, mana_attack_pct=0.2)
+    assert engine.decide(gs) == "fjet orc"     # cast 1
+    assert engine.decide(gs) == "fjet orc"     # cast 2
+    assert engine.decide(gs) is None           # cap reached -> melee
+    # A kill (room still has the next monster, still in combat) must reset the cap.
+    engine.on_kill()
+    gs.monsters_present = [MonsterSighting(name="rat")]
+    assert engine.decide(gs) == "fjet rat"     # casts the new target, not stuck meleeing
+
+
 def test_mana_heal_when_mana_low():
     cfg = SpellsConfig(mana_heal="meditate", mana_heal_pct=0.30)
     gs = GameState()

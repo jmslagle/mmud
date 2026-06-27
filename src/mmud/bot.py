@@ -1026,6 +1026,9 @@ class MudBot:
         self._state.inventory_dirty = True   # loot may have dropped
         if self._state.task.type is TaskType.CASTING:
             self._state.abort_task()
+        # MegaMud resets the attack cast cap per KILL -> re-cast the next monster instead
+        # of meleeing the rest of the room with full mana (the spell->melee "wonky").
+        self._spell_engine.on_kill()
         self._session_log.event(
             "monsters=" + repr([m.name for m in self._state.monsters_present])
             + f" ({reason})")

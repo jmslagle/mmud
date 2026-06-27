@@ -54,16 +54,22 @@ poisoned store — restart the process to pick up fixes.**
 
 ## Cast vs melee, per round
 
-`combat_flee_or_hide_decide @0x408f36`, `combat_spell_cast @0x407b7d`,
-`combat_weapon_equip_decide @0x408fd0`:
+`combat_flee_or_hide_decide @0x407f70` (full cleaned source:
+[`source/combat_flee_or_hide_decide.md`](source/combat_flee_or_hide_decide.md)),
+`combat_spell_cast @0x407b7d`, `combat_weapon_equip_decide @0x408fd0`:
 
 - **ManaAttack% is a FLOOR** (`state+0x3794`): cast only if `curMana(0x5390) >=
   ManaAttack% * maxMana(0x5398) / 100`; **below it → MELEE** (logs "Mana/Kai too low").
   It is NOT a wait — per-round, so it resumes casting if mana recovers.
-- **Cast caps, reset per encounter:** `MaxCastCnt` (`0x4d74`; per-spell override at
-  spell+0x44) caps the number of attack casts; `AttMaxDmg` (`0x4d78`) caps accumulated
-  damage (`0x9584`). castCount `0x4d70`. Hitting either → melee the rest of the fight.
-  Counters reset on room entry / new combat.
+- **Cast caps, RESET PER KILL** (not per room): `MaxCastCnt` (`0x4d74`; per-monster
+  override at monster_rec+0x44) caps attack casts; `AttMaxDmg` (`0x4d78`) caps
+  accumulated cast damage (`0x9584`). castCount `0x4d70`. Hitting either → melee. The
+  main counter (`0x4d70`) + damage accumulator (`0x9584`) are zeroed on EVERY kill (both
+  kill branches of `combat_event_parse @0x4176b0`) and on room move/refresh — so MegaMud
+  re-casts up to MaxCastCnt against EACH new monster. (The Mult-slot counter `0x4d68` is
+  the only per-room one.) Resetting only on an empty room made our bot melee the rest of
+  the room with full mana after the first few casts — fixed via `SpellEngine.on_kill()`,
+  called from `bot._on_monster_killed`.
 - **Per-spell min mana** (`SPELLS.MD +0x60`) and a 4-second cast cooldown also gate a
   cast inside `combat_spell_cast`; failing either → melee.
 - Weapon swap (`combat_weapon_equip_decide`, flag `0x531c`) equips the cast/melee
