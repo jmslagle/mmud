@@ -18,8 +18,13 @@ does something, spawn a focused Ghidra subagent (keep the big decompiles out of 
 main context) and have it return the exact algorithm + function addresses + verbatim
 decisive lines.
 
+When you RE a function, **write its cleaned C/pseudocode to `docs/re/source/<function>.md`**
+(one file per function, address + named offsets in a header, a ```` ```c ```` block, and
+a "Ported to" pointer) so it never has to be re-derived. The prose in `docs/re/*.md`
+summarises concepts and links to those source files. See `docs/re/source/README.md`.
+
 Memory under `~/.claude/projects/.../memory/` records confirmed RE findings — check
-it before re-deriving, and update it when you confirm something new.
+it (and `docs/re/source/`) before re-deriving, and update it when you confirm something new.
 
 ## Workflow
 - Branch → commit → merge (never commit straight to main). End commit messages with

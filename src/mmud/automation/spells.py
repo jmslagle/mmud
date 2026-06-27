@@ -58,6 +58,18 @@ class SpellEngine:
         """Advance one game tick (call once per ~1Hz timer)."""
         self._ticks += 1
 
+    def on_kill(self) -> None:
+        """A monster died. MegaMud resets the main attack cast counter (and the
+        AttMaxDmg accumulator) on EVERY kill — combat_flee_or_hide_decide @0x407f70 /
+        combat_event_parse @0x4176b0 — so it re-casts up to MaxCastCnt against each NEW
+        monster, not MaxCastCnt total for the whole room. Resetting only when the room
+        emptied made the bot melee everything with full mana after the first few casts."""
+        self._attack_casts = 0
+        self._cast_primary_next = True
+        # Weapon swap-back is left to the empty-room path: `_swapped_to_melee` is only
+        # ever set when a melee_weapon_cmd is configured, and swapping back needs to emit
+        # that command (which on_kill can't). For the common no-swap setup it stays False.
+
     def on_line(self, line: str) -> None:
         """Detect a buff's fade line (per-bless `refresh_on`) and mark it for an
         immediate re-cast — true 'always-on', better than MegaMud's blind timer."""
