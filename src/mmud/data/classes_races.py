@@ -14,11 +14,17 @@ class ClassRaceDB:
 
     @classmethod
     def from_dir(cls, data_dir: pathlib.Path | None) -> "ClassRaceDB":
-        if data_dir is None:
-            return cls({}, {})
-        cf, rf = data_dir / "CLASSES.MD", data_dir / "RACES.MD"
-        classes = {c.record_id: c.name for c in load_classes(cf)} if cf.exists() else {}
-        races = {r.record_id: r.name for r in load_races(rf)} if rf.exists() else {}
+        return cls.from_dirs([data_dir] if data_dir is not None else [])
+
+    @classmethod
+    def from_dirs(cls, dirs) -> "ClassRaceDB":
+        """Resolve CLASSES.MD/RACES.MD across `dirs` (override order, case-insensitive),
+        so the per-BBS extra dir overrides the bundled set."""
+        from mmud.data.store import resolve_md
+        cf = resolve_md(dirs, "CLASSES.MD")
+        rf = resolve_md(dirs, "RACES.MD")
+        classes = {c.record_id: c.name for c in load_classes(cf)} if cf else {}
+        races = {r.record_id: r.name for r in load_races(rf)} if rf else {}
         return cls(classes, races)
 
     def class_name(self, class_id: int) -> str:

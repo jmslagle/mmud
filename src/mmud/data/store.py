@@ -129,6 +129,22 @@ def _file_fingerprint(path: pathlib.Path) -> str:
     return f"sha256:{hashlib.sha256(data).hexdigest()}:{len(data)}"
 
 
+def resolve_md(dirs, name: str) -> "pathlib.Path | None":
+    """First file named `name` (case-insensitive) across `dirs`, in order. Lets the
+    per-BBS data set (extra_paths_dir, mixed-case 'Monsters.md') override the bundled
+    one ('MONSTERS.MD') for the .MD data files, not just the .MP paths."""
+    for d in dirs:
+        d = pathlib.Path(d)
+        cand = d / name
+        if cand.exists():
+            return cand
+        if d.is_dir():
+            for f in d.iterdir():
+                if f.is_file() and f.name.lower() == name.lower():
+                    return f
+    return None
+
+
 @dataclass
 class ImportReport:
     added: dict[str, int] = field(default_factory=dict)
@@ -161,15 +177,19 @@ def prune_learned_resolvable(store: GameStore) -> int:
     return len(drop)
 
 
-def import_md(store: GameStore, data_dir: pathlib.Path) -> ImportReport:
+def import_md(store: GameStore, data_dir) -> ImportReport:
     """Convert/merge the MDB2 binaries into the store. Never writes the MDs.
 
+    `data_dir` is a single dir OR a list of dirs in OVERRIDE order (first-found wins,
+    case-insensitive) — so the per-BBS extra_paths_dir overrides the bundled .MD files.
     Text sources (.MP, ROOMS.MD, MESSAGES.MD) are deliberately not imported.
     """
+    dirs = ([data_dir] if isinstance(data_dir, (str, pathlib.Path))
+            else list(data_dir))
     report = ImportReport()
     for filename, (section, loader) in _LOADERS.items():
-        src = data_dir / filename
-        if not src.exists():
+        src = resolve_md(dirs, filename)
+        if src is None:
             continue
         fp = _file_fingerprint(src)
         if store.data["sources"].get(filename, {}).get("fingerprint") == fp:

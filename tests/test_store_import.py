@@ -12,6 +12,22 @@ def test_initial_import_pins_real_counts(tmp_path, data_dir):
     assert s.data["monsters"]["1"]["origin"] == "md"
 
 
+def test_extra_dir_overrides_bundled_md_case_insensitive(tmp_path):
+    # The per-BBS data set overrides the bundled .MD files (first-found wins,
+    # case-insensitive): paths/Default has giant rat as HOSTILE (combat_rating 4) while
+    # the bundled extraction has it NEUTRAL (3) — the override must win.
+    import pathlib, pytest
+    bundled = pathlib.Path("extractions/mm103s.exe.extracted/45DAD/Default")
+    extra = pathlib.Path("paths/Default")
+    if not (bundled / "MONSTERS.MD").exists() or not (extra / "Monsters.md").exists():
+        pytest.skip("MD data dirs not present")
+    s = GameStore(tmp_path / "g.json")
+    import_md(s, [extra, bundled])           # extra (per-BBS) listed first -> overrides
+    gr = next(r for r in s.data["monsters"].values()
+              if r["name"] == "giant rat" and r["record_id"] == 1)
+    assert gr["combat_rating"] == 4          # hostile, from paths/Default (not bundled 3)
+
+
 def test_second_import_skips_unchanged(tmp_path, data_dir):
     s = GameStore(tmp_path / "gamedb.json")
     import_md(s, data_dir)
