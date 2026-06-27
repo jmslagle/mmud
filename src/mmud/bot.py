@@ -1447,6 +1447,67 @@ class MudBot:
     def toggle_combat(self) -> str:
         return self.set_combat_enabled(not self._combat_enabled)
 
+    def get_all(self) -> str:
+        """Pick up everything on the ground by WALKING the list — one 'get <item>' per
+        item — instead of a blanket 'get all' (which grabs junk / some servers reject)."""
+        items = list(self._state.ground_items)
+        if not items:
+            return "Nothing on the ground to get"
+        for name in items:
+            self._state.enqueue(f"get {name}")
+        self._state.ground_items.clear()
+        self._session_log.event(f"get-all: {items}")
+        return f"Getting {len(items)} item(s): {', '.join(items)}"
+
+    def equip_all(self) -> str:
+        """Equip every carried, equippable, not-worn item by WALKING the inventory — one
+        'equip <item>' per item — not a blanket 'wear all'. (Run `i` first so inventory
+        is fresh.)"""
+        worn = {w.lower() for w in self._state.inventory.worn}
+        out: list[str] = []
+        for name in self._state.inventory.carried:
+            if name.lower() in worn:
+                continue
+            rec = self._item_db.find(name) if self._item_db else None
+            if rec is None or getattr(rec, "equip_slot", 0) <= 0:
+                continue
+            self._state.enqueue(f"equip {name}")
+            out.append(name)
+        if not out:
+            return "Nothing carried to equip (run `i` to refresh inventory)"
+        self._session_log.event(f"equip-all: {out}")
+        return f"Equipping {len(out)} item(s): {', '.join(out)}"
+
+    def mark_worn_as_auto(self) -> str:
+        """Add everything we're currently WEARING to the auto-get + auto-equip lists, so
+        after a death/disarm the bot re-grabs and re-equips this exact kit. Persists to
+        the config file when possible. (Run `i` first so the worn list is fresh.)"""
+        worn = list(self._state.inventory.worn)
+        if not worn:
+            return "Not wearing anything to mark (run `i` to refresh inventory)"
+        get_list = list(self._config.items.get_items)
+        eq_list = list(self._config.items.equip_items)
+
+        def add(lst: list[str], name: str) -> None:
+            if name.lower() not in {x.lower() for x in lst}:
+                lst.append(name)
+
+        for name in worn:
+            add(get_list, name)
+            add(eq_list, name)
+        svc = self._config_service
+        persisted = bool(svc and svc.can_persist)
+        if svc is not None:
+            svc.patch("items", "get_items", get_list, persist=persisted)
+            svc.patch("items", "equip_items", eq_list, persist=persisted)
+        else:
+            self._config.items.get_items = get_list
+            self._config.items.equip_items = eq_list
+        self._equip_decider.set_allow_list(eq_list)   # GetDecider reads config live
+        self._session_log.event(f"mark-worn auto get+equip: {worn}")
+        return (f"Marked {len(worn)} worn item(s) for auto-get + auto-equip"
+                + ("" if persisted else " (in-memory only)"))
+
     def maybe_build_web_server(self):
         """Construct the web control-panel server iff [web] config is enabled.
 

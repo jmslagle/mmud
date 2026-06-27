@@ -25,8 +25,9 @@ _EVENT_TYPES: tuple[type, ...] = (
 _QUICKTOOL: dict[str, str] = {
     "n": "n", "ne": "ne", "e": "e", "se": "se",
     "s": "s", "sw": "sw", "w": "w", "nw": "nw", "u": "u", "d": "d",
-    "get-all": "get all", "drop-all": "drop all", "equip-all": "wear all",
-    "deposit": "deposit all", "search": "search", "afk": "afk",
+    # get-all / equip-all / mark-worn are handled by post_quicktool via the bot (they
+    # walk the inventory one item at a time, not a blanket "get all"/"wear all").
+    "drop-all": "drop all", "deposit": "deposit all", "search": "search", "afk": "afk",
 }
 
 _FRONTEND_DIST = pathlib.Path(__file__).parent / "frontend" / "dist"
@@ -159,6 +160,14 @@ class WebPanelServer:
         @app.post("/api/quicktool")
         async def post_quicktool(body: QuickToolBody):
             action = body.action.strip().lower()
+            # Walk-the-list actions go through the bot (one command per item), not a
+            # blanket "get all"/"wear all".
+            if action == "get-all":
+                return {"ok": True, "action": action, "sent": bot.get_all()}
+            if action == "equip-all":
+                return {"ok": True, "action": action, "sent": bot.equip_all()}
+            if action == "mark-worn":
+                return {"ok": True, "action": action, "sent": bot.mark_worn_as_auto()}
             cmd = quicktool_command(action)
             if cmd is None:
                 return JSONResponse({"detail": f"unknown action: {action}"}, status_code=400)

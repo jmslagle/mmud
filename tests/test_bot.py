@@ -54,6 +54,53 @@ async def test_wander_in_survives_a_stray_exits_line():
     assert any(m.name == "giant rat" for m in bot._state.monsters_present)
 
 
+def _equip_item(name, slot):
+    from mmud.data.binary import Item
+    return Item(record_id=1, name=name, source="", suffix="", item_type=1,
+                equip_slot=slot, ac_or_dmg=0, weight=0, value=0, extra_stat1=0,
+                flags=0x40000000)
+
+
+def test_get_all_walks_ground_items_not_blanket_all():
+    # "Get all" should send one 'get <item>' per ground item (walk the list), not the
+    # literal "get all".
+    bot = make_transcript_bot([])
+    bot._state.ground_items = ["a rusty sword", "a small shield"]
+    bot.get_all()
+    cmds = []
+    while (c := bot._state.dequeue()) is not None:
+        cmds.append(c)
+    assert cmds == ["get a rusty sword", "get a small shield"]
+    assert bot._state.ground_items == []
+
+
+def test_equip_all_walks_carried_equippables():
+    from mmud.data.item_db import ItemDB
+    from mmud.state.inventory import Inventory
+    bot = make_transcript_bot([])
+    bot._item_db = ItemDB([_equip_item("plate mail", 5), _equip_item("torch", 0)])
+    bot._state.inventory = Inventory(carried_counts={"plate mail": 1, "torch": 1})
+    bot.equip_all()
+    cmds = []
+    while (c := bot._state.dequeue()) is not None:
+        cmds.append(c)
+    assert cmds == ["equip plate mail"]      # torch (slot 0) isn't equippable
+
+
+def test_mark_worn_adds_to_auto_get_and_equip():
+    from mmud.state.inventory import Inventory
+    bot = make_transcript_bot([])
+    bot._state.inventory = Inventory(worn=["plate mail", "steel helm"])
+    bot.mark_worn_as_auto()
+    assert "plate mail" in bot._config.items.get_items
+    assert "steel helm" in bot._config.items.get_items
+    assert "plate mail" in bot._config.items.equip_items
+    # the live equip allow-list is updated too, and it's idempotent
+    assert "plate mail" in bot._equip_decider._only
+    bot.mark_worn_as_auto()
+    assert bot._config.items.get_items.count("plate mail") == 1
+
+
 @pytest.mark.asyncio
 async def test_bot_processes_line_and_issues_command(unused_tcp_port):
     """A monster in the room makes the bot initiate combat ('kill <monster>')."""

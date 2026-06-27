@@ -14,6 +14,9 @@ _MENU = """\
   Ctrl+K          connect / disconnect
   Ctrl+L          start / stop the loop
   Ctrl+F          toggle auto-combat (off = "run": quick-move, no attacks)
+  Ctrl+T          get ALL ground items (walks the list, not "get all")
+  Ctrl+E          equip ALL carried gear (walks the list)
+  Ctrl+W          mark currently-worn gear as auto-get + auto-equip
   Ctrl+O          settings editor
   Ctrl+R          toggle the right panel
   Ctrl+B          toggle the stats bar
@@ -33,6 +36,9 @@ _MENU = """\
                     e.g.  :goto CLKR   or   :goto newhaven arena
   :combat [on|off] toggle auto-combat (Ctrl+F)
   :run [off]      quick-move with combat off (':run off' re-enables)
+  :get            pick up all ground items, one at a time (Ctrl+T)
+  :equip          equip all carried gear, one at a time (Ctrl+E)
+  :markworn       mark worn gear as auto-get + auto-equip (Ctrl+W)
   :paths          list available loop paths
   :status         HP/MP, room, loop state
   :connect / :disconnect
