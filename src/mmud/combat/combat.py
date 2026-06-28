@@ -184,6 +184,13 @@ class CombatEngine:
         # attack_neutral is off) never trigger an initiation — that's the fix for
         # auto-attacking town guards/shopkeepers.
         if state.in_combat or attackable_sightings(state, self.attack_neutral):
+            if state.max_hp > 0 and state.hp < 0:
+                # Mortally wounded (genuinely negative HP, not the hp=0 default): the server
+                # rejects attack/flee/recall ("You may not do that while you are mortally
+                # wounded!"). Don't spam moves it can't make; wait it out (HP regens). The
+                # emergency recall already fired at the higher prio. (When SAFE, the rest
+                # block below recovers us.)
+                return None
             if state.max_hp > 0 and hp_pct <= self.flee_threshold:
                 return self._flee(state, hp_pct)
             # MegaMud melees below ManaAttack% (it doesn't wait) — the spell engine

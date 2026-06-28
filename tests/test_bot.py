@@ -1003,6 +1003,22 @@ def test_levelup_triggers_restat():
     assert "stat" in drained
 
 
+def test_negative_hp_is_parsed_so_emergency_can_fire():
+    # "[HP=-257/MA=72]" (mortally wounded) must parse to NEGATIVE hp. The digit-only regex
+    # froze hp at the last positive value, so the emergency threshold never saw the crash
+    # and the bot kept fleeing ("n", rejected "you are mortally wounded") instead of recalling.
+    from mmud.combat.combat import EmergencyDecider
+    from mmud.config.schema import CombatConfig
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    bot._state.set_hp(168, 168)
+    bot._parse_vitals("[HP=-257/MA=72]:")
+    assert bot._state.hp == -257
+    # and the emergency decider fires at negative hp
+    d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="sys go sil"))
+    assert d.decide(bot._state) in ("sys go sil", "break")   # break-first if flagged in-combat
+
+
 def test_combat_markers_toggle_in_combat():
     # *Combat Engaged* / *Combat Off* drive in_combat; *Combat Off* must NOT
     # clear the roster (it fires between rounds mid-fight).
