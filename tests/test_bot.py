@@ -104,6 +104,49 @@ def test_nudge_due_when_task_waiting_and_server_quiet():
     assert not bot._nudge_due(3.0)      # a prompt arrived 0.5s ago -> no nudge
 
 
+def test_pregame_only_drains_login_queue_not_the_ai():
+    # The login-screen bug: during auto-login the bot ran the full decision engine every
+    # line, so it cast bless spells (shld/armr) at the "User-ID:" prompt. While logging in it
+    # must ONLY drain the command queue (login replies), never the combat/spell/travel AI.
+    from mmud.config.schema import MudConfig, LoginConfig
+    config = MudConfig()
+    config.login = LoginConfig(username="Raist", password="pw", auto_login=True)
+    bot = make_transcript_bot([], config=config)
+    bot._login_handler.in_game = False
+    calls = []
+    bot._next_command = lambda: (calls.append(1), "BLESS")[1]   # stand-in for the AI engine
+    # empty queue, pre-game -> nothing sent, engine NOT consulted
+    assert bot._turn_command(False) is None
+    assert calls == []
+    # a queued login reply still drains pre-game
+    bot._state.enqueue("Raist")
+    assert bot._turn_command(False) == "Raist"
+    assert calls == []
+    # in-game (ready) -> the engine runs
+    bot._login_handler.in_game = True
+    bot._ready = True
+    assert bot._turn_command(True) == "BLESS"
+    assert calls == [1]
+
+
+@pytest.mark.asyncio
+async def test_login_pager_enter_is_sent_not_dropped():
+    # The bot hung at "(N)onstop, (Q)uit, or (C)ontinue?": the pager reply is "" (a bare
+    # Enter) and the run loop's `if cmd:` dropped it. It must be sent (is not None).
+    from mmud.config.schema import MudConfig, LoginConfig
+    config = MudConfig()
+    config.login = LoginConfig(username="Raist", password="pw", auto_login=True)
+    bot = make_transcript_bot([
+        'If you already have a User-ID on this system, type it in: ',
+        "Enter your password: ",
+        "(N)onstop, (Q)uit, or (C)ontinue?",
+    ], config=config)
+    await bot.run()
+    assert "Raist" in bot._conn.sent
+    assert "pw" in bot._conn.sent
+    assert "" in bot._conn.sent          # the pager Enter — sent, not dropped
+
+
 def test_no_fast_nudge_when_nothing_pending():
     bot = make_transcript_bot([])
     bot._login_handler.in_game = True

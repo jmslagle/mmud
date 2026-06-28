@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 class ServerConfig:
     host: str = "localhost"
     port: int = 4000
+    auto_connect: bool = False   # connect to the server automatically on TUI start (pairs
+                                 # with [login] auto_login for fully hands-off startup)
 
 
 @dataclass
