@@ -141,6 +141,25 @@ We advance **one step per arrival** (follow the command) and re-anchor only on a
   stale at route start — and ignore it once.
 - **Optimistic advance.** An arrival matching no known step is trusted as a successful
   move (advance via the planned dest), since most live rooms aren't in the corpus.
+- **±1 peek (B1, 2026-06-28).** Before the optimistic advance, when the single
+  (title-narrowed) id is neither on-track nor a confident anchor, peek the adjacent
+  steps: if it equals **step cursor+1**'s expected id (subset of `seen_hexes`) we
+  overshot one room → advance the cursor by **2**; if it equals **step cursor−1**'s id
+  we under-shot / the prior room re-displayed past the one-shot guard → **hold**. Gated
+  on an exact-subset match of the narrowed id (not the broad block set) so a far-off
+  colliding dest can't false-fire. Mirrors `path_follow_step_decide`'s quick realign.
+- **3-miss counter + true Lost! (B1, 2026-06-28).** A genuine mismatch (non-empty
+  `seen_hexes`, not on-track / peek / confident) bumps `_misses` (MegaMud `state+0x152d`);
+  a SINGLE mismatch only counts — it does not relocate. After **3** (`> 2`) we set
+  `travel.lost` and post `TravelLost`; the bot (`_handle_travel_lost`) **STOPs** the
+  loop with a "Lost!" status rather than blind-wandering (MegaMud doesn't). An EMPTY
+  `seen_hexes` ("no id this room") follows the command without counting a miss. Misses
+  reset on any on-track / peek-hit / confident hit and in `set_route`.
+- **Cumulative re-engage give-up (B1, 2026-06-28).** `LoopRunner.recover()` counts
+  re-engage attempts since the last completed lap (`_MAX_REENGAGE`); a changed
+  `travel.lap` resets the budget. Closes the hole where `set_route` zeroes the
+  per-wander move counter so a maze that desyncs every approach re-arms forever and
+  never trips `_MAX_WANDER`.
 
 ## Stale start position from undetected rooms (the Temple→WALT bug)
 

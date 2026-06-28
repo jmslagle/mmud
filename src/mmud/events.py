@@ -101,6 +101,13 @@ class TravelEnded:
 
 
 @dataclass
+class TravelLost:
+    """The path cursor saw 3 consecutive genuine id mismatches (MegaMud's
+    state+0x152d > 2 with no re-path hit). The bot STOPs rather than blind-wander."""
+    step: int   # 1-based cursor position when Lost fired
+
+
+@dataclass
 class ConfigChanged:
     section: str   # config section name, e.g. "combat"
     field: str     # field name within the section

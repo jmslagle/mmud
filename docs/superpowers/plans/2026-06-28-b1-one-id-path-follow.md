@@ -1,5 +1,13 @@
 # Plan: B1 — finish the one-id path-follow (±1 peek, miss-counter, true Lost!)
 
+> STATUS (2026-06-28): IMPLEMENTED & merged. Steps 1-4 done (TDD).
+> - Step 1: confirmed (existing `test_title_colour_narrows_seen_to_single_id`).
+> - Step 2: ±1 peek in `TravelDecider.on_arrival` (overshoot +2 / undershoot hold).
+> - Step 3: `_misses` counter + `travel.lost`/`TravelLost`; `bot._handle_travel_lost`
+>   STOPs the loop with a "Lost!" status instead of wandering.
+> - Step 4: `LoopRunner._MAX_REENGAGE` cumulative give-up (reset on lap change).
+> Full suite green (864). Live tuning (CAVWLOOP) is the only remaining item.
+
 ## Context
 
 CAVWLOOP grinds correctly now (Fix A killed the permanent false-SJLM relocate cycle), but in

@@ -1,6 +1,6 @@
 from mmud.automation.travel import TravelDecider, expand_annotated
 from mmud.config.schema import ItemsConfig, StealthConfig
-from mmud.events import GameEventBus, TravelResynced, TravelEnded
+from mmud.events import GameEventBus, TravelResynced, TravelEnded, TravelLost
 from mmud.navigation.graph import RouteStep
 from mmud.state.game_state import GameState
 
@@ -291,6 +291,46 @@ def test_chain_collision_does_not_jump_forward():
     assert gs.current_hex == "A"             # optimistic: step 0's planned dest
 
 
+def test_peek_overshoot_advances_two_steps():
+    # MegaMud's ±1 realign: we issued step 0's move but the single title-id we see is
+    # actually step 1's destination (we skipped/overshot one room). Re-sync one ahead
+    # (cursor += 2), don't treat it as a genuine mismatch.
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("n", "B"), _step("w", "C")])
+    assert d.decide(gs) == "e"               # cursor 0, expecting A
+    d.on_arrival(gs, {"B"})                   # but we see B == step[1].expect (overshot)
+    assert d._cursor == 2                     # jumped +2, re-synced ahead
+    assert gs.current_hex == "B"
+    assert not d.lost
+    assert d.decide(gs) == "w"               # now at step 2
+
+
+def test_peek_undershoot_holds_cursor():
+    # The arrived single title-id is the PRIOR step's room (under-shot / the prior
+    # room re-displayed past the one-shot guard): hold the cursor, don't advance.
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("n", "B"), _step("w", "C")], start_at=1)
+    assert d.decide(gs) == "n"               # cursor 1, expecting B
+    d.on_arrival(gs, {"A"})                   # we see A == step[0].expect (under-shot)
+    assert d._cursor == 1                     # held, did NOT advance
+    assert not d.lost
+    assert d.decide(gs) == "n"               # re-issues the same step
+
+
+def test_peek_does_not_fire_on_non_adjacent_collision():
+    # A later step's dest colliding into an early room must NOT trigger the ±1 peek —
+    # only an exact cursor±1 match realigns (gate against hash-collision false jumps).
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("n", "B"), _step("w", "C"), _step("s", "D")])
+    assert d.decide(gs) == "e"               # cursor 0
+    d.on_arrival(gs, {"C"})                  # C is step-2 dest, not cursor±1
+    assert d._cursor == 1                     # optimistic +1 only (no peek jump)
+    assert gs.current_hex == "A"
+
+
 def test_resync_does_not_jump_backward_on_hash_collision():
     # Live bug: deep in a loop (step ~30), the arrived room's BROAD candidate-hash
     # set (a long room description yields ~25 colliding hashes) intersects an early
@@ -306,6 +346,42 @@ def test_resync_does_not_jump_backward_on_hash_collision():
     d.on_arrival(gs, {"COLLIDE", "ZZ"})     # collides only with idx 2, not idx 7
     assert d._cursor == 8                    # advanced, NOT thrown back to idx 3
     assert d.decide(gs) == "i"
+
+
+def test_three_genuine_misses_fires_lost_one_does_not():
+    # MegaMud bumps a miss counter (state+0x152d) on each genuine id mismatch and only
+    # declares "Lost!" after 3 (>2); a single mismatch must NOT trip it. We have no
+    # full re-path, so we keep optimistically advancing until the 3rd miss, then signal
+    # Lost so the bot STOPs (MegaMud doesn't blind-wander) and the cursor stops marching.
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelLost, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step(c, f"H{i}") for i, c in enumerate("abcdef")])
+    d.decide(gs); d.on_arrival(gs, {"ZZ1"})
+    assert d._misses == 1 and not d.lost and not received   # 1 miss: not lost
+    d.decide(gs); d.on_arrival(gs, {"ZZ2"})
+    assert d._misses == 2 and not d.lost and not received   # 2 misses: still not lost
+    d.decide(gs); d.on_arrival(gs, {"ZZ3"})
+    assert d.lost                                            # 3rd genuine miss -> Lost!
+    assert len(received) == 1
+    frozen = d._cursor
+    d.decide(gs); d.on_arrival(gs, {"ZZ4"})                  # cursor stops marching
+    assert d._cursor == frozen
+    assert len(received) == 1                                # signalled exactly once
+
+
+def test_unknown_room_arrivals_do_not_count_as_misses():
+    # Most live rooms aren't hashable (empty seen). Following the command through them
+    # is "no id, just follow" — it must NOT count toward the Lost miss counter, else a
+    # long loop of un-named rooms would falsely declare Lost.
+    d = _decider()
+    gs = GameState()
+    d.set_route([_step(c, f"H{i}") for i, c in enumerate("abcdef")])
+    for _ in range(4):
+        d.decide(gs); d.on_arrival(gs, "")
+    assert d._misses == 0 and not d.lost
 
 
 def test_off_route_hash_advances_optimistically():

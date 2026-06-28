@@ -203,6 +203,38 @@ def test_recover_wanders_to_relocate_the_loop():
     assert travel.decide(gs) == "n"            # loop re-engaged
 
 
+def test_recover_gives_up_after_cumulative_reengages():
+    # Defense-in-depth: set_route (re-engage) resets the wander move counter, so a maze
+    # that desyncs every approach never trips _MAX_WANDER. Track re-engages since the
+    # last completed lap; after K, GIVE UP instead of re-arming forever.
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])
+    runner, travel, gs = _runner(path)
+    lost = []
+    runner.on_lost = lambda reason="": lost.append(reason)
+    runner.start()
+    for _ in range(4):                         # K=4 re-engages still wander
+        msg = runner.recover()
+        assert "wander" in msg.lower()
+        assert runner.running
+    msg = runner.recover()                      # the 5th (> K) -> give up
+    assert not runner.running
+    assert lost                                # on_lost fired
+
+
+def test_reengage_counter_resets_after_a_completed_lap():
+    # A completed lap (travel.lap advances) means real progress -> reset the re-engage
+    # budget so a healthy loop that occasionally desyncs isn't eventually given up on.
+    path = _loop("HOME", [("AAAA0001", "n"), ("BBBB0002", "s")])
+    runner, travel, gs = _runner(path)
+    runner.start()
+    for _ in range(4):
+        runner.recover()
+    travel.lap = 1                             # a lap completed -> progress
+    for _ in range(4):                         # budget reset -> wanders again
+        msg = runner.recover()
+        assert runner.running, msg
+
+
 def test_reports_missing_item_instead_of_wandering_lost():
     # Known room, but the only route to the loop is gated by an item we don't hold.
     # Don't wander off "lost" — say exactly which item is needed, and stop.

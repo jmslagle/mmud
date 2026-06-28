@@ -24,6 +24,7 @@ CASES = [
     (ev.DbCollision("monsters", 42), {"type": "DbCollision", "db": "monsters", "record_id": 42}),
     (ev.TravelResynced(1, 4), {"type": "TravelResynced", "from_step": 1, "to_step": 4}),
     (ev.TravelEnded("arrived"), {"type": "TravelEnded", "reason": "arrived"}),
+    (ev.TravelLost(7), {"type": "TravelLost", "step": 7}),
     # ConfigChanged is serializable too (general serializer); it is intentionally
     # NOT in the web server's broadcast list (_EVENT_TYPES) — config edits aren't game state.
     (ev.ConfigChanged("combat", "attack_cmd", "bash"), {"type": "ConfigChanged", "section": "combat", "field": "attack_cmd", "value": "bash"}),
