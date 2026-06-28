@@ -68,7 +68,11 @@ _NAV_FAIL_RE = re.compile(
     # door/gate obstacles owned by DoorMonitor (_handle_doors); treating them as
     # nav failures hijacked the move into lost-recovery before we could open/bash.
     r"(?:you can'?t go that way|alas|there is no exit|"
-    r"you cannot go that direction|no exit)",
+    r"you cannot go that direction|no exit|"
+    # Overweight rejection — MegaMud treats it as a blocked exit (room_door_response_parse
+    # @0x426307), not a hang. We never freeze travel on weight (caps gate PICKUP), so if
+    # the server ever blocks a move for load, fail it -> retry, then clear, not nudge forever.
+    r"you are too heavy to move)",
     re.IGNORECASE,
 )
 # Melee hit: optional adverb (e.g. "critically") before the verb, then "... for N damage".
@@ -250,7 +254,7 @@ class MudBot:
         self._loot = LootMonitor(
             is_monster=lambda name: self._monster_db.find(name) is not None)
         self._get_decider = GetDecider(
-            self._config.items,
+            self._config.items, item_db=self._item_db,
             on_mark=(lambda n: self._store.add_mark("ungettable", n)) if self._store else None)
         from mmud.automation.equip import EquipDecider
         self._equip_decider = EquipDecider(

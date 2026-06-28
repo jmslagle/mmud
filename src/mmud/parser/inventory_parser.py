@@ -94,6 +94,8 @@ class InventoryParser:
                 coins=dict(self._coins),
                 encumbrance_pct=int(m.group(4)),
                 encumbrance_level=m.group(3).lower(),
+                encumbrance_cur=int(m.group(1)),
+                encumbrance_max=int(m.group(2)),
             )
             self._reset()
             return inv

@@ -348,11 +348,15 @@ def test_loop_mode_restarts_and_counts_laps():
     assert d.decide(gs) == "n"               # restarted
 
 
-def test_encumbrance_gate():
+def test_weight_never_halts_travel():
+    # MegaMud's DontBeHeavy/DontBeMedium gate item PICKUP, never movement (RE'd:
+    # loot_item_collect @0x409880). Movement must keep going while Heavy — the old
+    # travel hold was a circular deadlock (couldn't walk to the bank to get lighter,
+    # stuck nudging at the halls of the dead). Weight is now enforced in GetDecider.
     from mmud.state.inventory import Inventory
-    d = TravelDecider(ItemsConfig(dont_go_heavy=True), StealthConfig(),
-                      GameEventBus())
+    d = TravelDecider(ItemsConfig(dont_go_heavy=True, dont_go_medium=True),
+                      StealthConfig(), GameEventBus())
     gs = GameState()
     gs.inventory = Inventory(encumbrance_level="heavy")
     d.set_route([_step("n", "BBBB0002")])
-    assert d.decide(gs) is None              # halted while heavy
+    assert d.decide(gs) == "n"               # keeps moving even while Heavy

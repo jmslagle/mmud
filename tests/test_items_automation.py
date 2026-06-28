@@ -143,3 +143,91 @@ def test_begin_does_not_set_inventory_dirty():
     GetDecider(ItemsConfig(auto_get=True), now=lambda: 5.0).decide(gs)
     assert gs.inventory_dirty is False
     assert gs.task.type is TaskType.GETTING
+
+
+# ---- encumbrance pickup cap (MegaMud DontBeHeavy/DontBeMedium) -------------
+
+from mmud.state.inventory import Inventory
+
+
+class _FakeItemDB:
+    """Minimal name->weight stub for the pickup-cap tests."""
+    def __init__(self, weights):
+        self._w = {k.lower(): v for k, v in weights.items()}
+
+    def find(self, name):
+        w = self._w.get(name.lower())
+        if w is None:
+            return None
+        from types import SimpleNamespace
+        return SimpleNamespace(weight=w)
+
+
+def _inv(cur, mx):
+    return Inventory(encumbrance_cur=cur, encumbrance_max=mx)
+
+
+def test_item_skipped_when_it_would_exceed_pickup_cap():
+    # DontBeHeavy caps pickup at 67% of max (2880*67//100 = 1929). A 100-weight item at
+    # cur=1900 -> 2000 > 1929 -> skip (don't get), but DON'T halt anything.
+    gs = GameState()
+    gs.inventory = _inv(1900, 2880)
+    gs.ground_items.append("anvil")
+    d = GetDecider(ItemsConfig(auto_get=True, dont_go_heavy=True),
+                   item_db=_FakeItemDB({"anvil": 100}), now=lambda: 5.0)
+    assert d.decide(gs) is None
+    assert "anvil" in gs.ground_items          # left on the ground, not claimed
+
+
+def test_item_grabbed_when_under_pickup_cap():
+    gs = GameState()
+    gs.inventory = _inv(100, 2880)             # far below 67% cap
+    gs.ground_items.append("anvil")
+    d = GetDecider(ItemsConfig(auto_get=True, dont_go_heavy=True),
+                   item_db=_FakeItemDB({"anvil": 100}), now=lambda: 5.0)
+    assert d.decide(gs) == "get anvil"
+
+
+def test_get_items_bypass_the_weight_cap():
+    # Named must-grabs (quest keys) are taken even while Heavy.
+    gs = GameState()
+    gs.inventory = _inv(2870, 2880)            # essentially full
+    gs.ground_items.append("black star key")
+    d = GetDecider(ItemsConfig(auto_get=False, dont_go_heavy=True,
+                               get_items=["black star key"]),
+                   item_db=_FakeItemDB({"black star key": 50}), now=lambda: 5.0)
+    assert d.decide(gs) == "get black star key"
+
+
+def test_no_weight_gate_before_first_inventory_read():
+    # encumbrance_max == 0 -> weight unknown -> never gate (don't regress to silent skips).
+    gs = GameState()
+    gs.inventory = _inv(0, 0)
+    gs.ground_items.append("anvil")
+    d = GetDecider(ItemsConfig(auto_get=True, dont_go_heavy=True),
+                   item_db=_FakeItemDB({"anvil": 9999}), now=lambda: 5.0)
+    assert d.decide(gs) == "get anvil"
+
+
+def test_coin_skipped_when_over_cap_and_drop_disabled():
+    # A big coin stack that won't fit and drop_coins off -> skip (don't get).
+    gs = GameState()
+    gs.inventory = _inv(1929, 2880)            # at cap 1929; ceil(3/3)=1 -> 1930 overflows
+    gs.ground_coins["copper"] = 3
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_copper=True,
+                               dont_go_heavy=True, drop_coins=False), now=lambda: 5.0)
+    assert d.decide(gs) is None
+
+
+def test_coin_drop_to_upgrade_drops_cheapest_coin():
+    # Heavy, carrying copper, a gold stack on the ground won't fit + drop_coins on ->
+    # drop copper (cheapest, < gold) to make room. Gold stays on the ground for next turn.
+    gs = GameState()
+    gs.inventory = Inventory(encumbrance_cur=1929, encumbrance_max=2880,
+                             coins={"copper": 30, "silver": 5})
+    gs.ground_coins["gold"] = 9                # ceil(9/3)=3 weight; 1929+3 > 1929 cap
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True,
+                               dont_go_heavy=True, drop_coins=True), now=lambda: 5.0)
+    cmd = d.decide(gs)
+    assert cmd is not None and cmd.startswith("drop ") and "copper" in cmd  # cheapest
+    assert "gold" in gs.ground_coins           # not picked up yet; retry next turn

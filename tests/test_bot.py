@@ -554,6 +554,8 @@ def test_closed_door_or_gate_is_not_a_nav_failure():
     assert _NAV_FAIL_RE.search("The door is closed!") is None
     assert _NAV_FAIL_RE.search("You can't go that way!") is not None
     assert _NAV_FAIL_RE.search("There is no exit in that direction!") is not None
+    # Overweight rejection is a blocked exit (retry then clear), never a silent hang.
+    assert _NAV_FAIL_RE.search("You are too heavy to move!") is not None
 
 
 def test_extra_paths_dir_accepts_comma_separated_dirs(tmp_path):

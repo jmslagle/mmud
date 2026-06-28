@@ -30,3 +30,5 @@ RE a new function (per CLAUDE.md, always RE the binary for MegaMud-matching beha
 | [`game_ai_do_something`](game_ai_do_something.md) | `0x402b20` | "DoSomething" priority chain; one action per turn; gated on the READY bit; deferred queue drains one/turn |
 | [`inventory_parse_response`](inventory_parse_response.md) | `0x43d650` | Parse the `i`/`inv` listing (split on `,`/`.` only; rejoin wraps; `(Slot)` worn tags; keys line) |
 | [`item_name_match`](item_name_match.md) | `0x442080` | Item-name comparator: apostrophe-stripped exact match + trailing-`'s'` plural tolerance |
+| [`loot_item_collect`](loot_item_collect.md) | `0x409880` | Auto-loot/cash decision; DontBeHeavy/DontBeMedium cap PICKUP at 67%/33% of max weight (NOT movement); coin weight = ceil(amount/3) |
+| [`cash_upgrade_coins_decide`](cash_upgrade_coins_decide.md) | `0x409fc0` | DropCoins: drop the cheapest cheaper coins to make room for a better coin over the pickup cap |
