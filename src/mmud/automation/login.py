@@ -11,16 +11,28 @@ _USERNAME_RE = re.compile(
     re.IGNORECASE)
 _PASSWORD_RE = re.compile(
     r"password\s*[:\?]?\s*$|enter your password|^\s*password", re.IGNORECASE)
-# Worldgroup pager prompts. "(N)onstop, (Q)uit, or (C)ontinue?" — answer
-# Nonstop to disable paging for the whole session so the bot is never stopped
-# by news/menu pagination again. Generic "press enter / more?" -> just Enter.
-_NONSTOP_RE = re.compile(r"\(N\)onstop|nonstop[,)].*continue", re.IGNORECASE)
+# Pager prompts MegaMud answers automatically (game_menu_prompt_parse @0x45f650): the
+# Worldgroup "(N)onstop, (Q)uit, or (C)ontinue?", "Press/Hit any key to continue", and the
+# generic "press enter / more?" pauses. MegaMud replies with a bare Enter (the default =
+# Continue) — NEVER "Q". Always handled, independent of the user's login script.
 _PAGER_RE = re.compile(
-    r"press\s*(?:\[?\s*enter\s*\]?|any key)|more\s*\[|\[\s*pause\s*\]|"
-    r"\[\s*Y\s*,\s*n|continue\s*\?\s*$", re.IGNORECASE)
+    r"\(N\)onstop|\bnonstop\s*[,)]|or \(C\)ontinue\?|"
+    r"press any key|hit any key|"
+    r"press\s*\[\s*enter\s*\]|"                  # "Press [ENTER] ..."
+    r"press\s*enter\s+to\s+continue|"            # "Press ENTER to continue"
+    r"press\s*enter\s*$|"                        # bare "Press ENTER" at end of line
+    r"more\s*\[|\[\s*pause\s*\]|\[\s*Y\s*,\s*n|continue\s*\?\s*$",
+    re.IGNORECASE)
+# The MajorMUD menu prompt. MegaMud (bbs_login_sequence_handle @0x444e50, default MenuPrompt
+# "[MAJORMUD]:") sends the literal "enter" to enter the realm — hardcoded, always.
+_MAJORMUD_MENU_RE = re.compile(r"\[MAJORMUD\]\s*:", re.IGNORECASE)
+# The authoritative "now in game" signal: a "[HP=...]:" prompt (line starts with it). MegaMud
+# flips out of logon mode here (-> ONLINE/READY, AI starts), regardless of any menu_prompt.
+_HP_PROMPT_RE = re.compile(r"^\[HP=.*\]:", re.IGNORECASE)
 _CHARACTER_RE = re.compile(r"(?:select|choose|enter|which)\s+(?:your\s+)?character", re.IGNORECASE)
-_MAJORMUD_RE = re.compile(r"MAJORMUD|MajorMUD|Press any key to continue|press any key", re.IGNORECASE)
-_GAME_FULL_RE = re.compile(r"game is (?:currently )?full|try again later", re.IGNORECASE)
+_GAME_FULL_RE = re.compile(
+    r"game is (?:currently )?full|but the game is currently full|try again later",
+    re.IGNORECASE)
 _GAME_ENTERED_RE = re.compile(r"(?:character has been saved|entering the game|you are now in)", re.IGNORECASE)
 
 
@@ -53,7 +65,15 @@ class LoginHandler:
 
         stripped = line.strip()
 
-        # Game state detection (no reply needed)
+        # ── MegaMud-hardcoded handling: ALWAYS on, regardless of the login script ──
+        # These fire however many times they appear, in any order — which is why the pager
+        # works when there are MULTIPLE (N)onstop prompts whose count varies with the
+        # who-list/news length (a fixed sequential script can't cover a variable count).
+
+        # Authoritative "now in game": a "[HP=...]:" prompt -> leave logon mode, start the AI.
+        if _HP_PROMPT_RE.search(stripped):
+            self.in_game = True
+            return None
         if _GAME_FULL_RE.search(stripped):
             self.game_full = True
             return None
@@ -61,9 +81,19 @@ class LoginHandler:
                 or _GAME_ENTERED_RE.search(stripped):
             self.in_game = True
             return None
+        # Pager: "(N)onstop/(Q)uit/(C)ontinue?", "Press/Hit any key", "more?" -> Enter (the
+        # default = Continue). MegaMud sends a bare CR — never "Q". Stateless: every pager,
+        # any number of them, gets the same Enter.
+        if _PAGER_RE.search(stripped):
+            return ""
+        # MajorMUD menu prompt "[MAJORMUD]:" -> enter the realm.
+        if _MAJORMUD_MENU_RE.search(stripped):
+            return "enter"
 
-        # Scripted login (MegaMud-style) takes precedence when configured:
-        # wait for each step's prompt in order, then send its expanded reply.
+        # ── BBS-specific: the scripted steps (User-ID / password / BBS menu), in order ──
+        # The pager/menu/HP above already drained the standard MajorMUD prompts, so the
+        # script only carries genuinely server-specific prompts and never stalls on a
+        # variable-count pager.
         if self._script:
             if self._step < len(self._script):
                 pattern, reply = self._script[self._step]
@@ -72,31 +102,15 @@ class LoginHandler:
                     return expand_template(reply, self._vars)
             return None
 
-        # Username prompt
+        # ── No script: built-in User-ID / password / character detection ──
         if self._user_re.search(stripped) and not self._sent_username:
             self._sent_username = True
             return self._cfg.username
-
-        # Password prompt
         if self._pass_re.search(stripped) and not self._sent_password:
             self._sent_password = True
             return self._cfg.password
-
-        # Worldgroup "(N)onstop, (Q)uit, or (C)ontinue?" — answer Nonstop so the
-        # bot is never paused by news/menu pagination again.
-        if _NONSTOP_RE.search(stripped):
-            return "N"
-        # Generic pager / continue prompts — just press Enter.
-        if _PAGER_RE.search(stripped):
-            return ""
-
-        # Character selection — send character name
         if self._cfg.character and _CHARACTER_RE.search(stripped):
             return self._cfg.character
-
-        # MajorMUD menu prompt — send enter to continue
-        if _MAJORMUD_RE.search(stripped):
-            return ""   # send empty line (just \r\n = press any key)
 
         return None
 

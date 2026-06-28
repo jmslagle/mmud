@@ -32,3 +32,5 @@ RE a new function (per CLAUDE.md, always RE the binary for MegaMud-matching beha
 | [`item_name_match`](item_name_match.md) | `0x442080` | Item-name comparator: apostrophe-stripped exact match + trailing-`'s'` plural tolerance |
 | [`loot_item_collect`](loot_item_collect.md) | `0x409880` | Auto-loot/cash decision; DontBeHeavy/DontBeMedium cap PICKUP at 67%/33% of max weight (NOT movement); coin weight = ceil(amount/3) |
 | [`cash_upgrade_coins_decide`](cash_upgrade_coins_decide.md) | `0x409fc0` | DropCoins: drop the cheapest cheaper coins to make room for a better coin over the pickup cap |
+| [`bbs_login_sequence_handle`](bbs_login_sequence_handle.md) | `0x444e50` | Logon engine: scripted LogonPrompt/LogonReply + HARDCODED ANSI/`[MAJORMUD]:`→"enter"/`[HP=]`→in-game |
+| [`game_menu_prompt_parse`](game_menu_prompt_parse.md) | `0x45f650` | Auto-answers the "(C)ontinue?"/press-any-key pager with Enter (always-on; handles any count of "(N)onstop" prompts) |

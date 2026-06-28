@@ -86,9 +86,10 @@ def test_custom_prompt_override():
 
 
 def test_worldgroup_nonstop_prompt():
+    # MegaMud answers the pager with a bare Enter (Continue), never "Q".
     cfg = LoginConfig(username="Raist", password="pw", auto_login=True)
     h = LoginHandler(cfg)
-    assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") == "N"
+    assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") == ""
 
 
 def test_generic_pager_prompt_presses_enter():
@@ -102,16 +103,18 @@ def test_generic_pager_prompt_presses_enter():
 
 def _scripted_cfg(**kw):
     from mmud.config.schema import LoginConfig, LoginStep
+    # Note: the (N)onstop pager and "[MAJORMUD]:" entry are NOT scripted — MegaMud handles
+    # them automatically (see the always-on tests below). The script carries only the
+    # genuinely BBS-specific prompts.
     return LoginConfig(
         username="Raist", password="test12", character="Raistlin",
         auto_login=True,
         script=[
             LoginStep(prompt=r"User-ID|type it in and press", reply="{userid}"),
             LoginStep(prompt=r"[Pp]assword", reply="{pswd}"),
-            LoginStep(prompt=r"\(N\)onstop", reply="N"),
             LoginStep(prompt=r"Enter your selection", reply="D"),
         ],
-        menu_prompt=r"MAJORMUD|Already playing",
+        menu_prompt=r"Already playing",
         **kw,
     )
 
@@ -122,23 +125,49 @@ def test_scripted_login_runs_steps_in_order_with_expansion():
     assert h.process_line("Welcome to MorningSide Mortuary") is None
     assert h.process_line('...have a User-ID...type "new":') == "Raist"
     assert h.process_line("Password:") == "test12"
-    assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") == "N"
-    assert h.process_line("Enter your selection:") == "D"
-    # script exhausted -> no further replies
+    # a (N)onstop pager mid-sequence is auto-handled (Enter) and does NOT consume a step
+    assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") == ""
+    assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") == ""   # however many appear
+    assert h.process_line("Enter your selection:") == "D"              # next step still pending
+    # script exhausted -> no further replies (but the pager stays auto-handled)
     assert h.process_line("anything else") is None
+    assert h.process_line("Press any key to continue") == ""
 
 
 def test_scripted_login_is_strictly_sequential():
     h = LoginHandler(_scripted_cfg())
-    # a later step's prompt seen early does NOT fire before its turn
-    assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") is None
+    # a later (non-pager) step's prompt seen early does NOT fire before its turn
+    assert h.process_line("Enter your selection:") is None
     assert h.process_line('User-ID: type "new":') == "Raist"
 
 
 def test_menu_prompt_marks_in_game():
     h = LoginHandler(_scripted_cfg())
     assert h.in_game is False
-    h.process_line("You are now in the MAJORMUD realm")
+    h.process_line("You are Already playing this character")   # reconnect cue
+    assert h.in_game is True
+
+
+def test_nonstop_pager_auto_handled_even_with_a_script():
+    # The bug: with a script configured, the pager used to be ignored (or wrongly scripted
+    # to "Q", which quits). It must be auto-answered with Enter regardless of the script,
+    # and work for MULTIPLE pagers (count varies with the who-list/news length).
+    h = LoginHandler(_scripted_cfg())
+    for _ in range(5):
+        assert h.process_line("(N)onstop, (Q)uit, or (C)ontinue?") == ""
+
+
+def test_majormud_prompt_enters_the_realm():
+    # "[MAJORMUD]:" menu -> send "enter" to enter the game (MegaMud s_enter_004be16c).
+    h = LoginHandler(_scripted_cfg())
+    assert h.process_line("[MAJORMUD]:") == "enter"
+
+
+def test_hp_prompt_marks_in_game():
+    # The authoritative MegaMud in-game signal is a "[HP=...]:" prompt at line start.
+    h = LoginHandler(_scripted_cfg())
+    assert h.in_game is False
+    assert h.process_line("[HP=168/MA=72]:") is None
     assert h.in_game is True
 
 
