@@ -25,6 +25,8 @@ def test_full_inv_block():
     assert inv.coins["copper"] == 153
     assert inv.encumbrance_pct == 37
     assert inv.encumbrance_level == "light"
+    assert inv.encumbrance_cur == 45     # raw current/max weight, for the pickup cap
+    assert inv.encumbrance_max == 120
 
 
 def test_incomplete_block_returns_none():

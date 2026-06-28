@@ -189,10 +189,12 @@ class TravelDecider:
             return self._decide_wander(state)
         if not self._steps or self._in_flight:
             return None
-        level = state.inventory.encumbrance_level
-        if ((self._items.dont_go_heavy and level == "heavy")
-                or (self._items.dont_go_medium and level in ("medium", "heavy"))):
-            return None
+        # NOTE: weight does NOT gate movement. MegaMud's DontBeHeavy/DontBeMedium gate
+        # item PICKUP only (loot_item_collect @0x409880); there is no flag that refuses
+        # to walk while Heavy — it only reacts to the server's "You are too heavy to move"
+        # as a blocked exit. The old encumbrance hold here was a circular deadlock (too
+        # heavy to walk to the bank that would make us lighter). Pickup caps live in
+        # GetDecider now.
         step = self._steps[self._cursor]
         cmds = expand_annotated(step.command)
         if self._stealth.auto_sneak:

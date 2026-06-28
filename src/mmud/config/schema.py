@@ -120,8 +120,11 @@ class ItemsConfig:
     collect_gold: bool = True
     collect_platinum: bool = True
     collect_runic: bool = False
-    dont_go_heavy: bool = True
-    dont_go_medium: bool = False
+    dont_go_heavy: bool = True   # don't PICK UP items/coins past 67% of max weight (NOT
+                                 # a movement gate — MegaMud DontBeHeavy, loot_item_collect)
+    dont_go_medium: bool = False # stricter: cap pickup at 33% of max weight (DontBeMedium)
+    drop_coins: bool = False     # drop cheaper coins (copper/silver) to make room for a
+                                 # better coin when over the pickup cap (MegaMud DropCoins)
     get_items: list[str] = field(default_factory=list)    # always pick these up
                                                           # (name substring), even
                                                           # when auto_get is off

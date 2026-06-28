@@ -117,8 +117,12 @@ collect_silver   = true
 collect_gold     = true
 collect_platinum = true
 collect_runic    = false
-dont_go_heavy    = true
-dont_go_medium   = false
+# Encumbrance gates PICKUP, not movement (MegaMud DontBeHeavy/DontBeMedium): the bot keeps
+# walking while Heavy, it just stops grabbing loot/coins that would push it over the cap.
+dont_go_heavy    = true    # don't pick up past 67% of max weight
+dont_go_medium   = false   # stricter: cap pickup at 33% (stay Light)
+drop_coins       = false   # drop cheaper coins (copper/silver) to make room for a better
+                           # coin when over the cap (MegaMud DropCoins)
 max_wealth       = 0       # bank when copper-equiv wealth exceeds (Phase 8)
 min_wealth       = 0       # withdraw when below (Phase 8)
 

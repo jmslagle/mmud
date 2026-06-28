@@ -19,6 +19,8 @@ class Inventory:
     coins: dict[str, int] = field(default_factory=dict)   # denomination -> count
     encumbrance_pct: int = 0
     encumbrance_level: str = "none"   # none|light|medium|heavy
+    encumbrance_cur: int = 0          # raw "1938/2880" current weight (for the pickup cap)
+    encumbrance_max: int = 0          # raw max weight (0 = not seen yet)
 
     @property
     def carried(self) -> list[str]:
