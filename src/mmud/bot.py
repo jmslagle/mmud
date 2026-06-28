@@ -1127,6 +1127,7 @@ class MudBot:
                 f"arrive room={code or '?'} hex={self._state.current_hex or '?'} "
                 f"seen={sorted(seen_hexes)}")
         self._travel.on_arrival(self._state, seen_hexes, confident_hex=confident_hex)
+        self._handle_travel_lost()
         # Surface where we are for the status panel: code+name when ROOMS.MD-known, else
         # the raw room hash (most live rooms aren't in ROOMS.MD).
         loc = ""
@@ -1209,6 +1210,21 @@ class MudBot:
                 self._state.enqueue(self._pending_move)
         else:
             self._travel.on_move_failed()  # can't open: normal failure path
+
+    def _handle_travel_lost(self) -> None:
+        """The path cursor crossed the 3-miss threshold (`travel.lost`): MegaMud STOPs
+        rather than blind-wander (navigation.md:96-108). Stop the loop and surface a
+        clear "Lost!" status instead of falling into a wander."""
+        if not self._travel.lost:
+            return
+        name = self._config.navigation.loop_path
+        if self._loop_runner and self._loop_runner.running:
+            self._loop_runner.stop()
+        else:
+            self._travel.clear(reason="lost")
+        self._session_log.event(
+            f"Lost! path desync (3 misses) -> stopped loop {name}")
+        self._emit(SessionStatUpdated(key="objective", value=f"Lost! ({name})"))
 
     def _parse_nav_failure(self, line: str) -> None:
         if not _NAV_FAIL_RE.search(line):

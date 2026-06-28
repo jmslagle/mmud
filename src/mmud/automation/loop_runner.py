@@ -27,6 +27,11 @@ _MAX_WANDER = 40   # wander moves before we declare the loop lost and stop (Mega
                    # "Lost!"): a hash-colliding maze like the graveyard can't be
                    # wandered out of, so don't burn hours trying.
 
+_MAX_REENGAGE = 4  # re-engage (recover/wander) attempts allowed since the last
+                   # COMPLETED lap before we give up. set_route resets the per-wander
+                   # move counter, so without this cumulative cap a maze that desyncs
+                   # every approach would re-arm forever and never trip _MAX_WANDER.
+
 
 class LoopRunner:
     """Thin adapter: arms a looping route on the shared TravelDecider."""
@@ -51,6 +56,8 @@ class LoopRunner:
         self._current_code = current_code.upper()
         self._current_hex = current_hex.upper()
         self.on_lost = None   # optional callback() the bot sets to log/alert on give-up
+        self._reengages = 0   # recover() attempts since the last completed lap
+        self._last_lap = self._travel.lap
 
     def _find_path(self, paths: list[GamePath]) -> GamePath | None:
         name = self._nav.loop_path.upper()
@@ -147,6 +154,20 @@ class LoopRunner:
         loop room, then resume — MegaMud-style 'find a known room to reset'."""
         if self._path is None:
             return "no loop to recover"
+        # Cumulative give-up: a completed lap (travel.lap changed) is real progress, so
+        # reset the re-engage budget; otherwise count this attempt and give up once it
+        # exceeds K. A re-arm (set_route via _engage_at) zeroes travel.lap, which we also
+        # treat as a fresh budget — the live hole is the maze that NEVER completes a lap
+        # (lap stays put while recover() keeps re-arming), which this catches.
+        lap = self._travel.lap
+        if lap != self._last_lap:
+            self._last_lap = lap
+            self._reengages = 0
+        self._reengages += 1
+        if self._reengages > _MAX_REENGAGE:
+            self._giveup()
+            return (f"gave up loop {self._nav.loop_path}: "
+                    f"{self._reengages - 1} re-engages without completing a lap")
         loop_hexes = [s.hex_id.upper() for s in self._path.steps]
         self._travel.set_wander(set(loop_hexes), self._engage_at,
                                 limit=_MAX_WANDER, on_giveup=self._giveup)

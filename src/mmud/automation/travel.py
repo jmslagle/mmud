@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 from mmud.config.schema import CombatConfig, ItemsConfig, StealthConfig
 from mmud.combat.combat import attackable_sightings
-from mmud.events import GameEventBus, TravelResynced, TravelEnded
+from mmud.events import GameEventBus, TravelResynced, TravelEnded, TravelLost
 from mmud.navigation.graph import RouteStep
 from mmud.state.game_state import GameState
 
@@ -53,6 +53,8 @@ class TravelDecider:
         self._wander_moves = 0
         self._last_dir = ""                            # last wander move (avoid U-turn)
         self.lap = 0
+        self._misses = 0      # consecutive genuine mismatches (MegaMud state+0x152d)
+        self.lost = False     # set once misses cross the threshold -> bot STOPs
 
     _REVERSE = {"n": "s", "s": "n", "e": "w", "w": "e", "ne": "sw", "sw": "ne",
                 "nw": "se", "se": "nw", "u": "d", "d": "u"}
@@ -134,6 +136,8 @@ class TravelDecider:
         self._loop = loop
         self._loop_from = loop_from
         self.lap = 0
+        self._misses = 0
+        self.lost = False
         # Arming a route cancels any active wander (decide() checks wander first, so a
         # leftover wander would otherwise shadow the new route).
         self._wander_targets = None
@@ -257,8 +261,13 @@ class TravelDecider:
             return
         self._in_flight = False
         self._retries = 0
+        if self.lost:
+            # Already Lost (3-miss threshold crossed): the bot stops the route on the
+            # TravelLost signal; until it does, freeze the cursor (don't keep marching).
+            return
         if on_track:                                   # arrived as planned
             state.current_hex = next(iter(on_track))
+            self._misses = 0
             self._cursor += 1
             self._finish_if_done()
             return
@@ -274,9 +283,31 @@ class TravelDecider:
                         self._bus.post(TravelResynced(from_step=self._cursor + 1,
                                                       to_step=idx + 1))
                     state.current_hex = ch
+                    self._misses = 0
                     self._cursor = idx + 1
                     self._finish_if_done()
                     return
+        # ±1 peek (MegaMud's quick realign, navigation.md:92-93): with no on_track and
+        # no confident placement, check whether this SINGLE title-id is actually the
+        # next or prior step's room (a missed/extra room or a prior re-display past the
+        # one-shot guard) BEFORE assuming a genuine mismatch. Gate on an exact subset of
+        # the (Step-1 narrowed) seen set so a far-off colliding dest can't false-fire.
+        nxt = self._cursor + 1
+        if nxt < len(self._steps):
+            exp = self._steps[nxt].expect
+            if exp and exp <= seen_hexes:              # overshot one room -> re-sync ahead
+                state.current_hex = next(iter(exp & seen_hexes))
+                self._misses = 0
+                self._cursor += 2
+                self._finish_if_done()
+                return
+        prv = self._cursor - 1
+        if prv >= 0:
+            exp = self._steps[prv].expect
+            if exp and exp <= seen_hexes:              # under-shot / prior re-display -> hold
+                state.current_hex = next(iter(exp & seen_hexes))
+                self._misses = 0
+                return
         # No CONFIDENT placement: advance exactly one step (follow the command).
         # We deliberately do NOT hash-resync to a nearby step here — room hashes
         # collide heavily (runs of identical rooms: Temple St, the cemetery), so a
@@ -286,9 +317,21 @@ class TravelDecider:
         # name-detected rooms (handled above). Trust the move worked and advance via
         # the planned destination; a real dead-end surfaces as a nav failure ("no
         # exit") -> on_move_failed -> blocked, so we don't loop forever.
+        #
+        # MegaMud bumps a miss counter (state+0x152d) on each genuine id mismatch and
+        # only declares "Lost!" after 3 (>2). A single mismatch must NOT trip it. We
+        # have no full re-path, so we keep optimistically advancing, but once the 3rd
+        # genuine miss lands we signal TravelLost so the bot STOPs (navigation.md:96-108
+        # — MegaMud does not blind-wander). An EMPTY seen set is "no id this room" (most
+        # live rooms aren't hashable) -> follow the command without counting it a miss.
+        if seen_hexes:
+            self._misses += 1
         state.current_hex = step.chosen
         self._cursor += 1
         self._finish_if_done()
+        if self._misses > 2 and not self.lost:
+            self.lost = True
+            self._bus.post(TravelLost(step=min(self._cursor + 1, len(self._steps))))
 
     def on_move_failed(self) -> None:
         if not self._steps:

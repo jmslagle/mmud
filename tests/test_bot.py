@@ -516,6 +516,24 @@ def test_matching_nav_failure_triggers_recovery():
 
 
 @pytest.mark.asyncio
+async def test_travel_lost_stops_loop_instead_of_wandering():
+    # The path cursor crossed the 3-miss threshold (TravelLost). MegaMud STOPs rather
+    # than blind-wander (navigation.md:96-108): on the next room display the loop must
+    # stop with a clear "Lost!" status, NOT fall into a wander.
+    from mmud.events import SessionStatUpdated
+    bot = _armed_loop_bot()
+    received = []
+    bot._bus = GameEventBus()
+    bot._bus.subscribe(SessionStatUpdated, received.append)
+    bot._travel.lost = True                       # cursor desynced past the miss threshold
+    await bot._process_line("Somewhere Unknown\n")
+    await bot._process_line("Obvious exits: north\n")   # room display -> _parse_exits wiring
+    assert not bot._loop_runner.running
+    assert not bot._travel.wandering
+    assert any(e.key == "objective" and "Lost" in e.value for e in received)
+
+
+@pytest.mark.asyncio
 async def test_room_display_emits_location_stat():
     # The bottom-left status panel shows where we are: a code+name when known, else the
     # raw hash. The bot emits it as a "location" session stat on each room display.
