@@ -1,6 +1,7 @@
 from __future__ import annotations
 import re
 import time
+from typing import Callable
 from mmud.config.schema import CombatConfig
 from mmud.state.game_state import GameState
 from mmud.state.tasks import TaskType
@@ -98,10 +99,12 @@ class EmergencyDecider:
     first and queue the escape right behind it (drains on the next line, before the fight
     re-engages)."""
 
-    def __init__(self, config: CombatConfig | None = None) -> None:
+    def __init__(self, config: CombatConfig | None = None,
+                 on_fire: "Callable[[], None] | None" = None) -> None:
         cfg = config or CombatConfig()
         self._cmd = cfg.emergency_cmd.strip()
         self._threshold = cfg.emergency_threshold
+        self._on_fire = on_fire           # stop the loop/travel so we don't wander after recall
         self._sent = False
 
     def decide(self, state: GameState) -> str | None:
@@ -117,6 +120,11 @@ class EmergencyDecider:
         if self._sent:
             return None                        # already bailed; don't spam the recall
         self._sent = True
+        # Stop looping/traveling FIRST so the recall lands us somewhere safe and we don't
+        # immediately path back into the danger that nearly killed us. Keeps the command
+        # queue intact (the recall cmd may be queued in the combat branch below).
+        if self._on_fire is not None:
+            self._on_fire()
         if state.in_combat:
             # Combat-locked: break first, then fire the escape immediately behind it.
             state.enqueue(self._cmd)
