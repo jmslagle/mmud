@@ -860,7 +860,14 @@ class MudBot:
                 # Track it as a non-attackable sighting; never look/spy it.
                 real = []
                 for name in players:
-                    if self._monster_db.find(name) is not None:
+                    rec = self._monster_db.find(name)
+                    # Only a REAL catalogued monster (record_id >= 0) makes a proper-named
+                    # "Also here:" entry an NPC sighting. A LEARNED placeholder (negative id)
+                    # is a stale guess — usually a player we once wrongly learned as a monster
+                    # (e.g. "TheSysop") — and must NOT re-inject the player into the roster as
+                    # an attackable target (the bot would attack a player it can't kill, then
+                    # deadlock: combat won't re-send + travel held by the lingering sighting).
+                    if rec is not None and rec.record_id >= 0:
                         self._state.add_monster(self._build_sighting(name, 1))
                     else:
                         real.append(name)

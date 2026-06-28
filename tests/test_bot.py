@@ -44,6 +44,24 @@ async def test_monster_attacking_us_is_added_to_roster():
 
 
 @pytest.mark.asyncio
+async def test_also_here_player_not_reattacked_via_learned_placeholder():
+    # A player ("TheSysop") that was once wrongly LEARNED as a monster (negative
+    # record_id, kill_type 0) must NOT be re-injected into monsters_present as an
+    # attackable target — otherwise the bot attacks a player it can't kill, then
+    # deadlocks (combat won't re-send + travel held). Only a REAL catalogued monster
+    # (record_id >= 0) makes a proper-named "Also here:" entry an NPC sighting.
+    from mmud.data.monster_db import MonsterDB
+    from mmud.data.binary import Monster
+    bot = make_transcript_bot([])
+    bot._monster_db = MonsterDB([
+        Monster(record_id=-2, name="thesysop", level=0, exp_value=0, combat_rating=0,
+                alignment=0, hp_estimate=0, short_name1="", short_name2="", flags=0)])
+    await bot._process_line("Also here: TheSysop.\n")
+    assert "TheSysop" in bot._state.players_present
+    assert not any(m.name.lower() == "thesysop" for m in bot._state.monsters_present)
+
+
+@pytest.mark.asyncio
 async def test_attacker_name_excludes_all_out_adverb():
     # "The X all-out slashes you" -> the attacker is X, NOT "X all-out" (MajorMUD's
     # all-out attack mode). A bogus "X all-out" roster entry made the bot cast
