@@ -23,8 +23,18 @@ class FakeBot:
         self._config = MudConfig()
         self._session = SessionManager(self._config.session, now=lambda: 0.0)
         self._conn = FakeConn()
+        self.loop_started = None
+        self.loop_stopped = False
         if with_config_service:
             self._config_service = ConfigService(self._config, bus=self._bus, path=None)
+
+    def start_loop(self, name=""):
+        self.loop_started = name
+        return f"looping {name or 'DEFAULT'}"
+
+    def stop_all(self):
+        self.loop_stopped = True
+        return "stopped"
 
 
 @pytest.fixture
@@ -53,6 +63,27 @@ def test_command_reaches_send_stub(client, fake_bot):
     assert r.status_code == 200
     assert r.json() == {"ok": True, "sent": "look"}
     assert fake_bot._conn.sent == ["look"]
+
+
+def test_loop_start_with_name(client, fake_bot):
+    r = client.post("/api/loop", json={"name": "CAVWLOOP"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["action"] == "start" and body["name"] == "CAVWLOOP"
+    assert fake_bot.loop_started == "CAVWLOOP"
+
+
+def test_loop_start_default_name(client, fake_bot):
+    r = client.post("/api/loop", json={})       # no name -> the configured loop_path
+    assert r.status_code == 200
+    assert fake_bot.loop_started == ""
+
+
+def test_loop_stop(client, fake_bot):
+    r = client.post("/api/loop", json={"action": "stop"})
+    assert r.status_code == 200
+    assert r.json()["action"] == "stop"
+    assert fake_bot.loop_stopped is True
 
 
 def test_empty_command_rejected(client):
