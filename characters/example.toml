@@ -18,21 +18,26 @@ auto_login = false   # set to true to enable automatic login on connect
 # username_prompt = "user-id|type it in and press"
 # password_prompt = "password\\s*:"
 #
+# Handled AUTOMATICALLY (MegaMud-style, no scripting needed, regardless of your script):
+#   • the "(N)onstop, (Q)uit, or (C)ontinue?" pager + "Press/Hit any key" pauses -> Enter
+#     (works for ANY number of them — the count varies with the who-list/news length)
+#   • the "[MAJORMUD]:" menu prompt -> sends "enter" to enter the realm
+#   • the "[HP=...]" prompt -> marks "now in game" and starts the bot
+# So DON'T script those. menu_prompt is only needed for a reconnect cue ("Already playing").
+#
 # Scripted login — how the original MegaMud did it (LogonPrompt/LogonReply).
 # When you add [[login.script]] steps they DRIVE login in order (the built-in
 # detection above becomes the fallback). reply expands {userid}/{pswd}/
-# {character}; an empty reply just presses Enter. menu_prompt marks "in game".
+# {character}; an empty reply just presses Enter. Put ONLY genuinely BBS-specific
+# prompts here (User-ID, password, the BBS menu that launches MajorMud).
 # Example for a Galacticomm Worldgroup BBS hosting MajorMud:
-#   menu_prompt = "MAJORMUD|Already playing"
+#   menu_prompt = "Already playing"
 #   [[login.script]]
 #   prompt = "User-ID|type it in and press"
 #   reply  = "{userid}"
 #   [[login.script]]
 #   prompt = "[Pp]assword"
 #   reply  = "{pswd}"
-#   [[login.script]]
-#   prompt = "\\(N\\)onstop"
-#   reply  = "N"
 #   [[login.script]]
 #   prompt = "Enter your selection"   # the BBS main menu
 #   reply  = "D"                       # the key that launches MajorMud
