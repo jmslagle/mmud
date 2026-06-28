@@ -145,6 +145,8 @@ class CombatEngine:
         self.run_backwards = cfg.run_backwards
         self.rest_threshold = cfg.rest_threshold
         self.rest_mana_pct = cfg.rest_mana_pct
+        self.hp_full_pct = cfg.hp_full_pct       # resume HP target (MegaMud HpFull @0x3768)
+        self.mana_full_pct = cfg.mana_full_pct   # resume mana target (MegaMud ManaFull @0x3784)
         self.mana_attack_pct = cfg.mana_attack_pct
         self.attack_order = cfg.attack_order
         self.polite_attacks = cfg.polite_attacks
@@ -242,8 +244,8 @@ class CombatEngine:
         # flag, NOT the RESTING task: a cast is higher priority than rest, so the
         # engine aborts the task when it casts; without the flag we'd stop resting
         # the moment mana climbed back over the (lower) start threshold.
-        hp_done = hp_pct >= _REST_FULL
-        mana_done = state.max_mana <= 0 or mp_pct >= _REST_FULL
+        hp_done = hp_pct >= self.hp_full_pct
+        mana_done = state.max_mana <= 0 or mp_pct >= self.mana_full_pct
         if self._recovering and hp_done and mana_done:
             self._recovering = False        # fully recovered -> let the loop resume
             self._rest_pending = False

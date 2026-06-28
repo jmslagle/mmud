@@ -4,6 +4,22 @@ from mmud.config.schema import CombatConfig
 from mmud.state.game_state import MonsterSighting
 
 
+def test_rest_resumes_at_configured_hp_full_pct():
+    # HpFull is the RESUME target, separate from the rest trigger; resting to 95% is a big
+    # time sink. A lower hp_full_pct lets the loop resume sooner (the rest-overhead fix).
+    gs = GameState()
+    gs.set_hp(80, 100)        # 80%
+    gs.set_mana(100, 100)     # mana full
+    e = CombatEngine(CombatConfig(rest_threshold=0.4, hp_full_pct=0.75, mana_full_pct=0.75))
+    e._recovering = True      # currently resting
+    assert e.decide(gs) is None       # 80% >= 75% resume + mana full -> recovered, resume loop
+    assert e._recovering is False
+    # default 0.95 keeps resting at 80%
+    e2 = CombatEngine(CombatConfig(rest_threshold=0.4))   # hp_full_pct default 0.95
+    e2._recovering = True
+    assert e2.decide(gs) is not None  # 80% < 95% -> still resting
+
+
 def test_mortally_wounded_does_not_flee_or_attack():
     # At negative HP the server rejects attack/flee/recall ("mortally wounded"); the combat
     # engine must NOT spam them — return None and wait for HP to regen.
