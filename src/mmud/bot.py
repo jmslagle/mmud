@@ -1042,11 +1042,23 @@ class MudBot:
         clean_lines = [c for c, _ in block]
         code = self._room_parser.detect_room_from_block(clean_lines, line)
         confident_hex = ""   # hex of a NAME-DETECTED ROOMS.MD room (high confidence)
+        room = self._rooms.get(code) if code else None
+        if room and room.hex_id:
+            confident_hex = room.hex_id.upper()
+        # Reject a "confident" ROOMS.MD name-match whose hash isn't the room's OWN title id.
+        # In dense identical-room chains (the cave "Stone Tunnel" rooms) a STRAY block line
+        # collides with a far-off ROOMS.MD room (live "Stone Tunnel" -> SJLM); trusting it
+        # drove a bogus cross-map relocate that desynced the loop. MegaMud keys position on
+        # the title id, not any line. Gate only once the title colour is known (else we'd
+        # block bootstrapping that colour).
+        if confident_hex and self._title_color:
+            title_hexes = {h for c, col in block
+                           if col == self._title_color and (h := room_id(c, line))}
+            if title_hexes and confident_hex not in title_hexes:
+                code, room, confident_hex = "", None, ""
         if code:
-            room = self._rooms.get(code)
-            if room and room.hex_id:
-                self._state.current_hex = room.hex_id.upper()
-                confident_hex = room.hex_id.upper()
+            if confident_hex:
+                self._state.current_hex = confident_hex
             if code != self._state.current_room:
                 self._state.set_room(code)
                 self._emit(RoomChanged(code=code, name=(room.name if room else code)))

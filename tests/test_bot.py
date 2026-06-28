@@ -675,6 +675,31 @@ async def test_title_colour_narrows_seen_to_single_id():
 
 
 @pytest.mark.asyncio
+async def test_collision_confident_match_is_rejected():
+    # In dense identical-room areas a STRAY (non-title) block line collides with a far-off
+    # ROOMS.MD room; trusting it as a position fix drove a bogus cross-map relocate that
+    # desynced the loop (live cave "Stone Tunnel" matched ROOMS.MD code SJLM). A confident
+    # name-match whose hash isn't the room's OWN (title-coloured) id must be rejected.
+    from mmud.data.rooms import Room
+    from mmud.parser.exits_parser import room_id
+    exits = "Obvious exits: north"
+    title, stray = "Stone Tunnel", "A cave worm slithers past."
+    real_hex, fake_hex = room_id(title, exits), room_id(stray, exits)
+    assert real_hex != fake_hex
+    rooms = {"SJLM": Room(code="SJLM", hex_id=fake_hex, hex_id2="",
+                          flags=(0, 0, 0), region="", name="Silver Jungle")}
+    bot = make_transcript_bot([], rooms=rooms)
+    bot._title_color = "1;36"                                   # learned cyan titles
+    await bot._process_line("[HP=100/MA=50]:\n")
+    await bot._process_line(f"\x1b[1;36m{title}\x1b[0m\n")      # title (cyan) -> real_hex
+    await bot._process_line(f"\x1b[0;37m{stray}\x1b[0m\n")      # stray (white) -> SJLM/fake_hex
+    await bot._process_line(exits + "\n")
+    assert bot._state.current_room != "SJLM"          # collision name-match rejected
+    assert bot._state.current_hex != fake_hex
+    assert bot._state.last_room_hexes == {real_hex}   # only the room's own title id
+
+
+@pytest.mark.asyncio
 async def test_idle_room_display_updates_current_hex_by_hash():
     # Live "Realm of Legends" rooms are mostly absent from ROOMS.MD, so position can't
     # be NAME/ROOMS-detected. When idle (loop stopped, manual move), a room display that
