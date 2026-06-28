@@ -156,6 +156,39 @@ def test_no_fast_nudge_when_nothing_pending():
     assert not bot._nudge_due(5.0)
 
 
+def test_loop_resumes_after_reconnect():
+    # reconnect=true: after an auto-reconnect the loop must RESUME (it idled at the login
+    # room before). _loop_intended (set by start_loop) drives the resume on game re-entry.
+    bot = make_transcript_bot([])
+    calls = []
+    bot.start_loop = lambda name="": (calls.append(name), "ok")[1]
+    bot._loop_intended = "CAVWLOOP"
+    bot._prev_in_game = False
+    bot._login_handler.in_game = True
+    bot._handle_login("[HP=100/MA=50]:")        # game-entry edge after reconnect
+    assert calls == ["CAVWLOOP"]
+    bot._handle_login("Stone Tunnel")           # still in_game -> no re-start
+    assert calls == ["CAVWLOOP"]
+    bot._login_handler.in_game = False          # a drop re-arms the edge
+    bot._handle_login("User-ID:")
+    bot._login_handler.in_game = True
+    bot._handle_login("[HP=100/MA=50]:")
+    assert calls == ["CAVWLOOP", "CAVWLOOP"]    # resumed again
+
+
+def test_deliberate_stop_does_not_resume_on_reconnect():
+    bot = make_transcript_bot([])
+    calls = []
+    bot.start_loop = lambda name="": (calls.append(name), "ok")[1]
+    bot._loop_intended = "CAVWLOOP"
+    bot.stop_all()                              # deliberate stop clears the intent
+    assert bot._loop_intended == ""
+    bot._prev_in_game = False
+    bot._login_handler.in_game = True
+    bot._handle_login("[HP=100/MA=50]:")
+    assert calls == []                          # no auto-resume after a deliberate stop
+
+
 def test_inventory_requested_on_game_entry():
     # Route item-gates need to know what we hold (e.g. rope and grapple); the first in-game
     # "[HP=...]" prompt must request inventory alongside stat/who. (Bug: CAVWLOOP was
