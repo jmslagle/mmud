@@ -491,6 +491,7 @@ class MudBot:
             "sneak_pct": f"{s.sneak_pct:.0f}%",
             "dodge_pct": f"{s.dodge_pct:.0f}%",
             "exp_rate": f"{sess.exp_rate_per_hour()/1000:.0f} k/hr",
+            "exp_gained": str(sess.exp_gained),   # exp made THIS session (vs absolute "exp")
             "had_to_run": str(s.ran_away),
             "health_low": str(s.health_low),
             "people_seen": str(sess.people_seen),
