@@ -189,6 +189,37 @@ def test_deliberate_stop_does_not_resume_on_reconnect():
     assert calls == []                          # no auto-resume after a deliberate stop
 
 
+def test_resume_loop_after_bail_when_healed():
+    # combat.resume_after_bail: after an emergency bail (loop stopped) auto-resume the loop
+    # once healed + safe — hands-off bail->heal->resume grind.
+    from mmud.config.schema import MudConfig
+    config = MudConfig()
+    config.combat.resume_after_bail = True
+    config.combat.hp_full_pct = 0.85
+    bot = make_transcript_bot([], config=config)
+    bot._login_handler.in_game = True
+    bot._loop_intended = "CAVWLOOP"
+    calls = []
+    bot.start_loop = lambda name="": (calls.append(name), "ok")[1]
+    bot._bailed = True
+    bot._state.set_hp(168, 168)                 # healed (>= 85%)
+    bot._maybe_resume_after_bail()
+    assert calls == ["CAVWLOOP"] and bot._bailed is False
+    # still healing -> no resume
+    bot._bailed = True; calls.clear(); bot._state.set_hp(100, 168)   # 60% < 85%
+    bot._maybe_resume_after_bail()
+    assert calls == []
+    # in combat -> no resume
+    bot._bailed = True; bot._state.set_hp(168, 168); bot._state.set_combat(True)
+    bot._maybe_resume_after_bail()
+    assert calls == []
+    # feature off (default) -> no resume
+    config.combat.resume_after_bail = False
+    bot._bailed = True; bot._state.set_combat(False)
+    bot._maybe_resume_after_bail()
+    assert calls == []
+
+
 def test_inventory_requested_on_game_entry():
     # Route item-gates need to know what we hold (e.g. rope and grapple); the first in-game
     # "[HP=...]" prompt must request inventory alongside stat/who. (Bug: CAVWLOOP was
