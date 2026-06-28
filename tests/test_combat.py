@@ -92,6 +92,18 @@ def test_emergency_decider_fires_once_below_threshold():
     assert d.decide(gs) == "sys go sil"
 
 
+def test_emergency_skips_break_when_mortally_wounded():
+    # While mortally wounded (negative HP), `break` is rejected ("...mortally wounded!") but
+    # the recall (sys go sil) still works — so fire it DIRECTLY, don't waste a turn on break.
+    from mmud.combat.combat import EmergencyDecider
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(-257, 168)
+    d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="sys go sil"))
+    assert d.decide(gs) == "sys go sil"       # recall directly, NOT "break"
+    assert gs.dequeue() is None               # nothing queued behind a break
+
+
 def test_emergency_breaks_combat_before_the_escape_command():
     # In MajorMUD you're combat-locked and can't recall/`sys go` until you `break`. So in
     # combat the emergency sends `break` first, then the escape command right after (queued

@@ -125,8 +125,11 @@ class EmergencyDecider:
         # queue intact (the recall cmd may be queued in the combat branch below).
         if self._on_fire is not None:
             self._on_fire()
-        if state.in_combat:
-            # Combat-locked: break first, then fire the escape immediately behind it.
+        # Combat-locked: `break` first, then fire the escape right behind it. EXCEPTION: while
+        # mortally wounded (negative HP) `break` is rejected ("...mortally wounded!") but the
+        # recall still works — skip straight to it instead of wasting the turn.
+        mortally_wounded = state.max_hp > 0 and state.hp < 0
+        if state.in_combat and not mortally_wounded:
             state.enqueue(self._cmd)
             return "break"
         return self._cmd
