@@ -48,17 +48,45 @@ Ordered roughly by value/effort. Check items off as they ship (branch → commit
   - Do: add `flags:int` to `PathStep`/`RouteStep`, thread through `code_route`, pre-emit
     `search`/`disarm trap` (config-gated) before a `0x200` step, honor rest-before/after waypoints.
 
-## C. Web panel & TUI — feature completeness  _(being scoped; see below)_
+## C. Web panel & TUI — feature completeness
 
-Goal: bring the web/TUI control surface to parity with MegaMud's Windows UI (every setting editable,
-the map/status/log surfaces present). To be filled from a binary **resource/dialog audit** (settings
-dialogs, menus, the map view, status fields) — agent running.
+Goal: parity with MegaMud's Windows UI. Audit done (binary): MegaMud's settings = a **9-tab property
+sheet** (General/Logon, Combat, Spells, Health, Events, Display, Toolbar, Comms, Modem) driven by
+`config_ini_load @0x4361da` (~381 INI keys; full key→offset map in `docs/re/source/config_ini_load.md`)
++ `bbs_profile_load @0x41078d`. Views: terminal, combat/round + stats panel, conversation, who/players,
+**party panel**, **exp-rate graph**, goto + **map/automap**, quick-tools, **recorded-path editor**.
+Out of scope: Comms/Modem (dial-up), ZModem, font/color choosers, the `.MD` data-DB editors.
 
-- [ ] C0 — Audit MegaMud's UI resources (dialog templates, settings tabs, menus, map) → enumerate the
-      full config surface and views we should expose.
-- [ ] C1 — _(tbd from C0)_ Complete the Settings surface (every CombatConfig/Nav/Items/etc. field editable in web).
-- [ ] C2 — _(tbd from C0)_ Map view (rooms/exits, current position, the loop path overlay).
-- [ ] C3 — _(tbd from C0)_ …
+**Biggest gaps vs ours:** no map, no path editor, no combat-round panel, no party panel, no exp graph;
+list-valued settings (bless / party-bless / login script / schedule / players) uneditable anywhere;
+`pvp`/`remote`/`schedule`/`players` have no TUI settings tab at all.
+
+### C-P1 — close the settings gaps (low risk, mostly wiring)
+- [ ] **(S)** Add missing TUI settings tabs: route `remote`, `pvp`, `schedule`, `players` through
+      `tui/settings_screen.py:TABS` (already in schema, just unlisted).
+- [ ] **(M)** **List-field editors** (both UIs) for `spells.bless[]`, `party.bless[]`, `login.script[]`,
+      `schedule.events[]`, `players[]` — generalize the web `ListEditor` (get/equip items) to object-lists.
+- [ ] **(S)** Promote web `Settings.tsx` from ~10 curated fields + raw JSON to a generated full-section
+      editor driven off `/api/config` (it already PATCHes `{section,field,value}`, like the TUI).
+- [ ] **(S)** Add high-value MISSING scalars to schema (each maps to a named INI key): `health.use_meditate`/
+      `meditate_b4_rest`/`hp_heal_period`/`flux_cmd`/`regen_cmd`, `navigation.disarm_max`/`auto_door`/
+      `entry_cmd`/`exit_cmd`/`sys_goto`, `stealth.super_stealth`/`track_*`, `safety.hangup_naked`/
+      `relog_instead`/`lag_wait`, party flags (`att_leader_mstr`/`help_bash`/`send_panic`/`party_max_*`),
+      per-slot `inv_lock` equip locks, AFK `alert_*` channels.
+
+### C-P2 — missing operational views
+- [ ] **(M)** **Combat / round panel** (`ShowRounds` + `combat_stats_window_proc @0x481620`): per-round
+      hit/miss/damage feed (counters already in `snapshot()["combat"]`) — new TUI widget + web component.
+- [ ] **(M)** **Party panel** (`party_window_proc @0x4630e0`): member list, HP%, wait/resume — needs a
+      party-roster parser (follow-up to the `PlayerSeen` pipeline).
+- [ ] **(S)** **Exp-rate graph/sparkline** (`exp_graph_draw_proc @0x42cb30`) in web `SessionStats.tsx`
+      (we already emit exp-rate).
+
+### C-P3 — the big builds
+- [ ] **(L)** **Recorded-path editor** (`path_editor_dialog_proc @0x4661d0` + `path_step_subdialog`/
+      `path_record_*`): view/edit `.MP` step lists, record-from-session, import. We only *consume* `.MP` today.
+- [ ] **(L)** **Map / automap view** (`CurMap`/`MapWinPos`, rendered in the Goto window): room-graph
+      renderer over our nav data + the loop overlay. Do after the path editor (shared room/exit model).
 
 ---
 
