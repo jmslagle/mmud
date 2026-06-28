@@ -327,6 +327,8 @@ class MudBot:
         self._loop_intended = ""    # loop name to (re)start on game entry — survives a
                                     # reconnect so the loop resumes instead of idling
         self._prev_in_game = False  # edge-detect (re-)entering the game
+        self._bailed = False        # emergency bail fired -> auto-resume the loop once healed
+                                    # (if combat.resume_after_bail)
         self._redial_delay_s = 5.0
         self._was_low = False   # edge-detect for health_low stat
 
@@ -482,6 +484,7 @@ class MudBot:
             self._check_session(time.monotonic())
             self._scheduler.tick(time.monotonic())
             self._flush_stats()
+            self._maybe_resume_after_bail()    # bail -> heal -> auto-resume the loop
             await self._maybe_idle_refresh()
             await self._check_stall(time.monotonic())
 
@@ -1651,7 +1654,28 @@ class MudBot:
         if self._loop_runner:
             self._loop_runner.stop()
         self._travel.clear(reason="emergency")
+        self._bailed = True   # so we auto-resume once healed (if combat.resume_after_bail)
         self._session_log.event("emergency recall -> loop/travel stopped")
+
+    def _maybe_resume_after_bail(self) -> None:
+        """After an emergency bail (which stopped the loop), auto-resume the loop once we've
+        healed back up and are safe — so the bail->heal->resume grind runs hands-off
+        (combat.resume_after_bail). Gated on being fully healed so we don't path straight
+        back into danger half-recovered."""
+        if not (self._bailed and self._config.combat.resume_after_bail):
+            return
+        if not self._login_handler.in_game or self._state.in_combat:
+            return
+        if self._loop_runner and self._loop_runner.running:
+            self._bailed = False
+            return
+        mx = self._state.max_hp
+        if mx <= 0 or self._state.hp / mx < self._config.combat.hp_full_pct:
+            return                              # still healing
+        if self._loop_intended:
+            self._bailed = False
+            self._session_log.event("healed after bail -> resuming loop")
+            self.start_loop(self._loop_intended)
 
     def find_rooms(self, query: str, limit: int = 25) -> list[Room]:
         """Search loaded rooms by exact 4-letter code or name substring

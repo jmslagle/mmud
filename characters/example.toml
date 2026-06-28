@@ -52,9 +52,10 @@ flee_threshold  = 0.15    # HP fraction below which we RUN: walk out an exit (on
                           # MegaMud-style — never spams the literal "flee".
 flee_rooms      = 4       # how many rooms to retrace when run_backwards (MegaMud RunRooms)
 emergency_threshold = 0.0 # HP fraction below which we send emergency_cmd (0 = off)
-emergency_cmd   = ""      # critical-HP escape command, e.g. "recall" or "c word of recall"
-                          # — sent ONCE, then we fall back to running out. (Our tier;
-                          # MegaMud has no recall, only PvP disconnect.)
+emergency_cmd   = ""      # critical-HP escape command, e.g. "recall" or "c word of recall".
+                          # Retried out of combat until it lands; in combat we break first.
+resume_after_bail = false # after an emergency bail+heal, auto-RESUME the loop (hands-off
+                          # bail->heal->resume grind). off = stay put for you to handle.
 rest_threshold  = 0.40    # START resting (out of combat) when HP drops below this fraction
 rest_mana_pct   = 0.0     # also rest to recover mana below this fraction (0 = off;
                           # casters: set ~0.30 to pause and regen mana between fights)

@@ -48,6 +48,8 @@ class CombatConfig:
     emergency_threshold: float = 0.0  # HP fraction below which we send emergency_cmd (0=off)
     emergency_cmd: str = ""        # critical-HP escape command (e.g. "recall") — our tier;
                                    # MegaMud has none. Sent once, then we fall back to running.
+    resume_after_bail: bool = False  # after an emergency bail+recall, auto-RESUME the loop once
+                                     # healed (hands-off bail->heal->resume grind). off = stay put.
     rest_threshold: float = 0.40   # HP fraction below which we START resting (out of combat)
     rest_mana_pct: float = 0.0     # mana fraction below which we START resting (0 = off)
     hp_full_pct: float = 0.95      # HP fraction to RESUME at — stop resting here (MegaMud HpFull).
