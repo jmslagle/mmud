@@ -37,8 +37,13 @@ Health/Recovery  (settings_health_page_proc @0x42d0c0)
   HealCmd/RegenCmd/FluxCmd+FluxMin/BlindCmd/PoisonCmd/DiseaseCmd/FreedomCmd(+0x4e04..0x4e8f)
   IgnorePoison IgnoreBlind IgnoreConfusion
   (NB rest model = Min(trigger=*Rest) / Max(resume=*Full) PER HP and PER Mana — see combat_rest_decide
-   @0x40b380. HP HpRest 0x375c / HpFull 0x3768; Mana ManaRest 0x3778 / ManaFull 0x3784. The two
-   auto-memory notes disagree on 0x3768 (HpFull vs HpRun) — verify against the panel before wiring.)
+   @0x40b380. RESOLVED from the dialog control->offset map in settings_health_page_proc @0x42d0c0
+   (declared order HpFull HpRest HpHeal HpHealAtt HpRun HpLogoff): HpFull=0x3758, HpRest=0x375c,
+   HpHeal=0x3760, HpHealAtt=0x3764, **HpRun(wimpy/flee)=0x3768**, HpLogoff=0x376c; Mana mirrors at
+   ManaFull=0x3774, ManaRest=0x3778, ManaHeal=0x377c, ManaHealAtt=0x3780, ManaRun=0x3784. So
+   **0x3768 is HpRun (the flee threshold), NOT HpFull** — the earlier ambiguity is settled. The
+   flee driver combat_flee_or_hide_decide @0x407f70 arms a RunRooms walk when hp < maxhp*HpRun/100;
+   HpFull(0x3758)/ManaFull(0x3774) are the rest-resume targets.)
 
 Events/AFK/PvP/Safety  (settings_events_page_proc @0x423270)
   AFK:   AutoAfk AutoAfkOff AfkMinimized AfkTimeout AfkReply CmdReply PopupAfkMsgs ShowAllAfk
