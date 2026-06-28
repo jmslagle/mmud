@@ -2,6 +2,7 @@ from __future__ import annotations
 import argparse
 import pathlib
 from mmud.config.loader import load_config
+from mmud.tui._textual_patches import patch_textual_input_decoder
 from mmud.tui.app import MegaMudApp
 
 
@@ -24,6 +25,10 @@ def main() -> None:
         help="connect to the server automatically on start (overrides [server] auto_connect)",
     )
     args = parser.parse_args()
+
+    # Survive stray non-UTF-8 bytes on stdin (e.g. under screen/tmux) instead of
+    # crashing Textual's input thread with a UnicodeDecodeError.
+    patch_textual_input_decoder()
 
     char_path = pathlib.Path(args.char) if args.char else None
     config = load_config(char_path)
