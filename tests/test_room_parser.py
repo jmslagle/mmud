@@ -108,6 +108,18 @@ def test_also_here_capitalized_is_player():
     assert p.extract_sightings("Also here: Betram.") == []
 
 
+def test_also_here_camelcase_name_is_player():
+    # "TheSysop" (internal capital) is a PLAYER, not a monster — the bot was attacking it
+    # because the old player-name regex rejected the internal capital and it fell through
+    # to the monster roster (which also blocked resting). A capitalized proper name in
+    # "Also here:" is a player regardless of internal capitals / word count.
+    p = RoomParser({})
+    assert p.extract_players("Also here: TheSysop, a dark elf.") == ["TheSysop"]
+    assert ("thesysop", 1) not in p.extract_sightings("Also here: TheSysop, a dark elf.")
+    # lowercase bare names stay monsters (the established convention, e.g. "fat giant rat")
+    assert p.extract_sightings("Also here: fat giant rat.") == [("fat giant rat", 1)]
+
+
 def test_also_here_strips_parenthetical():
     p = RoomParser({})
     assert p.extract_sightings("Also here: fat giant rat (Charmed).") == [("fat giant rat", 1)]

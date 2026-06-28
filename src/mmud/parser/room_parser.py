@@ -19,7 +19,10 @@ _PAREN_SUFFIX_RE = re.compile(r"\s*\(.*\)\s*$")
 _AND_RE = re.compile(r"\s+and\s+|\s*,\s*", re.IGNORECASE)
 _COUNT_PREFIX_RE = re.compile(r"^(\d+)\s+(.+)$")
 _ARTICLE_PREFIX_RE = re.compile(r"^(?:a|an|the)\s+(.+)$", re.IGNORECASE)
-_PLAYER_NAME_RE = re.compile(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?$")
+# A player/proper name in "Also here:" — a Capitalized token (allowing internal capitals
+# like "TheSysop" and any number of capitalized words, e.g. "Krang Moan", "Sir Robin Hood").
+# Bare LOWERCASE entries (e.g. "fat giant rat") stay monsters, per the server convention.
+_PLAYER_NAME_RE = re.compile(r"^[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*$")
 _NON_MONSTER = re.compile(
     r"\b(copper|silver|gold|platinum|noble|crown|coin|key|here)\b", re.IGNORECASE
 )
