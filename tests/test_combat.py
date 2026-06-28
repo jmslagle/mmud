@@ -108,16 +108,21 @@ def test_emergency_decider_fires_once_below_threshold():
     assert d.decide(gs) == "sys go sil"
 
 
-def test_emergency_skips_break_when_mortally_wounded():
-    # While mortally wounded (negative HP), `break` is rejected ("...mortally wounded!") but
-    # the recall (sys go sil) still works — so fire it DIRECTLY, don't waste a turn on break.
+def test_emergency_recall_when_mortally_wounded_only_out_of_combat():
+    # Mortally wounded: IN combat both `break` and the recall are rejected ("...mortally
+    # wounded!") — bleeding out — so wait. OUT of combat the recall works, so fire it directly
+    # and RETRY every turn (NOT debounced) until it lands and HP recovers. (Bug: it fired once
+    # in combat, failed, debounced, and never retried once combat ended.)
     from mmud.combat.combat import EmergencyDecider
-    gs = GameState()
-    gs.set_combat(True)
-    gs.set_hp(-257, 168)
     d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="sys go sil"))
-    assert d.decide(gs) == "sys go sil"       # recall directly, NOT "break"
-    assert gs.dequeue() is None               # nothing queued behind a break
+    gs = GameState()
+    gs.set_hp(-200, 168)
+    gs.set_combat(True)
+    assert d.decide(gs) is None               # in combat + mortally wounded -> can't recall, wait
+    assert gs.dequeue() is None               # nothing queued behind a (rejected) break
+    gs.set_combat(False)
+    assert d.decide(gs) == "sys go sil"       # out of combat -> recall directly
+    assert d.decide(gs) == "sys go sil"       # RETRY next turn (not debounced)
 
 
 def test_emergency_breaks_combat_before_the_escape_command():

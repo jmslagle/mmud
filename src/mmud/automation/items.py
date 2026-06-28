@@ -107,6 +107,8 @@ class GetDecider:
     def decide(self, state: GameState) -> str | None:
         if state.in_combat:
             return None
+        if state.max_hp > 0 and state.hp < 0:
+            return None        # mortally wounded: "get" is rejected too — don't spam it
         cur = state.inventory.encumbrance_cur
         if self._cfg.auto_cash:
             # Cash BELOW the wealth target is "needed" (MegaMud AutoCash-below-target): it
