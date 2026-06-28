@@ -34,3 +34,4 @@ RE a new function (per CLAUDE.md, always RE the binary for MegaMud-matching beha
 | [`cash_upgrade_coins_decide`](cash_upgrade_coins_decide.md) | `0x409fc0` | DropCoins: drop the cheapest cheaper coins to make room for a better coin over the pickup cap |
 | [`bbs_login_sequence_handle`](bbs_login_sequence_handle.md) | `0x444e50` | Logon engine: scripted LogonPrompt/LogonReply + HARDCODED ANSI/`[MAJORMUD]:`→"enter"/`[HP=]`→in-game |
 | [`game_menu_prompt_parse`](game_menu_prompt_parse.md) | `0x45f650` | Auto-answers the "(C)ontinue?"/press-any-key pager with Enter (always-on; handles any count of "(N)onstop" prompts) |
+| [`config_ini_load`](config_ini_load.md) | `0x4361da` | The full settings/config surface: ~381 INI keys → state offsets, grouped by the 9 settings tabs (drives the web/TUI parity roadmap §C) |
