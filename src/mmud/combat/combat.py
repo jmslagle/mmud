@@ -117,19 +117,25 @@ class EmergencyDecider:
         if hp_pct > self._threshold:
             self._sent = False                 # recovered -> re-arm
             return None
+        # MORTALLY WOUNDED (negative HP): special-cased because the normal break-then-recall
+        # fails — in combat BOTH `break` and the recall are rejected ("...mortally wounded!"),
+        # so you bleed out. The recall only works once combat ends. So: wait while in combat,
+        # then RETRY the recall every turn out of combat (NOT debounced — a bled-out bot must
+        # keep trying until it lands and HP recovers, then we re-arm above).
+        if state.max_hp > 0 and state.hp < 0:
+            if state.in_combat:
+                return None                    # can't recall mid-combat while wounded; wait
+            if self._on_fire is not None:
+                self._on_fire()               # stop the loop so we don't path back into danger
+            return self._cmd                   # recall directly; retry each turn until it lands
         if self._sent:
             return None                        # already bailed; don't spam the recall
         self._sent = True
         # Stop looping/traveling FIRST so the recall lands us somewhere safe and we don't
-        # immediately path back into the danger that nearly killed us. Keeps the command
-        # queue intact (the recall cmd may be queued in the combat branch below).
+        # immediately path back into the danger that nearly killed us.
         if self._on_fire is not None:
             self._on_fire()
-        # Combat-locked: `break` first, then fire the escape right behind it. EXCEPTION: while
-        # mortally wounded (negative HP) `break` is rejected ("...mortally wounded!") but the
-        # recall still works — skip straight to it instead of wasting the turn.
-        mortally_wounded = state.max_hp > 0 and state.hp < 0
-        if state.in_combat and not mortally_wounded:
+        if state.in_combat:                    # combat-locked: break first, recall right behind
             state.enqueue(self._cmd)
             return "break"
         return self._cmd
