@@ -42,7 +42,8 @@ from mmud.automation.spells import SpellEngine
 # Prompt vitals. MajorMud prompts vary by player config: "[HP=141/216]",
 # "[HP=49 /MA=20 ]" (current-only, mana as MA), "[HP=49/216 MA=20/45]", etc.
 # Capture current and an OPTIONAL max for each; mana is MA or MP.
-_HP_RE = re.compile(r"\bHP=(\d+)(?:/(\d+))?")
+_HP_RE = re.compile(r"\bHP=(-?\d+)(?:/(\d+))?")   # -? so "[HP=-257]" (mortally wounded)
+                                                  # parses negative -> the emergency fires
 _MP_RE = re.compile(r"\b(?:MA|MP)=(\d+)(?:/(\d+))?")
 # The `stat`/`health` command reports current AND max — learn the max here so a
 # minimal prompt (current-only) still drives flee/rest thresholds. RECONSTRUCTED

@@ -4,6 +4,17 @@ from mmud.config.schema import CombatConfig
 from mmud.state.game_state import MonsterSighting
 
 
+def test_mortally_wounded_does_not_flee_or_attack():
+    # At negative HP the server rejects attack/flee/recall ("mortally wounded"); the combat
+    # engine must NOT spam them — return None and wait for HP to regen.
+    gs = GameState()
+    gs.set_combat(True)
+    gs.set_hp(-257, 168)              # mortally wounded
+    gs.monsters_present = [MonsterSighting(name="cave worm")]
+    e = CombatEngine(CombatConfig(attack_cmd="a", flee_threshold=0.15))
+    assert e.decide(gs) is None      # not a flee move, not an attack
+
+
 def test_attacks_when_in_combat():
     gs = GameState()
     gs.set_combat(True)
