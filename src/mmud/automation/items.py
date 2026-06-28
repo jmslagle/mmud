@@ -111,25 +111,35 @@ class GetDecider:
             return None        # mortally wounded: "get" is rejected too — don't spam it
         cur = state.inventory.encumbrance_cur
         if self._cfg.auto_cash:
-            # Cash BELOW the wealth target is "needed" (MegaMud AutoCash-below-target): it
-            # bypasses the DontBeHeavy/DontBeMedium pickup cap, so loot is still grabbed after
-            # a fight while Heavy. Only when hoarding past the target does the cap (and the
-            # drop-to-upgrade) apply. max_wealth<=0 -> no target -> always grab.
-            mx = self._cfg.max_wealth
-            cash_needed = mx <= 0 or state.inventory.wealth_total() < mx
-            for denom in list(state.ground_coins):
+            # Coins obey the DontBeHeavy/DontBeMedium pickup cap exactly like items
+            # (MegaMud loot_item_collect @0x409a80). The ONLY thing that bypasses the cap is
+            # an active travel-toll requirement (state+0x3188, normally 0 — the loop never
+            # routes a toll-gated exit); the wealth/bank target (max_wealth -> MegaMud's
+            # MinWealth @+0x3244) drives BANKING, not pickup, so it must NOT bypass the cap.
+            # Process denominations HIGHEST-VALUE FIRST (MegaMud room_entity_priority_sort)
+            # so a near-full pack spends its remaining capacity on gold before silver.
+            cap = self._cap(state, needed=False)
+            for denom in sorted(state.ground_coins,
+                                key=lambda d: WEALTH_RATES.get(d, 0), reverse=True):
                 if not getattr(self._cfg, f"collect_{denom}", False):
                     del state.ground_coins[denom]   # unwanted: forget it
                     continue
-                amount = state.ground_coins[denom]
-                cap = self._cap(state, needed=cash_needed)
+                ground_amt = state.ground_coins[denom]
+                amount = ground_amt
                 if cap is not None and cur + _coin_weight(amount) > cap:
-                    # Won't fit. Drop cheaper coins to make room (DropCoins), else skip
-                    # this denom (leave it on the ground) and try the others.
+                    # Won't fully fit. First drop cheaper coins to make room for this better
+                    # coin (DropCoins). Else take only the portion that fits (MegaMud partial
+                    # pickup); if nothing fits, leave it and try the other denominations.
                     if drop := self._coin_upgrade_drop(state, denom, cur, cap, amount):
                         return drop
-                    continue
-                del state.ground_coins[denom]
+                    fit = (cap - cur) * 3           # 3 coins per weight unit
+                    if fit < 1:
+                        continue
+                    amount = min(amount, fit)
+                if amount >= ground_amt:
+                    del state.ground_coins[denom]
+                else:
+                    state.ground_coins[denom] = ground_amt - amount   # partial: leave the rest
                 self._begin(state, denom, coin=True)
                 # MegaMud hardcodes the get-currency verb; MajorMUD GET syntax
                 # is "GET {Amount} {Currency}" (amount required). Ref §3.
@@ -176,7 +186,9 @@ class GetDecider:
             return None
         _val, denom, count = min(cheaper)            # lowest unit value first
         overage = (cur + _coin_weight(amount)) - cap  # weight units to free
-        n = min(count, max(1, overage) * 3)           # 3 coins per weight unit
+        # MegaMud: n = min(weight_to_free*3, held_count, amount_on_ground) — never drop more
+        # cheap coins than the number of better coins actually available to pick up.
+        n = min(count, max(1, overage) * 3, amount)   # 3 coins per weight unit
         if n <= 0:
             return None
         # Optimistically apply the drop so we don't re-drop before the inventory refreshes.

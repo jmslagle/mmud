@@ -209,16 +209,54 @@ def test_no_weight_gate_before_first_inventory_read():
     assert d.decide(gs) == "get anvil"
 
 
-def test_cash_below_target_bypasses_weight_cap():
-    # MegaMud: AutoCash cash BELOW the wealth target is "needed" -> bypasses DontBeHeavy.
-    # So coins are still grabbed after a fight even while Heavy (the cap is for items/hoard).
+def test_coins_obey_pickup_cap_regardless_of_wealth_target():
+    # CORRECTED (megamud loot_item_collect @0x409a80): coins obey the DontBeHeavy 67% cap
+    # exactly like items. Being below the wealth/bank target does NOT bypass it. The only
+    # bypass is an active travel-toll requirement (state+0x3188, normally 0 — the loop never
+    # routes a toll exit), NOT max_wealth. Over the cap with no cheaper coin to drop -> skip.
     gs = GameState()
-    gs.inventory = Inventory(encumbrance_cur=2870, encumbrance_max=2880,  # essentially full
-                             coins={"silver": 5})                          # wealth 50
+    gs.inventory = Inventory(encumbrance_cur=2870, encumbrance_max=2880,  # well over 67% cap
+                             coins={"silver": 5})
     gs.ground_coins["gold"] = 9
     d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True, dont_go_heavy=True,
-                               max_wealth=100000), now=lambda: 5.0)        # 50 < target
-    assert d.decide(gs) == "get 9 gold"        # grabbed despite being over the soft cap
+                               max_wealth=100000), now=lambda: 5.0)        # below target
+    assert d.decide(gs) is None                # cap applies; NOT bypassed by the wealth target
+
+
+def test_coin_pickup_prefers_higher_value_first():
+    # MegaMud sorts ground currency by value (room_entity_priority_sort): gold is attempted
+    # before silver, even when silver was noticed/inserted first.
+    gs = GameState()
+    gs.inventory = _inv(100, 2880)             # plenty of room
+    gs.ground_coins["silver"] = 50             # inserted first
+    gs.ground_coins["gold"] = 9
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_silver=True, collect_gold=True),
+                   now=lambda: 5.0)
+    assert d.decide(gs) == "get 9 gold"        # higher value first, not "get 50 silver"
+
+
+def test_coin_partial_pickup_takes_what_fits():
+    # A stack bigger than the remaining capacity, with no cheaper coin to drop -> grab the
+    # portion that fits (MegaMud partial pickup), don't skip the whole stack.
+    gs = GameState()
+    # cap = 2880*67//100 = 1929; room for (1929-1920)=9 weight = 27 coins (3 coins/weight).
+    gs.inventory = Inventory(encumbrance_cur=1920, encumbrance_max=2880)
+    gs.ground_coins["gold"] = 60               # ceil(60/3)=20 weight -> 1940 > 1929
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True, dont_go_heavy=True,
+                               drop_coins=True), now=lambda: 5.0)
+    assert d.decide(gs) == "get 27 gold"       # only what fits
+
+
+def test_coin_upgrade_drop_capped_by_ground_amount():
+    # Drop no more cheap coins than the number of target coins available on the ground
+    # (MegaMud n = min(weight_to_free*3, held_count, amount_on_ground)).
+    gs = GameState()
+    gs.inventory = Inventory(encumbrance_cur=1929, encumbrance_max=2880,  # at cap
+                             coins={"silver": 100})
+    gs.ground_coins["gold"] = 1                 # only 1 gold available
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True, dont_go_heavy=True,
+                               drop_coins=True), now=lambda: 5.0)
+    assert d.decide(gs) == "drop 1 silver"      # capped at 1 (gold count), not 3
 
 
 def test_coin_skipped_when_over_cap_and_drop_disabled():
