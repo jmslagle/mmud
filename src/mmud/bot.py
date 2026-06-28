@@ -323,6 +323,9 @@ class MudBot:
         self._last_rx = time.monotonic()   # last time the server sent us anything
         self._stalled = False              # one-shot guard for the stall watchdog
         self._auto_started = False
+        self._loop_intended = ""    # loop name to (re)start on game entry — survives a
+                                    # reconnect so the loop resumes instead of idling
+        self._prev_in_game = False  # edge-detect (re-)entering the game
         self._redial_delay_s = 5.0
         self._was_low = False   # edge-detect for health_low stat
 
@@ -916,19 +919,28 @@ class MudBot:
 
     def _handle_login(self, line: str) -> None:
         if self._login_handler.in_game:
-            # (max HP/MA is learned via `stat`, triggered on the first in-game
-            # "[HP=...]" prompt in _parse_vitals — not here, which fires too early.)
-            # Check auto_start on first game entry
-            if (not self._auto_started
-                    and self._config.navigation.auto_start):
-                self._auto_started = True
-                self.toggle_loop()
+            if not self._prev_in_game:      # edge: just (re-)entered the game
+                self._prev_in_game = True
+                self._on_game_entry()
             return
+        self._prev_in_game = False          # disconnected/logging in -> arm the edge
         if self._state.in_combat:
             return
         cmd = self._login_handler.process_line(line)
         if cmd is not None:
             self._state.enqueue(cmd)
+
+    def _on_game_entry(self) -> None:
+        """First prompt after (re-)entering the game. Resume the loop: on the initial entry
+        when auto_start is set, AND after an auto-reconnect if a loop was running before the
+        drop (reconnect=true otherwise leaves the bot idle at the login room). max HP/MA is
+        learned separately via `stat` on the first "[HP=...]" prompt (_parse_vitals)."""
+        want = self._loop_intended
+        if not want and not self._auto_started and self._config.navigation.auto_start:
+            want = self._config.navigation.loop_path
+        if want:
+            self._auto_started = True
+            self.start_loop(want)           # idempotent: re-routes from our current position
 
     def _parse_who(self, line: str) -> bool:
         """WHO block ("Current Adventurers" / "===" then "[Align ]Name - Title").
@@ -1610,6 +1622,7 @@ class MudBot:
         loop_name = self._config.navigation.loop_path
         if not loop_name:
             return "No loop path configured. Use :loop NAME"
+        self._loop_intended = loop_name   # remember so a reconnect resumes this loop
         if self._loop_runner and self._loop_runner.running:
             self._loop_runner.stop()
         self._loop_runner = self._make_loop_runner()
@@ -1622,6 +1635,7 @@ class MudBot:
 
     def stop_all(self) -> str:
         """Stop loop/travel and clear command queue."""
+        self._loop_intended = ""    # deliberate stop -> don't auto-resume on reconnect
         if self._loop_runner:
             self._loop_runner.stop()
         self._travel.clear()
