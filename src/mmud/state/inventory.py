@@ -21,14 +21,19 @@ class Inventory:
     encumbrance_level: str = "none"   # none|light|medium|heavy
     encumbrance_cur: int = 0          # raw "1938/2880" current weight (for the pickup cap)
     encumbrance_max: int = 0          # raw max weight (0 = not seen yet)
+    wealth_copper: int = 0            # authoritative total from the "Wealth:" line (copper-equiv,
+                                      # 0 = not reported). NOT stored in `coins` — that's the
+                                      # actual carried denominations only.
 
     @property
     def carried(self) -> list[str]:
         return list(self.carried_counts)
 
     def wealth_total(self) -> int:
-        """Total wealth in copper-equivalent."""
-        return sum(WEALTH_RATES.get(d, 0) * n for d, n in self.coins.items())
+        """Total wealth in copper-equivalent — the server's authoritative 'Wealth:' total
+        when reported, else summed from the carried coins."""
+        return self.wealth_copper or sum(WEALTH_RATES.get(d, 0) * n
+                                         for d, n in self.coins.items())
 
 
 class RefreshDecider:
