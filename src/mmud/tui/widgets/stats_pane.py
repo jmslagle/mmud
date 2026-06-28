@@ -38,7 +38,8 @@ class StatsPane(Static):
 
         lines = [
             "[b]Experience[/b]",
-            f"  Exp made    {g('exp', '-')}",
+            f"  Exp made    {g('exp_gained', '0')}",   # gained THIS session (per-kill deltas)
+            f"  Exp total   {g('exp', '-')}",           # absolute character total
             f"  Exp needed  {g('exp_needed', '-')}",
             f"  Exp rate    {g('exp_rate', '-')}",
             f"  Will level  {g('will_level_in', '-')}",
