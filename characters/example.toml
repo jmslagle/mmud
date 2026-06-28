@@ -6,6 +6,8 @@
 [server]
 host = "mud.example.com"
 port = 4000
+auto_connect = false   # connect automatically on TUI start (pairs with [login] auto_login
+                       # for fully hands-off startup; CLI --connect overrides this)
 
 # ── Login ────────────────────────────────────────────────────────────────────
 [login]

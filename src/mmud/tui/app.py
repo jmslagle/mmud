@@ -92,6 +92,9 @@ class MegaMudApp(App):
         self._wire_bus()
         # Focus the command input immediately so typing works like a telnet client
         self.query_one("#command-input", Input).focus()
+        # Auto-connect on start (hands-off startup; pairs with [login] auto_login).
+        if self._config.server.auto_connect:
+            await self.action_toggle_connect()
 
     def on_terminal_view_raw_input(self, message: TerminalView.RawInput) -> None:
         """Character mode: a keystroke captured by the focused TerminalView is

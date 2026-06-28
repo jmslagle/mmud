@@ -18,10 +18,17 @@ def main() -> None:
         default=None,
         help="Path to character .toml config file",
     )
+    parser.add_argument(
+        "--connect",
+        action="store_true",
+        help="connect to the server automatically on start (overrides [server] auto_connect)",
+    )
     args = parser.parse_args()
 
     char_path = pathlib.Path(args.char) if args.char else None
     config = load_config(char_path)
+    if args.connect:
+        config.server.auto_connect = True
 
     host = args.host or config.server.host
     port = args.port or config.server.port

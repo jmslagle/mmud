@@ -450,17 +450,12 @@ class MudBot:
                 if self._safety.hangup_requested:
                     self._emit(HangupTriggered(reason=self._safety.reason))
                     break
-                # MegaMud decides ONCE per turn, gated on the bare-prompt READY bit
-                # (network_receive_dispatch @0x45d520 → game_ai_do_something @0x402b20),
-                # NOT per line — that coupling caused the double-move / dead-target cast /
-                # sneak-spam class. In-game we act only at the prompt; the command QUEUE
-                # (login responses, door/loot/user) still drains immediately. Pre-game
-                # (login) we respond to every line as before (READY only exists in-game).
-                in_game = self._login_handler.in_game
-                may_act = (not in_game) or self._ready or bool(self._state._command_queue)
-                cmd = self._next_command() if may_act else None
-                if cmd:
-                    self._session_log.tx(cmd)
+                cmd = self._turn_command(self._login_handler.in_game)
+                # NB: `is not None`, not truthiness — "" is a real command (a bare Enter,
+                # e.g. the login pager "(C)ontinue?" reply); `if cmd:` dropped it and hung
+                # the bot at the (N)onstop/(Q)uit/(C)ontinue prompt.
+                if cmd is not None:
+                    self._session_log.tx(cmd or "(enter)")
                     await self._conn.send(cmd)
                     self._last_activity = time.monotonic()
                     if cmd in ("n", "s", "e", "w", "ne", "nw", "se", "sw", "u", "d"):
@@ -1258,6 +1253,20 @@ class MudBot:
                 self._state.set_combat(False)
                 self._session_log.event("combat=off")
                 self._emit(CombatChanged(in_combat=False))
+
+    def _turn_command(self, in_game: bool) -> str | None:
+        """The command to send this turn. While an AUTOMATIC login is in progress (auto_login
+        on, not yet in-game) we ONLY drain the command queue (login replies / user commands)
+        — NEVER the combat/spell/travel AI, which otherwise cast bless (shld/armr) at the
+        "User-ID:" prompt. Without a managed login (auto_login off) we keep the old always-act
+        behavior. In-game MegaMud decides ONCE per turn at the bare-prompt READY bit
+        (network_receive_dispatch @0x45d520 → game_ai_do_something @0x402b20), so we run the
+        engine only when READY (or a queued command — door/loot/user — is pending)."""
+        if self._config.login.auto_login and not in_game:
+            return self._state.dequeue()
+        if in_game and not (self._ready or self._state._command_queue):
+            return None
+        return self._next_command()
 
     def _next_command(self) -> str | None:
         was_running = self._state.task.type is TaskType.RUNNING
