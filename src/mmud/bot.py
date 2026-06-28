@@ -345,7 +345,9 @@ class MudBot:
             ("queue", QueueDecider(), PRIO_QUEUE),
             # Critical-HP escape: fires even in "run" mode (NOT in the combat-toggle's
             # disabled slots), above everything else.
-            ("emergency", EmergencyDecider(self._config.combat), PRIO_EMERGENCY),
+            ("emergency", EmergencyDecider(self._config.combat,
+                                           on_fire=self._stop_loop_for_emergency),
+             PRIO_EMERGENCY),
             ("cures", CureDecider(self._config.health), PRIO_CURE),
             ("run", RunDecider(self._config.combat, self._config.navigation), PRIO_FLEE),
             ("backstab", self._backstab, PRIO_BACKSTAB),
@@ -1626,6 +1628,15 @@ class MudBot:
         while self._state.dequeue() is not None:
             pass
         return "Stopped."
+
+    def _stop_loop_for_emergency(self) -> None:
+        """Critical-HP recall fired (EmergencyDecider) -> stop looping/traveling so we don't
+        immediately path back into the danger that nearly killed us. Keeps the command queue
+        intact (the recall command may be queued right behind a `break`)."""
+        if self._loop_runner:
+            self._loop_runner.stop()
+        self._travel.clear(reason="emergency")
+        self._session_log.event("emergency recall -> loop/travel stopped")
 
     def find_rooms(self, query: str, limit: int = 25) -> list[Room]:
         """Search loaded rooms by exact 4-letter code or name substring

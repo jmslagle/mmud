@@ -51,6 +51,21 @@ def test_flee_run_backwards_retraces_move_history():
     assert ce.decide(gs) == "s"          # then reverse of 'n'
 
 
+def test_emergency_stops_the_loop_when_it_fires():
+    # On a critical-HP recall, stop looping/traveling so the bot doesn't immediately wander
+    # back into danger after recalling — the on_fire hook (wired to the loop/travel stop).
+    from mmud.combat.combat import EmergencyDecider
+    fired = []
+    gs = GameState()
+    gs.set_hp(2, 100)                   # 2% <= 5%
+    d = EmergencyDecider(CombatConfig(emergency_threshold=0.05, emergency_cmd="sys go sil"),
+                         on_fire=lambda: fired.append(True))
+    assert d.decide(gs) == "sys go sil"
+    assert fired == [True]              # loop-stop hook fired exactly once
+    assert d.decide(gs) is None         # debounced
+    assert fired == [True]              # not re-fired
+
+
 def test_emergency_decider_fires_once_below_threshold():
     # Critical-HP escape lives in its own always-active decider (so "run" mode still
     # bails when dying). Fires the configurable command ONCE, re-arms after recovery.
