@@ -55,9 +55,12 @@ emergency_threshold = 0.0 # HP fraction below which we send emergency_cmd (0 = o
 emergency_cmd   = ""      # critical-HP escape command, e.g. "recall" or "c word of recall"
                           # — sent ONCE, then we fall back to running out. (Our tier;
                           # MegaMud has no recall, only PvP disconnect.)
-rest_threshold  = 0.40    # rest (out of combat) when HP drops below this fraction
+rest_threshold  = 0.40    # START resting (out of combat) when HP drops below this fraction
 rest_mana_pct   = 0.0     # also rest to recover mana below this fraction (0 = off;
                           # casters: set ~0.30 to pause and regen mana between fights)
+hp_full_pct     = 0.95    # RESUME at this HP fraction — stop resting here (MegaMud HpFull).
+                          # Lower it (e.g. 0.75) to cut rest downtime when grinding.
+mana_full_pct   = 0.95    # resume at this mana fraction (MegaMud ManaFull)
 backstab        = false
 polite_attacks  = false
 attack_order    = "first"

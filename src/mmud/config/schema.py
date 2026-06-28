@@ -48,8 +48,11 @@ class CombatConfig:
     emergency_threshold: float = 0.0  # HP fraction below which we send emergency_cmd (0=off)
     emergency_cmd: str = ""        # critical-HP escape command (e.g. "recall") — our tier;
                                    # MegaMud has none. Sent once, then we fall back to running.
-    rest_threshold: float = 0.40   # HP fraction below which we rest (out of combat)
-    rest_mana_pct: float = 0.0     # mana fraction below which we rest (0 = off)
+    rest_threshold: float = 0.40   # HP fraction below which we START resting (out of combat)
+    rest_mana_pct: float = 0.0     # mana fraction below which we START resting (0 = off)
+    hp_full_pct: float = 0.95      # HP fraction to RESUME at — stop resting here (MegaMud HpFull).
+                                   # Lower it (e.g. 0.75) to cut rest downtime in a grind.
+    mana_full_pct: float = 0.95    # mana fraction to RESUME at (MegaMud ManaFull)
     backstab: bool = False
     polite_attacks: bool = False
     attack_order: str = "first"   # "first" | "last" | "reverse"
