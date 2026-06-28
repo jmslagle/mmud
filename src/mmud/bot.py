@@ -552,11 +552,12 @@ class MudBot:
             self._last_refresh = now
             self._session_log.tx("(idle refresh)")
             await self._conn.send("")   # bare Enter (\r) — re-print prompt/room
-        # Periodic WHO to keep the Players tab fresh as people log in/out.
+        # Periodic WHO (Players tab) + EXP (keep exp-to-level / will-level counters fresh).
         iv = self._config.session.who_interval_s
         if iv > 0 and self._stat_requested and now >= self._who_next:
             self._who_next = now + iv
             self._state.enqueue("who")
+            self._state.enqueue("exp")
 
     async def _check_stall(self, now: float) -> None:
         """Watchdog for a dead/half-open connection. In-game we send an idle
@@ -731,6 +732,7 @@ class MudBot:
                 # Read inventory on entry so we know what we're holding — route item-gates
                 # (e.g. "need rope and grapple" for CAVWLOOP) check our carried/worn items.
                 self._state.enqueue(self._config.items.inventory_cmd)
+                self._state.enqueue("exp")   # exp-to-level / will-level counters
                 self._who_next = time.monotonic() + self._config.session.who_interval_s
             # Prompts without a max (e.g. "[HP=49 /MA=20 ]") keep the last known
             # max — learned from a previous full prompt or the `stat` line.

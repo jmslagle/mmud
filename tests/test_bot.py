@@ -166,6 +166,7 @@ def test_inventory_requested_on_game_entry():
     q = list(bot._state._command_queue)
     assert "stat" in q
     assert bot._config.items.inventory_cmd in q          # "inv" by default ("i" for raist)
+    assert "exp" in q                                    # exp-to-level / will-level counters
 
 
 def _equip_item(name, slot):
@@ -581,9 +582,9 @@ from conftest import make_transcript_bot
 @pytest.mark.asyncio
 async def test_transcript_bot_rests_on_low_hp():
     # HP 10/100 out of combat -> CombatEngine rest_threshold (0.40) says "rest".
-    # First prompt sends the one-time `stat`; the action follows on the next.
-    bot = make_transcript_bot(["[HP=10/100]:\n", "[HP=10/100]:\n",
-                               "[HP=10/100]:\n", "[HP=10/100]:\n"])
+    # The first prompt queues the one-time stat/who/inv/exp; the rest action follows once
+    # those drain (one per prompt).
+    bot = make_transcript_bot(["[HP=10/100]:\n"] * 7)
     await bot.run()
     assert "rest" in bot._conn.sent
 
@@ -910,7 +911,7 @@ def test_stat_sent_once_on_first_ingame_prompt():
     drained = []
     while (c := bot._state.dequeue()) is not None:
         drained.append(c)
-    assert drained == ["stat", "who", "inv"]   # learn maxes + Players + held items
+    assert drained == ["stat", "who", "inv", "exp"]   # maxes + Players + held items + exp-to-level
     # Idempotent: not re-sent on every subsequent prompt.
     bot._parse_vitals("[HP=46/MA=12]:")
     assert bot._state.dequeue() is None
@@ -1391,9 +1392,10 @@ async def test_party_heal_e2e():
     bot = make_transcript_bot(
         ["The following people are in your party:\n",
          "Beeze          [Cleric]    [ 40] [100]\n",   # 40: heal yes, wait no
-         "[HP=100/100]:\n",           # first prompt: one-time `stat` + `who` + `inv`
+         "[HP=100/100]:\n",           # first prompt: one-time `stat`+`who`+`inv`+`exp`
          "[HP=100/100]:\n",           # drain queued who
          "[HP=100/100]:\n",           # drain queued inv
+         "[HP=100/100]:\n",           # drain queued exp
          "[HP=100/100]:\n"],          # next prompt: heal decider fires
         config=config)
     await bot.run()
