@@ -156,6 +156,18 @@ def test_no_fast_nudge_when_nothing_pending():
     assert not bot._nudge_due(5.0)
 
 
+def test_inventory_requested_on_game_entry():
+    # Route item-gates need to know what we hold (e.g. rope and grapple); the first in-game
+    # "[HP=...]" prompt must request inventory alongside stat/who. (Bug: CAVWLOOP was
+    # "blocked: need rope and grapple" because we never read inventory on login.)
+    bot = make_transcript_bot([])
+    bot._login_handler.in_game = True
+    bot._parse_vitals("[HP=168/MA=72]:")
+    q = list(bot._state._command_queue)
+    assert "stat" in q
+    assert bot._config.items.inventory_cmd in q          # "inv" by default ("i" for raist)
+
+
 def _equip_item(name, slot):
     from mmud.data.binary import Item
     return Item(record_id=1, name=name, source="", suffix="", item_type=1,
@@ -898,7 +910,7 @@ def test_stat_sent_once_on_first_ingame_prompt():
     drained = []
     while (c := bot._state.dequeue()) is not None:
         drained.append(c)
-    assert drained == ["stat", "who"]   # learn maxes + populate Players
+    assert drained == ["stat", "who", "inv"]   # learn maxes + Players + held items
     # Idempotent: not re-sent on every subsequent prompt.
     bot._parse_vitals("[HP=46/MA=12]:")
     assert bot._state.dequeue() is None
@@ -1379,8 +1391,9 @@ async def test_party_heal_e2e():
     bot = make_transcript_bot(
         ["The following people are in your party:\n",
          "Beeze          [Cleric]    [ 40] [100]\n",   # 40: heal yes, wait no
-         "[HP=100/100]:\n",           # first prompt: one-time `stat` + `who`
+         "[HP=100/100]:\n",           # first prompt: one-time `stat` + `who` + `inv`
          "[HP=100/100]:\n",           # drain queued who
+         "[HP=100/100]:\n",           # drain queued inv
          "[HP=100/100]:\n"],          # next prompt: heal decider fires
         config=config)
     await bot.run()
