@@ -1,6 +1,6 @@
 from __future__ import annotations
 import re
-from mmud.state.inventory import Inventory
+from mmud.state.inventory import Inventory, WEALTH_RATES
 
 _CARRYING_RE = re.compile(r"^You are carrying\s+(.*)$", re.IGNORECASE)
 _WEARING_RE = re.compile(r"^You are wearing\s+(.*)$", re.IGNORECASE)
@@ -39,6 +39,7 @@ class InventoryParser:
         self._carried: dict[str, int] = {}
         self._worn: list[str] = []
         self._coins: dict[str, int] = {}
+        self._wealth_copper = 0              # the "Wealth:" total (copper-equiv), if reported
         self._buf = ""                       # accumulated text of the current section
         self._section: str | None = None     # "carrying" | "wearing" | None
 
@@ -83,8 +84,11 @@ class InventoryParser:
             self._flush(); self._section = None
             return None
         if m := _WEALTH_RE.match(line):
+            # The "Wealth:" line is the TOTAL (copper-equivalent), not a coin denomination —
+            # storing it in `coins` polluted the carried map (we tried to drop phantom copper
+            # we never had) and double-counted wealth. Keep it as a separate total.
             self._flush(); self._section = None
-            self._coins[m.group(2).lower()] = int(m.group(1))
+            self._wealth_copper = int(m.group(1)) * WEALTH_RATES.get(m.group(2).lower(), 1)
             return None
         if m := _ENCUMBRANCE_RE.match(line):
             self._flush()
@@ -96,6 +100,7 @@ class InventoryParser:
                 encumbrance_level=m.group(3).lower(),
                 encumbrance_cur=int(m.group(1)),
                 encumbrance_max=int(m.group(2)),
+                wealth_copper=self._wealth_copper,
             )
             self._reset()
             return inv

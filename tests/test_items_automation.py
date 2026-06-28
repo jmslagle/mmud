@@ -209,25 +209,39 @@ def test_no_weight_gate_before_first_inventory_read():
     assert d.decide(gs) == "get anvil"
 
 
-def test_coin_skipped_when_over_cap_and_drop_disabled():
-    # A big coin stack that won't fit and drop_coins off -> skip (don't get).
+def test_cash_below_target_bypasses_weight_cap():
+    # MegaMud: AutoCash cash BELOW the wealth target is "needed" -> bypasses DontBeHeavy.
+    # So coins are still grabbed after a fight even while Heavy (the cap is for items/hoard).
     gs = GameState()
-    gs.inventory = _inv(1929, 2880)            # at cap 1929; ceil(3/3)=1 -> 1930 overflows
-    gs.ground_coins["copper"] = 3
-    d = GetDecider(ItemsConfig(auto_cash=True, collect_copper=True,
-                               dont_go_heavy=True, drop_coins=False), now=lambda: 5.0)
+    gs.inventory = Inventory(encumbrance_cur=2870, encumbrance_max=2880,  # essentially full
+                             coins={"silver": 5})                          # wealth 50
+    gs.ground_coins["gold"] = 9
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True, dont_go_heavy=True,
+                               max_wealth=100000), now=lambda: 5.0)        # 50 < target
+    assert d.decide(gs) == "get 9 gold"        # grabbed despite being over the soft cap
+
+
+def test_coin_skipped_when_over_cap_and_drop_disabled():
+    # ABOVE the wealth target (cash no longer "needed") a coin stack that won't fit and
+    # drop_coins off -> skip (don't get).
+    gs = GameState()
+    gs.inventory = Inventory(encumbrance_cur=1929, encumbrance_max=2880,  # at cap 1929
+                             coins={"copper": 5})                          # wealth 5
+    gs.ground_coins["copper"] = 3                                          # ceil->1 -> 1930 > cap
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_copper=True, dont_go_heavy=True,
+                               drop_coins=False, max_wealth=1), now=lambda: 5.0)  # 5 >= 1
     assert d.decide(gs) is None
 
 
 def test_coin_drop_to_upgrade_drops_cheapest_coin():
-    # Heavy, carrying copper, a gold stack on the ground won't fit + drop_coins on ->
-    # drop copper (cheapest, < gold) to make room. Gold stays on the ground for next turn.
+    # ABOVE target (hoarding): a gold stack won't fit + drop_coins on -> drop copper
+    # (cheapest, < gold) to make room. Gold stays on the ground for next turn.
     gs = GameState()
     gs.inventory = Inventory(encumbrance_cur=1929, encumbrance_max=2880,
-                             coins={"copper": 30, "silver": 5})
+                             coins={"copper": 30, "silver": 5})            # wealth 80
     gs.ground_coins["gold"] = 9                # ceil(9/3)=3 weight; 1929+3 > 1929 cap
-    d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True,
-                               dont_go_heavy=True, drop_coins=True), now=lambda: 5.0)
+    d = GetDecider(ItemsConfig(auto_cash=True, collect_gold=True, dont_go_heavy=True,
+                               drop_coins=True, max_wealth=1), now=lambda: 5.0)  # 80 >= 1
     cmd = d.decide(gs)
     assert cmd is not None and cmd.startswith("drop ") and "copper" in cmd  # cheapest
     assert "gold" in gs.ground_coins           # not picked up yet; retry next turn

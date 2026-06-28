@@ -22,7 +22,11 @@ def test_full_inv_block():
     assert "torch" in inv.carried
     assert ("iron rations", 2) in [(i, c) for i, c in inv.carried_counts.items()]
     assert "chainmail armour" in inv.worn
-    assert inv.coins["copper"] == 153
+    # "Wealth: N copper farthings" is the TOTAL (copper-equiv), NOT 153 actual copper coins
+    # — it must not pollute the carried-coins map (we tried to drop phantom copper we never
+    # had). It feeds wealth_total instead.
+    assert "copper" not in inv.coins
+    assert inv.wealth_total() == 153
     assert inv.encumbrance_pct == 37
     assert inv.encumbrance_level == "light"
     assert inv.encumbrance_cur == 45     # raw current/max weight, for the pickup cap

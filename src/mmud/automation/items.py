@@ -109,12 +109,18 @@ class GetDecider:
             return None
         cur = state.inventory.encumbrance_cur
         if self._cfg.auto_cash:
+            # Cash BELOW the wealth target is "needed" (MegaMud AutoCash-below-target): it
+            # bypasses the DontBeHeavy/DontBeMedium pickup cap, so loot is still grabbed after
+            # a fight while Heavy. Only when hoarding past the target does the cap (and the
+            # drop-to-upgrade) apply. max_wealth<=0 -> no target -> always grab.
+            mx = self._cfg.max_wealth
+            cash_needed = mx <= 0 or state.inventory.wealth_total() < mx
             for denom in list(state.ground_coins):
                 if not getattr(self._cfg, f"collect_{denom}", False):
                     del state.ground_coins[denom]   # unwanted: forget it
                     continue
                 amount = state.ground_coins[denom]
-                cap = self._cap(state, needed=False)
+                cap = self._cap(state, needed=cash_needed)
                 if cap is not None and cur + _coin_weight(amount) > cap:
                     # Won't fit. Drop cheaper coins to make room (DropCoins), else skip
                     # this denom (leave it on the ground) and try the others.
