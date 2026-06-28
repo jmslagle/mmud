@@ -728,6 +728,9 @@ class MudBot:
                 self._stat_requested = True
                 self._state.enqueue("stat")
                 self._state.enqueue("who")   # populate the Players tab on login
+                # Read inventory on entry so we know what we're holding — route item-gates
+                # (e.g. "need rope and grapple" for CAVWLOOP) check our carried/worn items.
+                self._state.enqueue(self._config.items.inventory_cmd)
                 self._who_next = time.monotonic() + self._config.session.who_interval_s
             # Prompts without a max (e.g. "[HP=49 /MA=20 ]") keep the last known
             # max — learned from a previous full prompt or the `stat` line.
