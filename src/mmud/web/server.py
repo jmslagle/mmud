@@ -67,6 +67,11 @@ class QuickToolBody(BaseModel):
     action: str
 
 
+class LoopBody(BaseModel):
+    name: str = ""        # loop path name (e.g. "CAVWLOOP"); "" -> the configured loop_path
+    action: str = "start"  # "start" | "stop"
+
+
 class WebPanelServer:
     def __init__(self, bot: Any) -> None:
         self._bot = bot
@@ -173,6 +178,18 @@ class WebPanelServer:
                 return JSONResponse({"detail": f"unknown action: {action}"}, status_code=400)
             await bot._conn.send(cmd)
             return {"ok": True, "action": action, "sent": cmd}
+
+        @app.post("/api/loop")
+        async def post_loop(body: LoopBody):
+            # Start/stop a navigation loop by name (the configured loop_path when blank).
+            # Routes to the bot's own loop runner — NOT a raw server command — so it works
+            # the same as the TUI ":loop NAME".
+            action = (body.action or "start").strip().lower()
+            if action == "stop":
+                return {"ok": True, "action": "stop", "result": bot.stop_all()}
+            name = body.name.strip()
+            return {"ok": True, "action": "start", "name": name,
+                    "result": bot.start_loop(name)}
 
         @app.get("/api/config")
         async def get_config():
