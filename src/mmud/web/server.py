@@ -72,6 +72,10 @@ class LoopBody(BaseModel):
     action: str = "start"  # "start" | "stop"
 
 
+class GotoBody(BaseModel):
+    target: str           # 4-letter room code OR name substring (resolved by navigate_to_room)
+
+
 class WebPanelServer:
     def __init__(self, bot: Any) -> None:
         self._bot = bot
@@ -190,6 +194,16 @@ class WebPanelServer:
             name = body.name.strip()
             return {"ok": True, "action": "start", "name": name,
                     "result": bot.start_loop(name)}
+
+        @app.post("/api/goto")
+        async def post_goto(body: GotoBody):
+            # Multi-hop navigate to a room by 4-letter code or name substring — routes to the
+            # bot's own travel graph (navigate_to_room), the same as the TUI ":goto CODE".
+            target = body.target.strip()
+            if not target:
+                return JSONResponse({"detail": "empty target"}, status_code=400)
+            return {"ok": True, "target": target,
+                    "result": bot.navigate_to_room(target)}
 
         @app.get("/api/config")
         async def get_config():
