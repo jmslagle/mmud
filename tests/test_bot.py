@@ -773,6 +773,33 @@ def test_legit_short_relocate_still_repaths():
     assert calls == [("NEAR", "CCCC0003")]    # short re-route accepted
 
 
+def test_path_local_resync_skips_global_relocate():
+    # MegaMud's path_find_current_step: an off-route id that IS a step on the active path
+    # resyncs the cursor PATH-LOCALLY (no global relocate / new cross-map route built).
+    bot = _armed_loop_bot()                  # loop body hexes AAAA0001 (idx0), BBBB0002 (idx1)
+    calls = []
+    bot._loop_runner.relocate = (
+        lambda code, hexid="": calls.append((code, hexid)) or "relocated")
+    bot._travel._cursor = 0                   # standing before the loop body
+    # BBBB0002 is the destination of step idx0 (the "n" move lands on it) -> resync to
+    # idx0+1 PATH-LOCALLY; no global relocate / cross-map route.
+    bot._maybe_relocate("HOME", "BBBB0002")
+    assert calls == []                        # NO global relocate
+    assert bot._travel._cursor == 1           # resynced path-locally to idx0+1
+
+
+def test_path_local_resync_falls_back_to_global_for_offpath_id():
+    # An id on NO active-path step -> resync_to_path returns False -> the existing global
+    # relocate runs (here a short legit re-route, accepted by the phantom guard).
+    bot = _armed_loop_bot()
+    calls = []
+    bot._loop_runner.relocate = (
+        lambda code, hexid="": calls.append((code, hexid)) or "relocated")
+    bot._code_route = lambda fc, tc: ["n", "e"] if (fc, tc) == ("NEAR", "HOME") else []
+    bot._maybe_relocate("NEAR", "CCCC0003")   # NOT a loop-body hex -> global fallback
+    assert calls == [("NEAR", "CCCC0003")]
+
+
 @pytest.mark.asyncio
 async def test_room_block_resets_on_prompt_not_accumulating_combat():
     # The room-hash candidate set was built from the last 30 lines of ALL output

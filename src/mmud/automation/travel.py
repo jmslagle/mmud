@@ -333,6 +333,56 @@ class TravelDecider:
             self.lost = True
             self._bus.post(TravelLost(step=min(self._cursor + 1, len(self._steps))))
 
+    def resync_to_path(self, state: GameState, hexid: str) -> bool:
+        """Path-local resync — MegaMud's `path_find_current_step @0x42bf40`. On an
+        off-route detection, search the ACTIVE route for the step whose DESTINATION id is
+        `hexid`, **near the current cursor first** (so a nearby identical-id step wins over
+        a far one in a colliding chain), and resync the cursor there. Mirrors MegaMud
+        searching "near the current step first" and resyncing rather than relocating to an
+        arbitrary GLOBAL room. Returns True on a hit (caller skips the global relocate),
+        False when `hexid` is on no step (caller falls back to the guarded global relocate).
+
+        The cursor lands on idx+1 (we've ARRIVED at step idx's destination), same as the
+        on_arrival convention — so a normal on-track arrival, already advanced by
+        on_arrival, computes target == cursor and is an idempotent no-op (no event).
+        Loop-wrap guard: a BACKWARD match that lands in the one-time approach prefix
+        (idx < loop_from) is refused, so we never replay the lead-in."""
+        if not self._steps or not hexid:
+            return False
+        h = hexid.upper()
+        idx = self._nearest_path_step(h)
+        if idx is None:
+            return False
+        target = idx + 1
+        if self._loop and target >= len(self._steps):
+            target = self._loop_from               # wrap like _finish_if_done
+        state.current_hex = h
+        self._misses = 0
+        self.lost = False
+        if target != self._cursor:
+            self._bus.post(TravelResynced(
+                from_step=min(self._cursor + 1, len(self._steps)), to_step=idx + 1))
+            self._cursor = target
+        return True
+
+    def _nearest_path_step(self, h: str) -> int | None:
+        """Index of the step whose `.expect` holds `h`, nearest the cursor first (forward
+        preferred on ties). A BACKWARD match in the loop approach (idx < loop_from while we
+        are past it) is skipped so resync can't wrap back into the one-time lead-in."""
+        n = len(self._steps)
+        order: list[int] = []
+        for d in range(n):
+            for idx in ((self._cursor + d, self._cursor - d) if d else (self._cursor,)):
+                if 0 <= idx < n and idx not in order:
+                    order.append(idx)
+        for idx in order:
+            if h not in self._steps[idx].expect:
+                continue
+            if self._loop and idx < self._loop_from and idx < self._cursor:
+                continue                            # would re-run the approach -> skip
+            return idx
+        return None
+
     def on_move_failed(self) -> None:
         if not self._steps:
             return

@@ -331,6 +331,90 @@ def test_peek_does_not_fire_on_non_adjacent_collision():
     assert gs.current_hex == "A"
 
 
+# ---- path-local resync (MegaMud path_find_current_step @0x42bf40) -------------
+
+def test_resync_to_path_moves_cursor_and_posts_event():
+    # An off-route detection whose id is a step's destination resyncs the cursor THERE
+    # (idx+1, mirroring the on_arrival convention) and posts TravelResynced.
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelResynced, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("n", "B"), _step("s", "C"), _step("w", "D")])
+    assert d.resync_to_path(gs, "C") is True
+    assert d._cursor == 3                     # arrived at idx-2's dest -> next is idx 3
+    assert gs.current_hex == "C"
+    assert [(e.from_step, e.to_step) for e in received] == [(1, 3)]
+
+
+def test_resync_to_path_returns_false_when_id_off_path():
+    # The DVEA case: an id on NO step -> False (the caller falls back to global relocate).
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelResynced, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("n", "B")])
+    assert d.resync_to_path(gs, "F4301140") is False
+    assert d._cursor == 0                     # unchanged
+    assert received == []                     # no spurious resync event
+
+
+def test_resync_to_path_prefers_step_near_cursor_in_identical_id_chain():
+    # The id appears at BOTH a far step (idx 1) and a near one (idx 6); with the cursor
+    # at 5, the NEAR step wins (no cross-map cursor jump back to idx 1).
+    d = _decider()
+    gs = GameState()
+    steps = [_step("a", "A"), _step("b", "X"), _step("c", "C"), _step("d", "D"),
+             _step("e", "E"), _step("f", "F"), _step("g", "X")]
+    d.set_route(steps, start_at=5)
+    assert d.resync_to_path(gs, "X") is True
+    assert d._cursor == 7                     # idx 6 (+1), NOT idx 1 (which would be 2)
+
+
+def test_resync_to_path_no_op_when_already_consistent_returns_true():
+    # The normal on-track case: on_arrival already advanced to idx+1, so resync finds the
+    # just-completed step and computes target == cursor -> True but no move, no event.
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelResynced, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("e", "A"), _step("n", "B"), _step("s", "C")])
+    d._cursor = 2                             # already advanced past 'B' (idx 1)
+    assert d.resync_to_path(gs, "B") is True
+    assert d._cursor == 2 and received == []  # consistent: no jump, no event
+
+
+def test_resync_to_path_does_not_wrap_back_into_loop_approach():
+    # Loop with a one-time approach prefix [idx0]. A backward match landing in the
+    # approach (idx0) must be REFUSED so we don't replay the lead-in; the id is on no
+    # body step -> False.
+    d = _decider()
+    gs = GameState()
+    # approach: e->AP ; body: n->Q, s->R, w->T  (loop_from=1)
+    d.set_route([_step("e", "AP"), _step("n", "Q"), _step("s", "R"), _step("w", "T")],
+                loop=True, loop_from=1, start_at=2)   # cursor in the body (idx 2)
+    assert d.resync_to_path(gs, "AP") is False         # would re-run the approach -> refused
+    assert d._cursor == 2
+
+
+def test_resync_to_path_forward_tiebreak_and_loop_wrap():
+    # An id at both idx1 (backward) and idx3 (forward), cursor at 2: equal distance ->
+    # forward wins; idx3 is the loop's last step so target wraps to loop_from.
+    received = []
+    bus = GameEventBus()
+    bus.subscribe(TravelResynced, received.append)
+    d = _decider(bus)
+    gs = GameState()
+    d.set_route([_step("e", "AP"), _step("n", "Q"), _step("s", "R"), _step("w", "Q")],
+                loop=True, loop_from=1, start_at=2)
+    assert d.resync_to_path(gs, "Q") is True
+    assert d._cursor == 1                              # idx3+1=4 -> wrap to loop_from
+    assert [(e.from_step, e.to_step) for e in received] == [(3, 4)]
+
+
 def test_resync_does_not_jump_backward_on_hash_collision():
     # Live bug: deep in a loop (step ~30), the arrived room's BROAD candidate-hash
     # set (a long room description yields ~25 colliding hashes) intersects an early

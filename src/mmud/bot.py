@@ -1727,8 +1727,14 @@ class MudBot:
         the lost-wander case too (a wander has no route, so any known room re-paths)."""
         if not (code and hexid and self._travel.active):
             return
-        if any(hexid in s.expect for s in self._travel.route):
-            self._relocate_from = ""        # on the route -> reset the thrash guard
+        # Path-local resync FIRST (MegaMud path_find_current_step @0x42bf40): if the
+        # detected id is a step on the ACTIVE path, resync the cursor THERE (near the
+        # current step first) instead of relocating to an arbitrary GLOBAL room from a
+        # colliding id. The GLOBAL relocate (below) is only the FALLBACK for an id found
+        # NOWHERE on the path — so a path-local resync can never build a cross-map route.
+        if self._travel.resync_to_path(self._state, hexid):
+            self._relocate_from = ""        # back on the path -> reset the thrash guard
+            self._session_log.event(f"resync on-path at {code} ({hexid})")
             return
         if hexid == self._relocate_from:
             return                          # already re-pathed here; don't thrash
