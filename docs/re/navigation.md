@@ -230,6 +230,25 @@ teleport — keep following the recorded path instead. Short legitimate drifts a
 equal/shorter re-routes still relocate. Tests: `test_phantom_crosszone_relocate_is_rejected`,
 `test_legit_short_relocate_still_repaths` (tests/test_bot.py).
 
+**Path-local resync is PRIMARY; global relocate is the FALLBACK (`resync_to_path`, 2026-06-28).**
+This mirrors MegaMud's `path_find_current_step @0x42bf40`: on an off-route mismatch it
+searches the **whole active path** for the current room id (near the current step first),
+resyncs the cursor there ("Resynced from path step %d to %d"), and only goes "Lost!" if the
+id is found NOWHERE — it NEVER relocates to an arbitrary GLOBAL room from a colliding id.
+Our `_maybe_relocate` now tries `TravelDecider.resync_to_path(state, hexid)` FIRST: it scans
+`travel._steps` (approach + loop body) for the step whose `.expect` holds `hexid`, **nearest
+the cursor first** (forward preferred on ties) so a nearby identical-id step wins over a far
+one in a colliding chain. On a hit it sets the cursor to `idx+1` (the on_arrival convention —
+so a normal on-track arrival already advanced by `on_arrival` computes `target == cursor` and
+is an idempotent no-op, no event), resets `_misses`/`lost`, posts `TravelResynced`, and
+RETURNS — the global relocate never runs. A **loop-wrap guard** refuses a BACKWARD match that
+lands in the one-time approach prefix (`idx < loop_from`), so resync can't replay the lead-in;
+a target past the loop end wraps to `loop_from`. Only when the id is on NO step does it fall
+back to the EXISTING global `_maybe_relocate` (anti-thrash + `_relocate_is_phantom` guard +
+`LoopRunner.relocate`) — so the DVEA cross-zone collision still hits the phantom guard and is
+rejected, while we still recover via the global re-path instead of a hard Lost! stop. Tests:
+`test_resync_to_path_*` (tests/test_travel.py), `test_path_local_resync_*` (tests/test_bot.py).
+
 ## NPC look filter
 A proper-named "Also here" entry that is a catalogued monster (`monster_db.find` hit,
 e.g. "Lady Sentara", kill-type 2) is an NPC, not a player → tracked as a
