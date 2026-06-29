@@ -25,6 +25,7 @@ class FakeBot:
         self._conn = FakeConn()
         self.loop_started = None
         self.loop_stopped = False
+        self.goto_target = None
         if with_config_service:
             self._config_service = ConfigService(self._config, bus=self._bus, path=None)
 
@@ -35,6 +36,10 @@ class FakeBot:
     def stop_all(self):
         self.loop_stopped = True
         return "stopped"
+
+    def navigate_to_room(self, target):
+        self.goto_target = target
+        return f"goto {target}"
 
 
 @pytest.fixture
@@ -84,6 +89,20 @@ def test_loop_stop(client, fake_bot):
     assert r.status_code == 200
     assert r.json()["action"] == "stop"
     assert fake_bot.loop_stopped is True
+
+
+def test_goto_navigates_to_room(client, fake_bot):
+    r = client.post("/api/goto", json={"target": "SHOD"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True and body["target"] == "SHOD"
+    assert body["result"] == "goto SHOD"
+    assert fake_bot.goto_target == "SHOD"
+
+
+def test_goto_empty_target_rejected(client, fake_bot):
+    assert client.post("/api/goto", json={"target": "   "}).status_code == 400
+    assert fake_bot.goto_target is None      # not invoked on a blank target
 
 
 def test_empty_command_rejected(client):
