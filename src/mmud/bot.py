@@ -1732,6 +1732,17 @@ class MudBot:
             return
         if hexid == self._relocate_from:
             return                          # already re-pathed here; don't thrash
+        # Reject a phantom CROSS-ZONE relocate. A stray room-display line can hash-collide
+        # with a far-off ROOMS.MD room (a Black House warren room near CAVW mis-resolved to
+        # DVEA in the Scorching Desert — both share the low-20 exit pattern ...01140).
+        # Trusting it teleported position across the map and routed 226 steps the wrong way.
+        # A single off-route arrival means we moved ONE room, so a relocate whose re-route
+        # is absurdly longer than the loop/remaining route is not a real teleport.
+        if self._relocate_is_phantom(code):
+            self._relocate_from = hexid     # anti-thrash: don't re-test the same colliding id
+            self._session_log.event(
+                f"off-route at {code} -> relocate REJECTED (phantom cross-zone collision)")
+            return
         self._relocate_from = hexid
         if self._loop_runner and self._loop_runner.running:
             msg = self._loop_runner.relocate(code, hexid)
@@ -1743,6 +1754,36 @@ class MudBot:
         else:
             return
         self._session_log.event(f"off-route at {code} -> relocate: {msg}")
+
+    # A relocate is a phantom collision when its re-route is more than this multiple of
+    # the baseline route length, plus slack so short legitimate drifts always pass.
+    _RELOCATE_DRIFT_RATIO = 2
+    _RELOCATE_SLACK = 12
+
+    def _relocate_is_phantom(self, code: str) -> bool:
+        """True if relocating to `code` would route us implausibly far from our planned
+        position — the signature of a hash-COLLISION mis-identifying a local room as a
+        far-zone one (DVEA in the desert while we're in the Black House warren). We only
+        moved ONE room since the last fix, so a re-route far longer than the loop body (or
+        the remaining goto route) cannot be a real teleport. Reject it and keep following
+        the recorded path (MegaMud tolerates the mismatch and resyncs by room-id only after
+        repeated misses; it never teleports across the map on one colliding id)."""
+        if self._loop_runner and self._loop_runner.running:
+            target = self._loop_runner.loop_start_code
+            baseline = self._loop_runner.loop_len      # can't drift further than the loop
+        elif self._travel_dest and "->" in self._travel_dest:
+            target = self._travel_dest.split("->")[-1]
+            total = len(self._travel.route)
+            pos, _ = self._travel.step                 # 1-based cursor position
+            baseline = max(1, total - (pos - 1))       # steps left to follow
+        else:
+            return False                               # no planned position -> can't judge
+        if not target or target == code:
+            return False
+        approach = self._code_route(code, target)
+        if not approach:                               # unreachable / already there
+            return False                               # let relocate()/start() handle it
+        return len(approach) > baseline * self._RELOCATE_DRIFT_RATIO + self._RELOCATE_SLACK
 
     def navigate_to_room(self, target: str) -> str:
         """Multi-hop navigate to a room by 4-letter code OR name substring, by

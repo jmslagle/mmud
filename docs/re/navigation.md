@@ -212,6 +212,24 @@ moves; on exceeding it `LoopRunner._giveup()` stops the loop and the bot's
 SAFETY NET, not a cure: reliably traversing the graveyard needs the one-room-id fix
 (below) so the cursor doesn't desync and the wander doesn't false-match collisions.
 
+**Phantom cross-zone relocate guard (`bot._relocate_is_phantom`, 2026-06-28).** The
+relocate above blindly trusted `confident_hex`, but `confident_hex` comes from
+`detect_room_from_block`, which hashes EVERY room-display line and matches the first id
+in ROOMS.MD. A STRAY non-title line can hash-collide with a far-zone room: while looping
+the Black House warren (near CAVW), a warren room hit DVEA's full id `F4301140` ("Dusty
+Village, Eastern Entrance" in the Scorching Desert) — both share the low-20 exit pattern
+`...01140`, and a description/also-here line's title-hash low-12 landed on `0xF43`. On
+"Realm of Legends" almost no live room is in ROOMS.MD by name, so `_title_color` is never
+confidently learned and the title-colour gate (bot.py `_parse_exits`) is skipped, letting
+the collision through. The bot then relocated its position to DVEA and routed **226 steps
+(DVEA→CAVW)** through the desert (loop body is only 80). Fix: before acting on a relocate,
+reject it if the re-route is implausibly long. A single off-route arrival means we moved
+ONE room, so `len(code_route(detected, target)) > baseline*2 + 12` (baseline = loop body
+length for a loop, remaining-route length for a goto) is a phantom collision, not a real
+teleport — keep following the recorded path instead. Short legitimate drifts and
+equal/shorter re-routes still relocate. Tests: `test_phantom_crosszone_relocate_is_rejected`,
+`test_legit_short_relocate_still_repaths` (tests/test_bot.py).
+
 ## NPC look filter
 A proper-named "Also here" entry that is a catalogued monster (`monster_db.find` hit,
 e.g. "Lady Sentara", kill-type 2) is an NPC, not a player → tracked as a

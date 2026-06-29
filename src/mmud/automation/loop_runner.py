@@ -213,5 +213,16 @@ class LoopRunner:
         return self._running and self._travel.active
 
     @property
+    def loop_start_code(self) -> str:
+        """The 4-letter code of the loop's start room (where relocate re-routes TO)."""
+        return self._path.from_code.upper() if self._path else ""
+
+    @property
+    def loop_len(self) -> int:
+        """Number of steps in the loop body — the natural scale for 'how far off the
+        loop could we plausibly have drifted in one move' (see bot._relocate_is_phantom)."""
+        return len(self._path.steps) if self._path else 0
+
+    @property
     def lap(self) -> int:
         return self._travel.lap

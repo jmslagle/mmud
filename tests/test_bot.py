@@ -743,6 +743,36 @@ def test_off_route_known_room_repaths_a_goto():
     assert calls == []                             # no needless re-path
 
 
+def test_phantom_crosszone_relocate_is_rejected():
+    # Live bug: a stray room-display line hash-collided with a far-off ROOMS.MD room.
+    # While looping the Black House warren (near CAVW), a warren room was mis-identified
+    # as DVEA ("Dusty Village, Eastern Entrance") in the Scorching Desert — both share
+    # the low-20 exit pattern (...01140). The bot then RELOCATED its position to DVEA and
+    # routed 226 steps (DVEA->CAVW) the long way through the desert. A single off-route
+    # arrival means we moved ONE room, so a relocate whose re-route is absurdly longer
+    # than the loop is a phantom collision, not a teleport — it must be rejected.
+    bot = _armed_loop_bot()                  # loop HOME (2-step body) running, route armed
+    calls = []
+    bot._loop_runner.relocate = (
+        lambda code, hexid="": calls.append((code, hexid)) or "relocated")
+    long_route = ["x"] * 226                  # DVEA is 226 graph-steps from the loop start
+    bot._code_route = lambda fc, tc: long_route if (fc, tc) == ("DVEA", "HOME") else []
+    bot._maybe_relocate("DVEA", "F4301140")   # colliding far-zone id, NOT on the route
+    assert calls == []                        # phantom cross-zone relocate rejected
+
+
+def test_legit_short_relocate_still_repaths():
+    # The phantom guard must NOT block genuine off-route recovery: a known room a few
+    # steps from the loop (a real one-room drift) should still re-path.
+    bot = _armed_loop_bot()                  # loop HOME (2-step body) running, route armed
+    calls = []
+    bot._loop_runner.relocate = (
+        lambda code, hexid="": calls.append((code, hexid)) or "relocated")
+    bot._code_route = lambda fc, tc: ["n", "e"] if (fc, tc) == ("NEAR", "HOME") else []
+    bot._maybe_relocate("NEAR", "CCCC0003")   # genuinely nearby known room off-route
+    assert calls == [("NEAR", "CCCC0003")]    # short re-route accepted
+
+
 @pytest.mark.asyncio
 async def test_room_block_resets_on_prompt_not_accumulating_combat():
     # The room-hash candidate set was built from the last 30 lines of ALL output
